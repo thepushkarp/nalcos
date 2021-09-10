@@ -1,0 +1,6 @@
+gitpython==3.1.18
+rich==10.9.0
+gitpython== 3.1.18
+appdirs==1.4.4
+sentence_transformers==2.0.0
+numpy==1.20.3
