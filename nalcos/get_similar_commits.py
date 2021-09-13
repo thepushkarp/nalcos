@@ -29,7 +29,8 @@ def get_similar_commits(
         A list of the n_matches most similar commits to the query.
     """
     # The model to use for encoding the query and commit messages.
-    model_name = "all-MiniLM-L6-v2"
+    # Pretrained models available at: https://www.sbert.net/docs/pretrained_models.html
+    model_name = "multi-qa-MiniLM-L6-cos-v1"
     # The path to save the model to.
     cache_folder = user_cache_dir(
         os.path.join(Path(__file__).resolve().parent, ".cache")

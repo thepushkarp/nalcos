@@ -1,6 +1,6 @@
 import argparse
 from rich.console import Console
-from pprint import pprint
+from rich.table import Table
 
 from utils import get_type_of_location
 from get_commits import get_local_commits, get_github_commits
@@ -48,28 +48,55 @@ def main():
     )
     args = parser.parse_args()
 
-    print(args)
-    print()
+    console = Console()
 
-    # Sanity checks
-    location_type = get_type_of_location(args.location)
+    # Display a status bar while it retrieves the commits and computes similarity
+    with console.status("[bold green]Retreiving your commits...") as status:
+        # Get the location type from the location argument
+        location_type = get_type_of_location(args.location)
 
-    if args.github == True:
-        if location_type != "github":
-            raise ValueError(
-                "Repository not found. Please specify a GitHub repository in the format {owner}/{repo}."
-            )
-        commits = get_github_commits(args.location, args.look_past, args.branch)
-        pprint(commits)
-        pprint(len(commits))
-    else:
-        if location_type != "local":
-            raise ValueError(
-                "Repository not found. Please specify a local repository path."
-            )
-        commits = get_local_commits(args.location, args.look_past, args.branch)
-        pprint(commits)
-        pprint(len(commits))
+        commits = None
+
+        if args.github == True:
+            # Checks if the location type is a GitHub repository
+            if location_type != "github":
+                raise ValueError(
+                    "Repository not found. Please specify a GitHub repository in the format {owner}/{repo}."
+                )
+            commits = get_github_commits(args.location, args.look_past, args.branch)
+        else:
+            # Checks if the location type is a local repository
+            if location_type != "local":
+                raise ValueError(
+                    "Repository not found. Please specify a local repository path."
+                )
+            commits = get_local_commits(args.location, args.look_past, args.branch)
+
+        # If no commits found, raise error
+        if commits == None or commits == []:
+            raise ValueError("No commits found.")
+        else:
+            print(f"Found {len(commits)} commits.")
+            print()
+
+            # Get similar commits and display them as a clean table.
+            similar_commits = get_similar_commits(args.query, commits, args.n_matches)
+
+            table = Table(show_header=True, header_style="bold white")
+            table.add_column("Commit ID", style="dim")
+            table.add_column("Commit Message")
+            table.add_column("Commit Author")
+            table.add_column("Commit Date")
+
+            for commit in similar_commits:
+                table.add_row(
+                    commit["id"][:9],
+                    commit["message"],
+                    commit["author"],
+                    commit["commit_date"],
+                )
+
+            console.print(table)
 
 
 if __name__ == "__main__":
