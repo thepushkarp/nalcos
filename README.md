@@ -3,7 +3,6 @@
 <p align="center">Search commit messages in your repository in <em>natural language</em>.</p>
 
 <p align="center">
-  <a href="https://github.com/thepushkarp/nalcos/"><img alt="CodeQL Status" src="https://img.shields.io/github/workflow/status/thepushkarp/nalcos/CodeQL?logo=GitHub&label=CodeQL&style=for-the-badge"></a>
   <a href="https://github.com/thepushkarp/nalcos/issues"><img alt="GitHub Issues" src="https://img.shields.io/github/issues/thepushkarp/nalcos?style=for-the-badge"></a>
   <a href="https://github.com/thepushkarp/nalcos/stargazers"><img alt="Stargazers" src="https://img.shields.io/github/stars/thepushkarp/nalcos?style=for-the-badge"></a>
   <a href="https://github.com/thepushkarp/nalcos/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/thepushkarp/nalcos?style=for-the-badge"></a>

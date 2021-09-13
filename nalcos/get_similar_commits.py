@@ -2,7 +2,6 @@ import os
 import typing
 from pathlib import Path
 from appdirs import user_cache_dir
-import torch
 from sentence_transformers import SentenceTransformer, util
 
 __all__ = ["get_similar_commits"]
@@ -35,11 +34,9 @@ def get_similar_commits(
     cache_folder = user_cache_dir(
         os.path.join(Path(__file__).resolve().parent, ".cache")
     )
-    # Use cuda if available.
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # Load the model.
-    model = SentenceTransformer(model_name, cache_folder=cache_folder, device=device)
+    model = SentenceTransformer(model_name, cache_folder=cache_folder)
 
     # Get all the commit messages.
     commit_messages = [commit["message"] for commit in commits]
