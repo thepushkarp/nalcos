@@ -6,7 +6,6 @@
   <a href="https://github.com/thepushkarp/nalcos/issues"><img alt="GitHub Issues" src="https://img.shields.io/github/issues/thepushkarp/nalcos?style=for-the-badge"></a>
   <a href="https://github.com/thepushkarp/nalcos/stargazers"><img alt="Stargazers" src="https://img.shields.io/github/stars/thepushkarp/nalcos?style=for-the-badge"></a>
   <a href="https://github.com/thepushkarp/nalcos/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/thepushkarp/nalcos?style=for-the-badge"></a>
-  <br/>
   <a href="https://github.com/thepushkarp/nalcos/releases"><img alt="GitHub release (latest by date)" src="https://img.shields.io/github/v/release/thepushkarp/nalcos?style=for-the-badge"></a>
 </p>
 
@@ -126,34 +125,8 @@ optional arguments:
 
 ### Examples
 
-- Input:
+![image](https://user-images.githubusercontent.com/42088801/133167351-d62accd0-34b3-4d22-a663-c7917556d16a.png)
 
-```console
-python nalcos.py "improve language" "github/docs" --github -l 100
-```
-
-- Output:
-
-```
-Found 100 commits.
-
-                                        Commits related to "improve language" in "github/docs"
-┏━━━━━┳━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━┓
-┃ No. ┃ Commit ID ┃ Commit Message                                                        ┃ Commit Author      ┃ Commit Date          ┃
-┡━━━━━╇━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━┩
-│  1. │ 51bfdbb95 │ Merge branch 'main' into fatenhealy-fix-supportedlanguage             │ Faten Healy        │ 2021-09-12T22:26:31Z │
-│  2. │ a9c2c8eea │ fix deprecation label spelling (#21474)                               │ Rachael Sewell     │ 2021-09-13T18:12:03Z │
-│  3. │ 94e3c092d │ English search sync (#21446)                                          │ Rachael Sewell     │ 2021-09-13T17:30:08Z │
-│  4. │ b048e27e9 │ Merge pull request #9909 from github/fatenhealy-fix-supportedlanguage │ Ramya Parimi       │ 2021-09-12T22:35:19Z │
-│  5. │ 73c2717f7 │ Fix typo                                                              │ Adrian Mato        │ 2021-09-13T06:35:27Z │
-│  6. │ 86b571982 │ Export changes to a branch for codespaces (#21462)                    │ Matthew Isabel     │ 2021-09-13T14:55:50Z │
-│  7. │ 969288662 │ Update diff limit to 500KB (#20616)                                   │ jjkennedy3         │ 2021-09-11T09:12:38Z │
-│  8. │ f28ee46d4 │ Update OpenAPI Descriptions (#21447)                                  │ github-openapi-bot │ 2021-09-11T09:22:28Z │
-│  9. │ 92af3a469 │ update search indexes                                                 │ GitHub Actions     │ 2021-09-12T09:50:46Z │
-│ 10. │ e6018f2aa │ update search indexes                                                 │ GitHub Actions     │ 2021-09-11T02:05:19Z │
-└─────┴───────────┴───────────────────────────────────────────────────────────────────────┴────────────────────┴──────────────────────┘
-
-```
 
 ## Future plans
 
