@@ -20,6 +20,8 @@ The key features are:
 - Restrict the number of commits to look back in history while searching.
 - Increase the number of retrieved results.
 
+![image](https://user-images.githubusercontent.com/42088801/133167351-d62accd0-34b3-4d22-a663-c7917556d16a.png)
+
 Internally, NaLCoS uses [Sentence Transformers](https://github.com/UKPLab/sentence-transformers) with pre-trained weights from [`multi-qa-MiniLM-L6-cos-v1`](https://huggingface.co/sentence-transformers/multi-qa-MiniLM-L6-cos-v1). I chose this particular model because it has a good [Performance vs Speed tradeoff](https://www.sbert.net/docs/pretrained_models.html). Since this model was designed for semantic search and has been pre-trained on 215M (question, answer) pairs from diverse sources, it is a good choice for tasks such as finding similarity between two sentences.
 
 NaLCoS encodes the query string and all the commits into their corresponding vector embeddings and computes the cosine similarity between the query and all the commits. This is then used to rank the commits.
@@ -125,7 +127,34 @@ optional arguments:
 
 ### Examples
 
-![image](https://user-images.githubusercontent.com/42088801/133167351-d62accd0-34b3-4d22-a663-c7917556d16a.png)
+- Input:
+
+```console
+python nalcos.py "improve language" "github/docs" --github
+```
+
+- Output:
+
+```
+Found 100 commits.
+
+                                        Commits related to "improve language" in "github/docs"
+┏━━━━━┳━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━┓
+┃ No. ┃ Commit ID ┃ Commit Message                                                        ┃ Commit Author      ┃ Commit Date          ┃
+┡━━━━━╇━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━┩
+│  1. │ 51bfdbb95 │ Merge branch 'main' into fatenhealy-fix-supportedlanguage             │ Faten Healy        │ 2021-09-12T22:26:31Z │
+│  2. │ a9c2c8eea │ fix deprecation label spelling (#21474)                               │ Rachael Sewell     │ 2021-09-13T18:12:03Z │
+│  3. │ 94e3c092d │ English search sync (#21446)                                          │ Rachael Sewell     │ 2021-09-13T17:30:08Z │
+│  4. │ b048e27e9 │ Merge pull request #9909 from github/fatenhealy-fix-supportedlanguage │ Ramya Parimi       │ 2021-09-12T22:35:19Z │
+│  5. │ 73c2717f7 │ Fix typo                                                              │ Adrian Mato        │ 2021-09-13T06:35:27Z │
+│  6. │ 86b571982 │ Export changes to a branch for codespaces (#21462)                    │ Matthew Isabel     │ 2021-09-13T14:55:50Z │
+│  7. │ 969288662 │ Update diff limit to 500KB (#20616)                                   │ jjkennedy3         │ 2021-09-11T09:12:38Z │
+│  8. │ f28ee46d4 │ Update OpenAPI Descriptions (#21447)                                  │ github-openapi-bot │ 2021-09-11T09:22:28Z │
+│  9. │ 92af3a469 │ update search indexes                                                 │ GitHub Actions     │ 2021-09-12T09:50:46Z │
+│ 10. │ e6018f2aa │ update search indexes                                                 │ GitHub Actions     │ 2021-09-11T02:05:19Z │
+└─────┴───────────┴───────────────────────────────────────────────────────────────────────┴────────────────────┴──────────────────────┘
+
+```
 
 
 ## Future plans
