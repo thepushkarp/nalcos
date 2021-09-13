@@ -13,7 +13,7 @@ def main():
     """
     # Use argparse to define and get the arguments
     parser = argparse.ArgumentParser(
-        prog="NaLCoS",
+        prog="nalcos",
         description="Search a commit in your git repository using natural language.",
     )
     parser.add_argument(
