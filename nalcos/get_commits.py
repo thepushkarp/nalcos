@@ -45,7 +45,7 @@ def get_local_commits(
                 {
                     "author": str(commit.author),
                     "email": commit.author.email,
-                    "message": commit.message.split("\n")[0],
+                    "message": commit.message.strip("\n"),
                     "id": commit.hexsha,
                     # Convert datetime to ISO 8601 format.
                     "commit_date": commit.committed_datetime.astimezone(timezone.utc)
@@ -126,7 +126,7 @@ def get_github_commits(
                             "author": commit["commit"]["author"]["name"],
                             "email": commit["commit"]["author"]["email"],
                             # Get the commit message title, which is the first line of the mesage.
-                            "message": commit["commit"]["message"].split("\n")[0],
+                            "message": commit["commit"]["message"].strip("\n"),
                             "id": commit["sha"],
                             "commit_date": commit["commit"]["author"]["date"],
                             "branch": branch,

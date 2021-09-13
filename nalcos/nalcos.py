@@ -13,7 +13,8 @@ def main():
     """
     # Use argparse to define and get the arguments
     parser = argparse.ArgumentParser(
-        description="Search a commit in your git repository using natural language."
+        prog="NaLCoS",
+        description="Search a commit in your git repository using natural language.",
     )
     parser.add_argument(
         "query", help="The query to search for similar commit messages.", type=str
@@ -49,6 +50,7 @@ def main():
         type=int,
         default=1000,
     )
+    parser.add_argument("-v", "--version", action="version", version="%(prog)s 0.1")
     args = parser.parse_args()
 
     console = Console()
@@ -98,7 +100,7 @@ def main():
             table.add_row(
                 f"{i + 1}.",
                 commit["id"][:9],
-                commit["message"],
+                commit["message"].split("\n")[0],
                 commit["author"],
                 commit["commit_date"],
             )
