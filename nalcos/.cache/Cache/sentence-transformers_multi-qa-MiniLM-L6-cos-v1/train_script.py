@@ -38,16 +38,23 @@ from transformers import (
 )
 
 class AutoModelForSentenceEmbedding(nn.Module):
-    def __init__(self, model_name, tokenizer, normalize=True):
+    def __init__(self, model_name, tokenizer, args):
         super(AutoModelForSentenceEmbedding, self).__init__()
 
+        assert args.pooling in ['mean', 'cls']
+
         self.model = AutoModel.from_pretrained(model_name)
-        self.normalize = normalize
+        self.normalize = not args.no_normalize
         self.tokenizer = tokenizer
+        self.pooling = args.pooling
 
     def forward(self, **kwargs):
         model_output = self.model(**kwargs)
-        embeddings = self.mean_pooling(model_output, kwargs['attention_mask'])
+        if self.pooling == 'mean':
+            embeddings = self.mean_pooling(model_output, kwargs['attention_mask'])
+        elif self.pooling == 'cls':
+            embeddings = self.cls_pooling(model_output, kwargs['attention_mask'])
+
         if self.normalize:
             embeddings = torch.nn.functional.normalize(embeddings, p=2, dim=1)
 
@@ -57,6 +64,9 @@ class AutoModelForSentenceEmbedding(nn.Module):
         token_embeddings = model_output[0]  # First element of model_output contains all token embeddings
         input_mask_expanded = attention_mask.unsqueeze(-1).expand(token_embeddings.size()).float()
         return torch.sum(token_embeddings * input_mask_expanded, 1) / torch.clamp(input_mask_expanded.sum(1), min=1e-9)
+
+    def cls_pooling(self, model_output, attention_mask):
+        return model_output[0][:,0]
 
     def save_pretrained(self, output_path):
         if xm.is_master_ordinal():
@@ -70,7 +80,7 @@ class AutoModelForSentenceEmbedding(nn.Module):
 
 def train_function(index, args, queue):
     tokenizer = AutoTokenizer.from_pretrained(args.model)
-    model = AutoModelForSentenceEmbedding(args.model, tokenizer)
+    model = AutoModelForSentenceEmbedding(args.model, tokenizer, args)
     
   
     ### Train Loop
@@ -99,8 +109,8 @@ def train_function(index, args, queue):
         
 
         if len(batch[0]) == 2: #(anchor, positive)
-            text1 = tokenizer([b[0] for b in batch], return_tensors="pt", max_length=args.max_length, truncation=True, padding="max_length")
-            text2 = tokenizer([b[1] for b in batch], return_tensors="pt", max_length=args.max_length, truncation=True, padding="max_length")
+            text1 = tokenizer([b[0] for b in batch], return_tensors="pt", max_length=args.max_length_a, truncation=True, padding="max_length")
+            text2 = tokenizer([b[1] for b in batch], return_tensors="pt", max_length=args.max_length_b, truncation=True, padding="max_length")
 
             ### Compute embeddings
             embeddings_a = model(**text1.to(device))
@@ -120,9 +130,9 @@ def train_function(index, args, queue):
             loss = (cross_entropy_loss(scores, labels) + cross_entropy_loss(scores.transpose(0, 1), labels)) / 2
 
         else:   #(anchor, positive, negative)
-            text1 = tokenizer([b[0] for b in batch], return_tensors="pt", max_length=args.max_length, truncation=True, padding="max_length")
-            text2 = tokenizer([b[1] for b in batch], return_tensors="pt", max_length=args.max_length, truncation=True, padding="max_length")
-            text3 = tokenizer([b[2] for b in batch], return_tensors="pt", max_length=args.max_length, truncation=True, padding="max_length")
+            text1 = tokenizer([b[0] for b in batch], return_tensors="pt", max_length=args.max_length_a, truncation=True, padding="max_length")
+            text2 = tokenizer([b[1] for b in batch], return_tensors="pt", max_length=args.max_length_b, truncation=True, padding="max_length")
+            text3 = tokenizer([b[2] for b in batch], return_tensors="pt", max_length=args.max_length_b, truncation=True, padding="max_length")
 
             embeddings_a  = model(**text1.to(device))
             embeddings_b1 = model(**text2.to(device))
@@ -167,10 +177,8 @@ def train_function(index, args, queue):
 
 def produce_data(args, queue, filepaths, dataset_indices):
     global_batch_size = args.batch_size*args.nprocs    #Global batch size
-    size_per_dataset = int(global_batch_size / args.datasets_per_batch)    #How many datasets per batch
-    num_same_dataset = int(size_per_dataset / args.batch_size)
+    num_same_dataset = int(args.nprocs / args.datasets_per_batch)
     print("producer", "global_batch_size", global_batch_size)
-    print("producer", "size_per_dataset", size_per_dataset)
     print("producer", "num_same_dataset", num_same_dataset)
     
     datasets = []
@@ -201,10 +209,14 @@ def produce_data(args, queue, filepaths, dataset_indices):
             
             #Get data from this dataset
             dataset = datasets[data_idx]
+            local_batch_size = args.batch_size
+            if batch_format == 3 and args.batch_size_triplets is not None:
+                local_batch_size = args.batch_size_triplets
+
             for _ in range(num_same_dataset):
                 for _ in range(args.nprocs):
                     batch_device = []   #A batch for one device
-                    while len(batch_device) < args.batch_size:
+                    while len(batch_device) < local_batch_size:
                         sample = next(dataset)
                         in_batch = False
                         for text in sample:
@@ -244,7 +256,7 @@ class Dataset:
         self.filepath = filepath
 
     def __iter__(self):
-        max_dataset_size = 10*1000*1000    #Cache small datasets in memory
+        max_dataset_size = 20*1000*1000    #Cache small datasets in memory
         dataset = []
         data_format = None
 
@@ -283,17 +295,22 @@ if __name__ == "__main__":
     parser.add_argument('--steps', type=int, default=2000)
     parser.add_argument('--save_steps', type=int, default=10000)
     parser.add_argument('--batch_size', type=int, default=64)
-    parser.add_argument('--max_length', type=int, default=128)
+    parser.add_argument('--batch_size_triplets', type=int, default=None)
+    parser.add_argument('--max_length_a', type=int, default=128)
+    parser.add_argument('--max_length_b', type=int, default=128)
     parser.add_argument('--nprocs', type=int, default=8)
     parser.add_argument('--datasets_per_batch', type=int, default=2, help="Number of datasets per batch")
     parser.add_argument('--scale', type=float, default=20, help="Use 20 for cossim, and 1 when you work with unnormalized embeddings with dot product")
+    parser.add_argument('--no_normalize', action="store_true", default=False, help="If set: Embeddings are not normalized")
+    parser.add_argument('--pooling', default='mean')
     parser.add_argument('--data_folder', default="/data", help="Folder with your dataset files")
     parser.add_argument('data_config', help="A data_config.json file")
     parser.add_argument('output')
     args = parser.parse_args()
 
-    # Ensure global batch size is divisble by data_sample_size
-    assert (args.batch_size*args.nprocs) % args.datasets_per_batch == 0
+    # Ensure num proc is devisible by datasets_per_batch
+    assert (args.nprocs % args.datasets_per_batch) == 0
+  
 
     logging.info("Output: "+args.output)
     if os.path.exists(args.output):
@@ -341,4 +358,4 @@ if __name__ == "__main__":
 
 
 # Script was called via:
-#python train_many_data_files_v2.py --steps 1000000 --batch_size 128 --model nreimers/MiniLM-L6-H384-uncased train_data_configs/all_datasets_v4.json output/all_datasets_v4_MiniLM-L6-H384-uncased-batch128
+#python train_many_data_files_v2.py --steps 200000 --batch_size 128 --model nreimers/MiniLM-L6-H384-uncased --max_length_a 64 --max_length_b 250 train_data_configs/multi-qa_v1.json output/multi-qa_v1-MiniLM-L6-mean_cos
