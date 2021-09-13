@@ -8,6 +8,9 @@ from get_similar_commits import get_similar_commits
 
 
 def main():
+    """
+    Main function
+    """
     # Use argparse to define and get the arguments
     parser = argparse.ArgumentParser(
         description="Search a commit in your git repository using natural language."
@@ -57,7 +60,7 @@ def main():
 
         commits = None
 
-        if args.github == True:
+        if args.github is True:
             # Checks if the location type is a GitHub repository
             if location_type != "github":
                 raise ValueError(
@@ -73,30 +76,33 @@ def main():
             commits = get_local_commits(args.location, args.look_past, args.branch)
 
         # If no commits found, raise error
-        if commits == None or commits == []:
+        if commits in (None or []):
             raise ValueError("No commits found.")
-        else:
-            print(f"Found {len(commits)} commits.")
-            print()
 
-            # Get similar commits and display them as a clean table.
-            similar_commits = get_similar_commits(args.query, commits, args.n_matches)
-
-            table = Table(show_header=True, header_style="bold white")
-            table.add_column("Commit ID", style="dim")
-            table.add_column("Commit Message")
-            table.add_column("Commit Author")
-            table.add_column("Commit Date")
-
-            for commit in similar_commits:
-                table.add_row(
-                    commit["id"][:9],
-                    commit["message"],
-                    commit["author"],
-                    commit["commit_date"],
-                )
-
-            console.print(table)
+        print(f"Found {len(commits)} commits.")
+        print()
+        # Get similar commits and display them as a clean table.
+        similar_commits = get_similar_commits(args.query, commits, args.n_matches)
+        table = Table(
+            show_header=True,
+            header_style="bold white",
+            title=f'Commits related to "{args.query}" in "{args.location}"',
+            title_style="bold white",
+        )
+        table.add_column("No.", style="dim", justify="right")
+        table.add_column("Commit ID")
+        table.add_column("Commit Message")
+        table.add_column("Commit Author")
+        table.add_column("Commit Date")
+        for i, commit in enumerate(similar_commits):
+            table.add_row(
+                f"{i + 1}.",
+                commit["id"][:9],
+                commit["message"],
+                commit["author"],
+                commit["commit_date"],
+            )
+        console.print(table)
 
 
 if __name__ == "__main__":

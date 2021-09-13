@@ -1,7 +1,7 @@
 import os
 import typing
-from appdirs import user_cache_dir
 from pathlib import Path
+from appdirs import user_cache_dir
 import torch
 from sentence_transformers import SentenceTransformer, util
 
