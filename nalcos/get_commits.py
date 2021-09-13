@@ -1,8 +1,8 @@
 import os
-import requests
 import typing
 import math
 from datetime import timezone
+import requests
 from git import Repo
 
 from utils import get_owner_and_repo
@@ -45,7 +45,7 @@ def get_local_commits(
                 {
                     "author": str(commit.author),
                     "email": commit.author.email,
-                    "message": commit.message.strip("\n"),
+                    "message": commit.message.split("\n")[0],
                     "id": commit.hexsha,
                     # Convert datetime to ISO 8601 format.
                     "commit_date": commit.committed_datetime.astimezone(timezone.utc)
@@ -55,7 +55,7 @@ def get_local_commits(
                 }
             )
     # If exception is raised, return an empty list.
-    except:
+    except Exception:
         pass
 
     return commits
@@ -105,7 +105,8 @@ def get_github_commits(
             "sha"
         ]
 
-        # GitHub API returns a maximum of 100 commits per page. So, we retrieve commits across several pages.
+        # GitHub API returns a maximum of 100 commits per page.
+        # So, we retrieve commits across several pages.
         num_pages = int(math.ceil(max_count / 100))
         # Variable to iterate over the pages.
         i = 1
@@ -124,7 +125,8 @@ def get_github_commits(
                         {
                             "author": commit["commit"]["author"]["name"],
                             "email": commit["commit"]["author"]["email"],
-                            "message": commit["commit"]["message"].strip("\n"),
+                            # Get the commit message title, which is the first line of the mesage.
+                            "message": commit["commit"]["message"].split("\n")[0],
                             "id": commit["sha"],
                             "commit_date": commit["commit"]["author"]["date"],
                             "branch": branch,
@@ -134,7 +136,7 @@ def get_github_commits(
             # Only get the first max_count commits.
             commits = commits[:max_count]
         # If exception is raised, return an empty list.
-        except:
+        except Exception:
             pass
 
     return commits

@@ -1,7 +1,7 @@
 import os
 import re
-import requests
 import typing
+import requests
 from git import Repo
 
 __all__ = [
@@ -50,7 +50,7 @@ def is_local_git_repo(location: typing.Union[str, os.PathLike]) -> bool:
         # If Repo(location) returns an exception, it means the location does not exists, or is not a git repo
         _ = Repo(location)
         return True
-    except:
+    except Exception:
         return False
 
 
@@ -69,7 +69,7 @@ def is_github_repo(location: str) -> bool:
         True if the location is a GitHub repo, False otherwise.
     """
     # Check if a string is of the type '{owner}/{repo}', or any of its variants with the forward slashes
-    if not bool(re.match("^\/?[a-zA-Z0-9-_]+\/[a-zA-Z0-9-_]+\/?$", location)):
+    if not bool(re.match(r"^\/?[a-zA-Z0-9-_]+\/[a-zA-Z0-9-_]+\/?$", location)):
         return False
 
     owner, repo = get_owner_and_repo(location)
@@ -96,7 +96,7 @@ def get_type_of_location(location: typing.Union[str, os.PathLike]) -> str:
     """
     if is_local_git_repo(location):
         return "local"
-    elif is_github_repo(location):
+    if is_github_repo(location):
         return "github"
-    else:
-        raise ValueError(f"{location} is not a valid location. Please check again.")
+
+    raise ValueError(f"{location} is not a valid location. Please check again.")
