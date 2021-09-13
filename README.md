@@ -121,7 +121,7 @@ optional arguments:
   -b BRANCH, --branch BRANCH
                         The branch to search in. If not specified, the current branch will be used by default.
   -l LOOK_PAST, --look-past LOOK_PAST
-                        Look back this many commits. Default 1000.
+                        Look back this many commits. Default 100.
   -v, --version         show program's version number and exit
 ```
 
@@ -130,29 +130,30 @@ optional arguments:
 - Input:
 
 ```console
-python nalcos.py "improve language" "github/docs" --github
+python nalcos.py "improve language" "github/docs" --github -l 100
 ```
 
 - Output:
 
 ```
-Found 30 commits.
+Found 100 commits.
 
-                                Commits related to "improve language" in "github/docs"
-┏━━━━━┳━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━┓
-┃ No. ┃ Commit ID ┃ Commit Message                                          ┃ Commit Author   ┃ Commit Date          ┃
-┡━━━━━╇━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━┩
-│  1. │ a9c2c8eea │ fix deprecation label spelling (#21474)                 │ Rachael Sewell  │ 2021-09-13T18:12:03Z │
-│  2. │ 94e3c092d │ English search sync (#21446)                            │ Rachael Sewell  │ 2021-09-13T17:30:08Z │
-│  3. │ 86b571982 │ Export changes to a branch for codespaces (#21462)      │ Matthew Isabel  │ 2021-09-13T14:55:50Z │
-│  4. │ d8dc131ff │ update search indexes                                   │ GitHub Actions  │ 2021-09-13T17:46:03Z │
-│  5. │ 35be8f437 │ update search indexes                                   │ GitHub Actions  │ 2021-09-13T18:13:11Z │
-│  6. │ 8327079a1 │ Revise permissions for internal board workflow (#21440) │ James M. Greene │ 2021-09-13T17:09:59Z │
-│  7. │ 2bdc8a02b │ Add IPv6 AAAA records to pages documentation (#21105)   │ Annika Wickert  │ 2021-09-13T18:51:11Z │
-│  8. │ a49d410c0 │ Merge branch 'main' into repo-sync                      │ Octomerger Bot  │ 2021-09-13T11:21:23Z │
-│  9. │ acd505485 │ Merge branch 'main' into repo-sync                      │ Octomerger Bot  │ 2021-09-13T15:01:32Z │
-│ 10. │ 02c2740da │ Merge branch 'main' into repo-sync                      │ Octomerger Bot  │ 2021-09-13T15:02:35Z │
-└─────┴───────────┴─────────────────────────────────────────────────────────┴─────────────────┴──────────────────────┘
+                                        Commits related to "improve language" in "github/docs"
+┏━━━━━┳━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━┓
+┃ No. ┃ Commit ID ┃ Commit Message                                                        ┃ Commit Author      ┃ Commit Date          ┃
+┡━━━━━╇━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━┩
+│  1. │ 51bfdbb95 │ Merge branch 'main' into fatenhealy-fix-supportedlanguage             │ Faten Healy        │ 2021-09-12T22:26:31Z │
+│  2. │ a9c2c8eea │ fix deprecation label spelling (#21474)                               │ Rachael Sewell     │ 2021-09-13T18:12:03Z │
+│  3. │ 94e3c092d │ English search sync (#21446)                                          │ Rachael Sewell     │ 2021-09-13T17:30:08Z │
+│  4. │ b048e27e9 │ Merge pull request #9909 from github/fatenhealy-fix-supportedlanguage │ Ramya Parimi       │ 2021-09-12T22:35:19Z │
+│  5. │ 73c2717f7 │ Fix typo                                                              │ Adrian Mato        │ 2021-09-13T06:35:27Z │
+│  6. │ 86b571982 │ Export changes to a branch for codespaces (#21462)                    │ Matthew Isabel     │ 2021-09-13T14:55:50Z │
+│  7. │ 969288662 │ Update diff limit to 500KB (#20616)                                   │ jjkennedy3         │ 2021-09-11T09:12:38Z │
+│  8. │ f28ee46d4 │ Update OpenAPI Descriptions (#21447)                                  │ github-openapi-bot │ 2021-09-11T09:22:28Z │
+│  9. │ 92af3a469 │ update search indexes                                                 │ GitHub Actions     │ 2021-09-12T09:50:46Z │
+│ 10. │ e6018f2aa │ update search indexes                                                 │ GitHub Actions     │ 2021-09-11T02:05:19Z │
+└─────┴───────────┴───────────────────────────────────────────────────────────────────────┴────────────────────┴──────────────────────┘
+
 ```
 
 ## Future plans

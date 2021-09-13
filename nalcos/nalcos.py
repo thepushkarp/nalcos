@@ -46,9 +46,9 @@ def main():
     parser.add_argument(
         "-l",
         "--look-past",
-        help="Look back this many commits. Default 1000.",
+        help="Look back this many commits. Default 100.",
         type=int,
-        default=1000,
+        default=100,
     )
     parser.add_argument("-v", "--version", action="version", version="%(prog)s 0.1")
     args = parser.parse_args()
