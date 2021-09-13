@@ -13,7 +13,8 @@ def main():
     """
     # Use argparse to define and get the arguments
     parser = argparse.ArgumentParser(
-        description="Search a commit in your git repository using natural language."
+        prog="nalcos",
+        description="Search a commit in your git repository using natural language.",
     )
     parser.add_argument(
         "query", help="The query to search for similar commit messages.", type=str
@@ -45,16 +46,17 @@ def main():
     parser.add_argument(
         "-l",
         "--look-past",
-        help="Look back this many commits. Default 1000.",
+        help="Look back this many commits. Default 100.",
         type=int,
-        default=1000,
+        default=100,
     )
+    parser.add_argument("-v", "--version", action="version", version="%(prog)s 0.1")
     args = parser.parse_args()
 
     console = Console()
 
     # Display a status bar while it retrieves the commits and computes similarity
-    with console.status("[bold green]Retreiving your commits...") as status:
+    with console.status("[bold green]Retreiving the commits...") as status:
         # Get the location type from the location argument
         location_type = get_type_of_location(args.location)
 
@@ -98,7 +100,7 @@ def main():
             table.add_row(
                 f"{i + 1}.",
                 commit["id"][:9],
-                commit["message"],
+                commit["message"].split("\n")[0],
                 commit["author"],
                 commit["commit_date"],
             )

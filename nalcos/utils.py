@@ -74,10 +74,18 @@ def is_github_repo(location: str) -> bool:
 
     owner, repo = get_owner_and_repo(location)
 
-    # If the repo exists on GitHub and is public, the request will return a 200 status code
-    if requests.get(f"https://api.github.com/repos/{owner}/{repo}").status_code != 200:
-        return False
-    return True
+    status_code = requests.get(
+        f"https://api.github.com/repos/{owner}/{repo}"
+    ).status_code
+    # If the GitHub API has a rate limit, the status code will be 403
+    if status_code == 403:
+        raise ValueError(
+            "GitHub API rate limit reached. Please wait a few minutes and try again."
+        )
+    # If the repo exists on GitHub and is public, the status code will be 200
+    elif status_code == 200:
+        return True
+    return False
 
 
 def get_type_of_location(location: typing.Union[str, os.PathLike]) -> str:
