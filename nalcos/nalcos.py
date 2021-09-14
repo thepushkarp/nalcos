@@ -2,6 +2,7 @@ import argparse
 from rich.console import Console
 from rich.table import Table
 
+from version import __version__
 from utils import get_type_of_location
 from get_commits import get_local_commits, get_github_commits
 from get_similar_commits import get_similar_commits
@@ -50,7 +51,9 @@ def main():
         type=int,
         default=100,
     )
-    parser.add_argument("-v", "--version", action="version", version="%(prog)s 0.1")
+    parser.add_argument(
+        "-v", "--version", action="version", version=f"%(prog)s {__version__}"
+    )
     args = parser.parse_args()
 
     console = Console()
