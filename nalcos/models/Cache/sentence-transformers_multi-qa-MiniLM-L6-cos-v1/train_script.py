@@ -37,11 +37,12 @@ from transformers import (
     set_seed,
 )
 
+
 class AutoModelForSentenceEmbedding(nn.Module):
     def __init__(self, model_name, tokenizer, args):
         super(AutoModelForSentenceEmbedding, self).__init__()
 
-        assert args.pooling in ['mean', 'cls']
+        assert args.pooling in ["mean", "cls"]
 
         self.model = AutoModel.from_pretrained(model_name)
         self.normalize = not args.no_normalize
@@ -50,10 +51,10 @@ class AutoModelForSentenceEmbedding(nn.Module):
 
     def forward(self, **kwargs):
         model_output = self.model(**kwargs)
-        if self.pooling == 'mean':
-            embeddings = self.mean_pooling(model_output, kwargs['attention_mask'])
-        elif self.pooling == 'cls':
-            embeddings = self.cls_pooling(model_output, kwargs['attention_mask'])
+        if self.pooling == "mean":
+            embeddings = self.mean_pooling(model_output, kwargs["attention_mask"])
+        elif self.pooling == "cls":
+            embeddings = self.cls_pooling(model_output, kwargs["attention_mask"])
 
         if self.normalize:
             embeddings = torch.nn.functional.normalize(embeddings, p=2, dim=1)
@@ -61,12 +62,18 @@ class AutoModelForSentenceEmbedding(nn.Module):
         return embeddings
 
     def mean_pooling(self, model_output, attention_mask):
-        token_embeddings = model_output[0]  # First element of model_output contains all token embeddings
-        input_mask_expanded = attention_mask.unsqueeze(-1).expand(token_embeddings.size()).float()
-        return torch.sum(token_embeddings * input_mask_expanded, 1) / torch.clamp(input_mask_expanded.sum(1), min=1e-9)
+        token_embeddings = model_output[
+            0
+        ]  # First element of model_output contains all token embeddings
+        input_mask_expanded = (
+            attention_mask.unsqueeze(-1).expand(token_embeddings.size()).float()
+        )
+        return torch.sum(token_embeddings * input_mask_expanded, 1) / torch.clamp(
+            input_mask_expanded.sum(1), min=1e-9
+        )
 
     def cls_pooling(self, model_output, attention_mask):
-        return model_output[0][:,0]
+        return model_output[0][:, 0]
 
     def save_pretrained(self, output_path):
         if xm.is_master_ordinal():
@@ -74,15 +81,12 @@ class AutoModelForSentenceEmbedding(nn.Module):
             self.model.config.save_pretrained(output_path)
 
         xm.save(self.model.state_dict(), os.path.join(output_path, "pytorch_model.bin"))
-       
-
 
 
 def train_function(index, args, queue):
     tokenizer = AutoTokenizer.from_pretrained(args.model)
     model = AutoModelForSentenceEmbedding(args.model, tokenizer, args)
-    
-  
+
     ### Train Loop
     device = xm.xla_device()
     model = model.to(device)
@@ -95,50 +99,84 @@ def train_function(index, args, queue):
         num_warmup_steps=500,
         num_training_steps=args.steps,
     )
-    
+
     # Now we train the model
     cross_entropy_loss = nn.CrossEntropyLoss()
     max_grad_norm = 1
 
     model.train()
-   
+
     for global_step in tqdm.trange(args.steps, disable=not xm.is_master_ordinal()):
         #### Get the batch data
         batch = queue.get()
-        #print(index, "batch {}x{}".format(len(batch), ",".join([str(len(b)) for b in batch])))
-        
+        # print(index, "batch {}x{}".format(len(batch), ",".join([str(len(b)) for b in batch])))
 
-        if len(batch[0]) == 2: #(anchor, positive)
-            text1 = tokenizer([b[0] for b in batch], return_tensors="pt", max_length=args.max_length_a, truncation=True, padding="max_length")
-            text2 = tokenizer([b[1] for b in batch], return_tensors="pt", max_length=args.max_length_b, truncation=True, padding="max_length")
+        if len(batch[0]) == 2:  # (anchor, positive)
+            text1 = tokenizer(
+                [b[0] for b in batch],
+                return_tensors="pt",
+                max_length=args.max_length_a,
+                truncation=True,
+                padding="max_length",
+            )
+            text2 = tokenizer(
+                [b[1] for b in batch],
+                return_tensors="pt",
+                max_length=args.max_length_b,
+                truncation=True,
+                padding="max_length",
+            )
 
             ### Compute embeddings
             embeddings_a = model(**text1.to(device))
             embeddings_b = model(**text2.to(device))
-            
-            ### Gather all embedings 
+
+            ### Gather all embedings
             embeddings_a = torch_xla.core.functions.all_gather(embeddings_a)
             embeddings_b = torch_xla.core.functions.all_gather(embeddings_b)
 
             ### Compute similarity scores 512 x 512
             scores = torch.mm(embeddings_a, embeddings_b.transpose(0, 1)) * args.scale
-        
+
             ### Compute cross-entropy loss
-            labels = torch.tensor(range(len(scores)), dtype=torch.long, device=embeddings_a.device)  # Example a[i] should match with b[i]
-            
+            labels = torch.tensor(
+                range(len(scores)), dtype=torch.long, device=embeddings_a.device
+            )  # Example a[i] should match with b[i]
+
             ## Symmetric loss as in CLIP
-            loss = (cross_entropy_loss(scores, labels) + cross_entropy_loss(scores.transpose(0, 1), labels)) / 2
+            loss = (
+                cross_entropy_loss(scores, labels)
+                + cross_entropy_loss(scores.transpose(0, 1), labels)
+            ) / 2
 
-        else:   #(anchor, positive, negative)
-            text1 = tokenizer([b[0] for b in batch], return_tensors="pt", max_length=args.max_length_a, truncation=True, padding="max_length")
-            text2 = tokenizer([b[1] for b in batch], return_tensors="pt", max_length=args.max_length_b, truncation=True, padding="max_length")
-            text3 = tokenizer([b[2] for b in batch], return_tensors="pt", max_length=args.max_length_b, truncation=True, padding="max_length")
+        else:  # (anchor, positive, negative)
+            text1 = tokenizer(
+                [b[0] for b in batch],
+                return_tensors="pt",
+                max_length=args.max_length_a,
+                truncation=True,
+                padding="max_length",
+            )
+            text2 = tokenizer(
+                [b[1] for b in batch],
+                return_tensors="pt",
+                max_length=args.max_length_b,
+                truncation=True,
+                padding="max_length",
+            )
+            text3 = tokenizer(
+                [b[2] for b in batch],
+                return_tensors="pt",
+                max_length=args.max_length_b,
+                truncation=True,
+                padding="max_length",
+            )
 
-            embeddings_a  = model(**text1.to(device))
+            embeddings_a = model(**text1.to(device))
             embeddings_b1 = model(**text2.to(device))
             embeddings_b2 = model(**text3.to(device))
 
-            embeddings_a  = torch_xla.core.functions.all_gather(embeddings_a)
+            embeddings_a = torch_xla.core.functions.all_gather(embeddings_a)
             embeddings_b1 = torch_xla.core.functions.all_gather(embeddings_b1)
             embeddings_b2 = torch_xla.core.functions.all_gather(embeddings_b2)
 
@@ -146,68 +184,67 @@ def train_function(index, args, queue):
 
             ### Compute similarity scores 512 x 1024
             scores = torch.mm(embeddings_a, embeddings_b.transpose(0, 1)) * args.scale
-        
+
             ### Compute cross-entropy loss
-            labels = torch.tensor(range(len(scores)), dtype=torch.long, device=embeddings_a.device)  # Example a[i] should match with b[i]
-            
+            labels = torch.tensor(
+                range(len(scores)), dtype=torch.long, device=embeddings_a.device
+            )  # Example a[i] should match with b[i]
+
             ## One-way loss
             loss = cross_entropy_loss(scores, labels)
 
-        
         # Backward pass
         optimizer.zero_grad()
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
-        
+
         xm.optimizer_step(optimizer, barrier=True)
         lr_scheduler.step()
 
-
-        #Save model
-        if (global_step+1) % args.save_steps == 0:
-            output_path = os.path.join(args.output, str(global_step+1))
-            xm.master_print("save model: "+output_path)
+        # Save model
+        if (global_step + 1) % args.save_steps == 0:
+            output_path = os.path.join(args.output, str(global_step + 1))
+            xm.master_print("save model: " + output_path)
             model.save_pretrained(output_path)
-          
-            
+
     output_path = os.path.join(args.output, "final")
-    xm.master_print("save model final: "+ output_path)
+    xm.master_print("save model final: " + output_path)
     model.save_pretrained(output_path)
 
 
 def produce_data(args, queue, filepaths, dataset_indices):
-    global_batch_size = args.batch_size*args.nprocs    #Global batch size
+    global_batch_size = args.batch_size * args.nprocs  # Global batch size
     num_same_dataset = int(args.nprocs / args.datasets_per_batch)
     print("producer", "global_batch_size", global_batch_size)
     print("producer", "num_same_dataset", num_same_dataset)
-    
+
     datasets = []
     for filepath in filepaths:
-        if "reddit_" in filepath:       #Special dataset class for Reddit files
+        if "reddit_" in filepath:  # Special dataset class for Reddit files
             data_obj = RedditDataset(filepath)
         else:
             data_obj = Dataset(filepath)
-        datasets.append(iter(data_obj)) 
-    
+        datasets.append(iter(data_obj))
+
     # Store if dataset is in a 2 col or 3 col format
     num_cols = {idx: len(next(dataset)) for idx, dataset in enumerate(datasets)}
 
     while True:
         texts_in_batch = set()
-        batch_format = None     #2 vs 3 col format for this batch
-        
-        #Add data from several sub datasets
+        batch_format = None  # 2 vs 3 col format for this batch
+
+        # Add data from several sub datasets
         for _ in range(args.datasets_per_batch):
-            valid_dataset = False   #Check that datasets have the same 2/3 col format
+            valid_dataset = False  # Check that datasets have the same 2/3 col format
             while not valid_dataset:
                 data_idx = random.choice(dataset_indices)
                 if batch_format is None:
                     batch_format = num_cols[data_idx]
                     valid_dataset = True
-                else:   #Check that this dataset has the same format
-                    valid_dataset = (batch_format == num_cols[data_idx])
-            
-            #Get data from this dataset
+                else:  # Check that this dataset has the same format
+                    valid_dataset = batch_format == num_cols[data_idx]
+
+            # Get data from this dataset
             dataset = datasets[data_idx]
             local_batch_size = args.batch_size
             if batch_format == 3 and args.batch_size_triplets is not None:
@@ -215,7 +252,7 @@ def produce_data(args, queue, filepaths, dataset_indices):
 
             for _ in range(num_same_dataset):
                 for _ in range(args.nprocs):
-                    batch_device = []   #A batch for one device
+                    batch_device = []  # A batch for one device
                     while len(batch_device) < local_batch_size:
                         sample = next(dataset)
                         in_batch = False
@@ -223,40 +260,43 @@ def produce_data(args, queue, filepaths, dataset_indices):
                             if text in texts_in_batch:
                                 in_batch = True
                                 break
-                        
+
                         if not in_batch:
                             for text in sample:
                                 texts_in_batch.add(text)
                             batch_device.append(sample)
 
                     queue.put(batch_device)
-                      
+
 
 class RedditDataset:
     """
     A class that handles the reddit data files
     """
+
     def __init__(self, filepath):
         self.filepath = filepath
 
     def __iter__(self):
         while True:
             with gzip.open(self.filepath, "rt") as fIn:
-                    for line in fIn:
-                        data = json.loads(line)
+                for line in fIn:
+                    data = json.loads(line)
 
-                        if "response" in data and "context" in data:
-                            yield [data["response"], data["context"]]
+                    if "response" in data and "context" in data:
+                        yield [data["response"], data["context"]]
+
 
 class Dataset:
     """
     A class that handles one dataset
     """
+
     def __init__(self, filepath):
         self.filepath = filepath
 
     def __iter__(self):
-        max_dataset_size = 20*1000*1000    #Cache small datasets in memory
+        max_dataset_size = 20 * 1000 * 1000  # Cache small datasets in memory
         dataset = []
         data_format = None
 
@@ -265,12 +305,12 @@ class Dataset:
                 for line in fIn:
                     data = json.loads(line)
                     if isinstance(data, dict):
-                        data = data['texts']
+                        data = data["texts"]
 
                     if data_format is None:
                         data_format = len(data)
-                    
-                    #Ensure that all entries are of the same 2/3 col format
+
+                    # Ensure that all entries are of the same 2/3 col format
                     assert len(data) == data_format
 
                     if dataset is not None:
@@ -279,40 +319,52 @@ class Dataset:
                             dataset = None
 
                     yield data
-                
+
         # Data loaded. Now stream to the queue
         # Shuffle for each epoch
         while True:
             random.shuffle(dataset)
             for data in dataset:
                 yield data
-                
-               
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--model', default='nreimers/MiniLM-L6-H384-uncased')
-    parser.add_argument('--steps', type=int, default=2000)
-    parser.add_argument('--save_steps', type=int, default=10000)
-    parser.add_argument('--batch_size', type=int, default=64)
-    parser.add_argument('--batch_size_triplets', type=int, default=None)
-    parser.add_argument('--max_length_a', type=int, default=128)
-    parser.add_argument('--max_length_b', type=int, default=128)
-    parser.add_argument('--nprocs', type=int, default=8)
-    parser.add_argument('--datasets_per_batch', type=int, default=2, help="Number of datasets per batch")
-    parser.add_argument('--scale', type=float, default=20, help="Use 20 for cossim, and 1 when you work with unnormalized embeddings with dot product")
-    parser.add_argument('--no_normalize', action="store_true", default=False, help="If set: Embeddings are not normalized")
-    parser.add_argument('--pooling', default='mean')
-    parser.add_argument('--data_folder', default="/data", help="Folder with your dataset files")
-    parser.add_argument('data_config', help="A data_config.json file")
-    parser.add_argument('output')
+    parser.add_argument("--model", default="nreimers/MiniLM-L6-H384-uncased")
+    parser.add_argument("--steps", type=int, default=2000)
+    parser.add_argument("--save_steps", type=int, default=10000)
+    parser.add_argument("--batch_size", type=int, default=64)
+    parser.add_argument("--batch_size_triplets", type=int, default=None)
+    parser.add_argument("--max_length_a", type=int, default=128)
+    parser.add_argument("--max_length_b", type=int, default=128)
+    parser.add_argument("--nprocs", type=int, default=8)
+    parser.add_argument(
+        "--datasets_per_batch", type=int, default=2, help="Number of datasets per batch"
+    )
+    parser.add_argument(
+        "--scale",
+        type=float,
+        default=20,
+        help="Use 20 for cossim, and 1 when you work with unnormalized embeddings with dot product",
+    )
+    parser.add_argument(
+        "--no_normalize",
+        action="store_true",
+        default=False,
+        help="If set: Embeddings are not normalized",
+    )
+    parser.add_argument("--pooling", default="mean")
+    parser.add_argument(
+        "--data_folder", default="/data", help="Folder with your dataset files"
+    )
+    parser.add_argument("data_config", help="A data_config.json file")
+    parser.add_argument("output")
     args = parser.parse_args()
 
     # Ensure num proc is devisible by datasets_per_batch
     assert (args.nprocs % args.datasets_per_batch) == 0
-  
 
-    logging.info("Output: "+args.output)
+    logging.info("Output: " + args.output)
     if os.path.exists(args.output):
         print("Output folder already exists.")
         input("Continue?")
@@ -320,27 +372,27 @@ if __name__ == "__main__":
     # Write train script to output path
     os.makedirs(args.output, exist_ok=True)
 
-    data_config_path = os.path.join(args.output, 'data_config.json')
+    data_config_path = os.path.join(args.output, "data_config.json")
     copyfile(args.data_config, data_config_path)
 
-    train_script_path = os.path.join(args.output, 'train_script.py')
+    train_script_path = os.path.join(args.output, "train_script.py")
     copyfile(__file__, train_script_path)
-    with open(train_script_path, 'a') as fOut:
+    with open(train_script_path, "a") as fOut:
         fOut.write("\n\n# Script was called via:\n#python " + " ".join(sys.argv))
 
-
-
-    #Load data config
+    # Load data config
     with open(args.data_config) as fIn:
         data_config = json.load(fIn)
 
-    queue = mp.Queue(maxsize=100*args.nprocs)
-    
+    queue = mp.Queue(maxsize=100 * args.nprocs)
+
     filepaths = []
     dataset_indices = []
     for idx, data in enumerate(data_config):
-        filepaths.append(os.path.join(os.path.expanduser(args.data_folder), data['name']))
-        dataset_indices.extend([idx]*data['weight'])
+        filepaths.append(
+            os.path.join(os.path.expanduser(args.data_folder), data["name"])
+        )
+        dataset_indices.extend([idx] * data["weight"])
 
     # Start producer
     p = mp.Process(target=produce_data, args=(args, queue, filepaths, dataset_indices))
@@ -348,14 +400,17 @@ if __name__ == "__main__":
 
     # Run training
     print("Start processes:", args.nprocs)
-    xmp.spawn(train_function, args=(args, queue), nprocs=args.nprocs, start_method='fork')
+    xmp.spawn(
+        train_function, args=(args, queue), nprocs=args.nprocs, start_method="fork"
+    )
     print("Training done")
-    print("It might be that not all processes exit automatically. In that case you must manually kill this process.")
+    print(
+        "It might be that not all processes exit automatically. In that case you must manually kill this process."
+    )
     print("With 'pkill python' you can kill all remaining python processes")
     p.kill()
     exit()
 
 
-
 # Script was called via:
-#python train_many_data_files_v2.py --steps 200000 --batch_size 128 --model nreimers/MiniLM-L6-H384-uncased --max_length_a 64 --max_length_b 250 train_data_configs/multi-qa_v1.json output/multi-qa_v1-MiniLM-L6-mean_cos
+# python train_many_data_files_v2.py --steps 200000 --batch_size 128 --model nreimers/MiniLM-L6-H384-uncased --max_length_a 64 --max_length_b 250 train_data_configs/multi-qa_v1.json output/multi-qa_v1-MiniLM-L6-mean_cos

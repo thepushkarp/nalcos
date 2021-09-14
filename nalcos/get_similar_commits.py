@@ -32,7 +32,7 @@ def get_similar_commits(
     model_name = "multi-qa-MiniLM-L6-cos-v1"
     # The path to save the model to.
     cache_folder = user_cache_dir(
-        os.path.join(Path(__file__).resolve().parent, ".cache")
+        os.path.join(Path(__file__).resolve().parent, "models")
     )
 
     # Load the model.

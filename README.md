@@ -53,7 +53,7 @@ NaLCoS uses the following packages:
 $ git clone https://github.com/thepushkarp/nalcos.git
 ```
 
-This also downloads the model weights stored in the `nalcos/.cache` directory so you don't have to download them while running the model for the first time.
+This also downloads the model weights stored in the `nalcos/models` directory so you don't have to download them while running the model for the first time.
 
 - Create a virtual environment ([click here](https://packaging.python.org/guides/installing-using-pip-and-virtual-environments/) to read about activating virtualenv):
 
@@ -130,7 +130,7 @@ optional arguments:
 - Input:
 
 ```console
-python nalcos.py "improve language" "github/docs" --github
+$ python nalcos.py "improve language" "github/docs" --github
 ```
 
 - Output:
@@ -156,17 +156,9 @@ Found 100 commits.
 
 ```
 
-
 ## Future plans
 
-- [x] Documentation
-- [x] Release first working version
-- [ ] Publish to PyPi
-- [ ] Add automated tests
-- [ ] Add personal API token support to increase GitHub API rate limit
-- [ ] Use a Python GitHub API wrapper [?]
-- [ ] Look into ways to cache and store embeddings to reduce repeated computations [?]
-- [ ] Try other models [?]
+Please visit the [NaLCoS To Do Project Board](https://github.com/thepushkarp/nalcos/projects/1) to see current status and future plans.
 
 ## Known issues
 
