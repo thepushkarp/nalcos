@@ -6,9 +6,14 @@
   <a href="https://github.com/thepushkarp/nalcos/issues"><img alt="GitHub Issues" src="https://img.shields.io/github/issues/thepushkarp/nalcos?style=for-the-badge"></a>
   <a href="https://github.com/thepushkarp/nalcos/stargazers"><img alt="Stargazers" src="https://img.shields.io/github/stars/thepushkarp/nalcos?style=for-the-badge"></a>
   <a href="https://github.com/thepushkarp/nalcos/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/thepushkarp/nalcos?style=for-the-badge"></a>
-  <a href="https://github.com/thepushkarp/nalcos/releases"><img alt="GitHub release (latest by date)" src="https://img.shields.io/github/v/release/thepushkarp/nalcos?style=for-the-badge"></a>
   <a href="https://github.com/psf/black"><img alt="Code style: black" src="https://img.shields.io/badge/code%20style-black-000000.svg?style=for-the-badge"></a>
+  <br>
+   <a href="https://github.com/thepushkarp/nalcos/releases"><img alt="GitHub release (latest by date)" src="https://img.shields.io/github/v/release/thepushkarp/nalcos?style=for-the-badge"></a>
   <a href="https://pypi.org/project/nalcos/"><img alt="PyPi" src="https://img.shields.io/pypi/v/nalcos?style=for-the-badge"></a>
+  <br>
+  <!-- ALL-CONTRIBUTORS-BADGE:START - Do not remove or modify this section -->
+  <a href="#contributors"><img alt="All contributors" src="https://img.shields.io/badge/all_contributors-1-orange.svg?style=for-the-badge"></a>
+  <!-- ALL-CONTRIBUTORS-BADGE:END -->
 </p>
 
 ---
@@ -187,18 +192,26 @@ Any suggestions, improvements or bug reports are welcome.
 - You can submit your idea by [opening an issue](https://github.com/thepushkarp/nalcos/issues/new/choose) or [creating a Pull Request](https://github.com/thepushkarp/nalcos/pulls).
 - If you'd like to improve the code, make sure you stick to the existing code style and naming conventions.
 
+## Contributors
+
+Thanks goes to these wonderful people ([emoji key](https://allcontributors.org/docs/en/emoji-key)):
+
+<!-- ALL-CONTRIBUTORS-LIST:START - Do not remove or modify this section -->
+<!-- prettier-ignore-start -->
+<!-- markdownlint-disable -->
+<table>
+  <tr>
+    <td align="center"><a href="https://thepushkarp.com/"><img src="https://avatars.githubusercontent.com/u/42088801?v=4?s=100" width="100px;" alt=""/><br /><sub><b>Pushkar Patel</b></sub></a><br /><a href="https://github.com/thepushkarp/nalcos/commits?author=thepushkarp" title="Code">💻</a> <a href="https://github.com/thepushkarp/nalcos/commits?author=thepushkarp" title="Documentation">📖</a> <a href="#maintenance-thepushkarp" title="Maintenance">🚧</a></td>
+  </tr>
+</table>
+
+<!-- markdownlint-restore -->
+<!-- prettier-ignore-end -->
+
+<!-- ALL-CONTRIBUTORS-LIST:END -->
+
+This project follows the [all-contributors](https://github.com/all-contributors/all-contributors) specification. Contributions of any kind welcome!
+
 ## License
 
 This project is licensed under the terms of the MIT license.
-
----
-
-<p align="center">
-  <a href="https://github.com/thepushkarp/nalcos" target="_blank" rel="noopener noreferrer">
-    NaLCoS
-  </a>
-  made with ❤️ by
-  <a href="https://github.com/thepushkarp">
-    Pushkar  Patel
-  </a>
-</p>
