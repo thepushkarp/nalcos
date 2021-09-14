@@ -167,6 +167,14 @@ Not all retrieved results are always relevant. I could think of two primary reas
 - The data the model was pre-trained on is not representative of how people write commit messages. Since commit messages usually contain technical jargon, merge commit messages, abbreviations and other non-common terms, the model (which has a limited vocabulary) is not able to generalize well to this data.
 - Two commits may be related even when their commit messages may not be similar and similarly two commit messages maybe unrelated even when their commit messages are similar. We often need more metadata (such as lines changes, files changed) etc. to make the predictions more accurate.
 
+## Contributing
+
+Any suggestions, improvements or bug reports are welcome.
+
+- If you want to discuss any aspect of the project, please use the [Discussions Tab](https://github.com/thepushkarp/nalcos/discussions).
+- You can submit your idea by [opening an issue](https://github.com/thepushkarp/nalcos/issues/new/choose) or [creating a Pull Request](https://github.com/thepushkarp/nalcos/pulls).
+- If you'd like to improve the code, make sure you stick to the existing code style and naming conventions.
+
 ## License
 
 This project is licensed under the terms of the MIT license.
