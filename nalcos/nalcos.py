@@ -2,10 +2,10 @@ import argparse
 from rich.console import Console
 from rich.table import Table
 
-from version import __version__
-from utils import get_type_of_location
-from get_commits import get_local_commits, get_github_commits
-from get_similar_commits import get_similar_commits
+from ._version import __version__
+from .utils import get_type_of_location
+from .get_commits import get_local_commits, get_github_commits
+from .get_similar_commits import get_similar_commits
 
 
 def main():
