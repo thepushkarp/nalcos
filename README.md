@@ -7,6 +7,8 @@
   <a href="https://github.com/thepushkarp/nalcos/stargazers"><img alt="Stargazers" src="https://img.shields.io/github/stars/thepushkarp/nalcos?style=for-the-badge"></a>
   <a href="https://github.com/thepushkarp/nalcos/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/thepushkarp/nalcos?style=for-the-badge"></a>
   <a href="https://github.com/thepushkarp/nalcos/releases"><img alt="GitHub release (latest by date)" src="https://img.shields.io/github/v/release/thepushkarp/nalcos?style=for-the-badge"></a>
+  <a href="https://github.com/psf/black"><img alt="Code style: black" src="https://img.shields.io/badge/code%20style-black-000000.svg?style=for-the-badge"></a>
+  <a href="https://pypi.org/project/nalcos/"><img alt="PyPi" src="https://img.shields.io/pypi/v/nalcos?style=for-the-badge"></a>
 </p>
 
 ---
@@ -36,8 +38,6 @@ Though there are various improvements left, I'm happy with what this initially t
 
 ## Requirements
 
-Tested on Python 3.8.11.
-
 NaLCoS uses the following packages:
 
 - [Sentence Transformers](https://github.com/UKPLab/sentence-transformers) for the Transformer model.
@@ -47,13 +47,31 @@ NaLCoS uses the following packages:
 
 ## Installation
 
+### Installing with `pip` (Recommended)
+
+Install with `pip` or your favourite PyPi manager:
+
+```console
+$ pip install nalcos
+```
+
+Run NaLCoS with the `--help` flag to see all the available options:
+
+```console
+$ nalcos --help
+```
+
+**Note**: When you run the `nalcos` command for the first time, it will, download the model which would be cached and used the next time you run NaLCoS.
+
+### Installing bleeding edge from the GitHub repository
+
 - Clone the repository:
 
 ```console
 $ git clone https://github.com/thepushkarp/nalcos.git
 ```
 
-This also downloads the model weights stored in the `nalcos/.cache` directory so you don't have to download them while running the model for the first time.
+This also downloads the model weights stored in the `nalcos/models` directory so you don't have to download them while running the model for the first time.
 
 - Create a virtual environment ([click here](https://packaging.python.org/guides/installing-using-pip-and-virtual-environments/) to read about activating virtualenv):
 
@@ -61,24 +79,18 @@ This also downloads the model weights stored in the `nalcos/.cache` directory so
 $ virtualenv venv
 ```
 
-<details open>
-<summary>Activate virtualenv (for Linux and MacOS):</summary>
+- Activate virtualenv (for Linux and MacOS):
 
 ```console
   $ source ./venv/bin/activate
 ```
 
-</details>
-
-<details open>
-<summary>Activate virtualenv (for Windows):</summary>
+- Activate virtualenv (for Windows):
 
 ```console
    $ cd venv/Scripts/
    $ activate
 ```
-
-</details>
 
 - Install the requirements:
 
@@ -92,10 +104,10 @@ $ pip install -r requirements.txt
 $ cd nalcos/
 ```
 
-- Run NaLCoS:
+- Run NaLCoS with the `--help` flag to see all the available options:
 
 ```console
-$ python nalcos.py [-g] [-n N_MATCHES] [-b BRANCH] [-l LOOK_PAST] "query string" "repository location"
+$ python nalcos.py --help
 ```
 
 ## Usage
@@ -130,7 +142,7 @@ optional arguments:
 - Input:
 
 ```console
-python nalcos.py "improve language" "github/docs" --github
+$ python nalcos.py "improve language" "github/docs" --github
 ```
 
 - Output:
@@ -156,17 +168,9 @@ Found 100 commits.
 
 ```
 
-
 ## Future plans
 
-- [x] Documentation
-- [x] Release first working version
-- [ ] Publish to PyPi
-- [ ] Add automated tests
-- [ ] Add personal API token support to increase GitHub API rate limit
-- [ ] Use a Python GitHub API wrapper [?]
-- [ ] Look into ways to cache and store embeddings to reduce repeated computations [?]
-- [ ] Try other models [?]
+Please visit the [NaLCoS To Do Project Board](https://github.com/thepushkarp/nalcos/projects/1) to see current status and future plans.
 
 ## Known issues
 
@@ -174,6 +178,14 @@ Not all retrieved results are always relevant. I could think of two primary reas
 
 - The data the model was pre-trained on is not representative of how people write commit messages. Since commit messages usually contain technical jargon, merge commit messages, abbreviations and other non-common terms, the model (which has a limited vocabulary) is not able to generalize well to this data.
 - Two commits may be related even when their commit messages may not be similar and similarly two commit messages maybe unrelated even when their commit messages are similar. We often need more metadata (such as lines changes, files changed) etc. to make the predictions more accurate.
+
+## Contributing
+
+Any suggestions, improvements or bug reports are welcome.
+
+- If you want to discuss any aspect of the project, please use the [Discussions Tab](https://github.com/thepushkarp/nalcos/discussions).
+- You can submit your idea by [opening an issue](https://github.com/thepushkarp/nalcos/issues/new/choose) or [creating a Pull Request](https://github.com/thepushkarp/nalcos/pulls).
+- If you'd like to improve the code, make sure you stick to the existing code style and naming conventions.
 
 ## License
 

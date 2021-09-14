@@ -2,6 +2,7 @@ import os
 import typing
 from pathlib import Path
 from appdirs import user_cache_dir
+import torch
 from sentence_transformers import SentenceTransformer, util
 
 __all__ = ["get_similar_commits"]
@@ -30,25 +31,32 @@ def get_similar_commits(
     # The model to use for encoding the query and commit messages.
     # Pretrained models available at: https://www.sbert.net/docs/pretrained_models.html
     model_name = "multi-qa-MiniLM-L6-cos-v1"
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     # The path to save the model to.
     cache_folder = user_cache_dir(
-        os.path.join(Path(__file__).resolve().parent, ".cache")
+        os.path.join(Path(__file__).resolve().parent, "models")
     )
 
     # Load the model.
-    model = SentenceTransformer(model_name, cache_folder=cache_folder)
+    model = SentenceTransformer(model_name, device=device, cache_folder=cache_folder)
 
     # Get all the commit messages.
     commit_messages = [commit["message"] for commit in commits]
 
     # Encode all the commit messages.
-    commit_embeddings = model.encode(commit_messages, convert_to_tensor=True)
+    commit_embeddings = model.encode(
+        commit_messages, convert_to_tensor=True, normalize_embeddings=True
+    )
 
     # Encode the query.
-    query_embedding = model.encode([query], convert_to_tensor=True)
+    query_embedding = model.encode(
+        [query], convert_to_tensor=True, normalize_embeddings=True
+    )
 
     # Use cosine similarity to find the most similar commits.
-    cosine_scores = util.pytorch_cos_sim(query_embedding, commit_embeddings).squeeze()
+    # Since the returned tensors are normalized, we can use the faster dot product here. Reference:
+    # https://www.sbert.net/examples/applications/computing-embeddings/README.html?highlight=faster%20dot-product
+    cosine_scores = util.dot_score(query_embedding, commit_embeddings).squeeze()
 
     # Get the indices of the most similar commits.
     sorted_scores_indices = cosine_scores.argsort().tolist()[::-1][:n_matches]
