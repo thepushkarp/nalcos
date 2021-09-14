@@ -2,6 +2,7 @@ import os
 import typing
 from pathlib import Path
 from appdirs import user_cache_dir
+import torch
 from sentence_transformers import SentenceTransformer, util
 
 __all__ = ["get_similar_commits"]
@@ -30,13 +31,14 @@ def get_similar_commits(
     # The model to use for encoding the query and commit messages.
     # Pretrained models available at: https://www.sbert.net/docs/pretrained_models.html
     model_name = "multi-qa-MiniLM-L6-cos-v1"
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     # The path to save the model to.
     cache_folder = user_cache_dir(
         os.path.join(Path(__file__).resolve().parent, "models")
     )
 
     # Load the model.
-    model = SentenceTransformer(model_name, cache_folder=cache_folder)
+    model = SentenceTransformer(model_name, device=device, cache_folder=cache_folder)
 
     # Get all the commit messages.
     commit_messages = [commit["message"] for commit in commits]
