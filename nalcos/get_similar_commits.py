@@ -44,13 +44,19 @@ def get_similar_commits(
     commit_messages = [commit["message"] for commit in commits]
 
     # Encode all the commit messages.
-    commit_embeddings = model.encode(commit_messages, convert_to_tensor=True)
+    commit_embeddings = model.encode(
+        commit_messages, convert_to_tensor=True, normalize_embeddings=True
+    )
 
     # Encode the query.
-    query_embedding = model.encode([query], convert_to_tensor=True)
+    query_embedding = model.encode(
+        [query], convert_to_tensor=True, normalize_embeddings=True
+    )
 
     # Use cosine similarity to find the most similar commits.
-    cosine_scores = util.pytorch_cos_sim(query_embedding, commit_embeddings).squeeze()
+    # Since the returned tensors are normalized, we can use the faster dot product here. Reference:
+    # https://www.sbert.net/examples/applications/computing-embeddings/README.html?highlight=faster%20dot-product
+    cosine_scores = util.dot_score(query_embedding, commit_embeddings).squeeze()
 
     # Get the indices of the most similar commits.
     sorted_scores_indices = cosine_scores.argsort().tolist()[::-1][:n_matches]
