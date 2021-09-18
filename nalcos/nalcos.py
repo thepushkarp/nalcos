@@ -3,7 +3,7 @@ from rich.console import Console
 from rich.table import Table
 
 from ._version import __version__
-from .utils import get_type_of_location
+from .utils import get_type_of_location, get_owner_and_repo
 from .get_commits import get_local_commits, get_github_commits
 from .get_similar_commits import get_similar_commits
 
@@ -22,13 +22,13 @@ def main():
     )
     parser.add_argument(
         "location",
-        help="The repository path to search in. If `-g` flag is not passed, searches locally in the path specified, else takes in a remote GitHub repository name in the format '{owner}/{repo_name}'",
+        help="The repository path to search in. If '-g' or '--github' flag is not passed, searches locally in the path specified, else takes in a remote GitHub repository name in the format '{owner}/{repo_name}'",
         type=str,
     )
     parser.add_argument(
         "-g",
         "--github",
-        help="Flag to search on GitHub instead of searching in a local repository. Due to API limits currently this allows for around 15 lookups per hour from your IP.",
+        help="Search on GitHub instead of searching in a local repository. Due to API limits currently this allows for around 15 lookups per hour from your IP.",
         action="store_true",
     )
     parser.add_argument(
@@ -84,6 +84,8 @@ def main():
                     "Repository not found. Please specify a GitHub repository in the format {owner}/{repo}."
                 )
             commits = get_github_commits(args.location, args.look_past, args.branch)
+            # Get the owner and repo name from the location argument to use for getting commit links
+            owner, repo = get_owner_and_repo(args.location)
         else:
             # Checks if the location type is a local repository
             if location_type != "local":
@@ -98,7 +100,7 @@ def main():
 
         print(f"Found {len(commits)} commits.")
         print()
-        # Get similar commits and display them as a clean table.
+        # Get similar commits and display them in a clean table.
         similar_commits = get_similar_commits(args.query, commits, args.n_matches)
         table = Table(
             show_header=True,
@@ -117,7 +119,12 @@ def main():
             row_to_add = [f"{i + 1}."]
             if args.show_score is True:
                 row_to_add.append(commit["score"])
-            row_to_add.append(commit["id"][:9])
+            # If thee '-g' or '--github' flag is passed, show the commit ID as a hyperlink to the GitHub commit
+            if args.github is True:
+                commit_link = f"https://github.com/{owner}/{repo}/commit/{commit['id']}"
+                row_to_add.append(f"[link={commit_link}]{commit['id'][:9]}[/link]")
+            else:
+                row_to_add.append(commit["id"][:9])
             if args.verbose is True:
                 row_to_add.append(commit["message"])
             else:
