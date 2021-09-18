@@ -24,8 +24,8 @@ The key features are:
 
 - Search commit messages in both local and remote GitHub repositories.
 - Search for commits in a specific branch.
-- Restrict the number of commits to look back in history while searching.
-- Increase the number of retrieved results.
+- Look back any number of commits in history.
+- Open the commit link directly in your browser if retrieved from GitHub.
 
 ![image](https://user-images.githubusercontent.com/42088801/133167351-d62accd0-34b3-4d22-a663-c7917556d16a.png)
 
@@ -60,7 +60,13 @@ Install with `pip` or your favourite PyPi manager:
 $ pip install nalcos
 ```
 
-Run NaLCoS with the `--help` flag to see all the available options:
+Run NaLCoS on a repository of your choice. For example:
+
+```console
+$ nalcos "handle nan issues" "numpy/numpy" --github
+```
+
+To see all available options, run with the `--help` flag:
 
 ```console
 $ nalcos --help
@@ -78,6 +84,12 @@ $ git clone https://github.com/thepushkarp/nalcos.git
 
 This also downloads the model weights stored in the `nalcos/models` directory so you don't have to download them while running the model for the first time.
 
+- cd into the `nalcos` directory:
+
+```console
+$ cd nalcos
+```
+
 - Create a virtual environment ([click here](https://packaging.python.org/guides/installing-using-pip-and-virtual-environments/) to read about activating virtualenv):
 
 ```
@@ -87,32 +99,33 @@ $ virtualenv venv
 - Activate virtualenv (for Linux and MacOS):
 
 ```console
-  $ source ./venv/bin/activate
+$ source ./venv/bin/activate
 ```
 
 - Activate virtualenv (for Windows):
 
 ```console
-   $ cd venv/Scripts/
-   $ activate
+$ cd venv/Scripts/
+$ activate
 ```
 
-- Install the requirements:
+- Install the requirements and the module:
 
 ```console
 $ pip install -r requirements.txt
+$ pip install -e .
 ```
 
-- Change directory to the `nalcos` directory:
+Run NaLCoS on a repository of your choice. For example:
 
 ```console
-$ cd nalcos/
+$ nalcos "handle nan issues" "numpy/numpy" --github
 ```
 
-- Run NaLCoS with the `--help` flag to see all the available options:
+To see all available options, run with the `--help` flag:
 
 ```console
-$ python nalcos.py --help
+$ nalcos --help
 ```
 
 ## Usage
@@ -120,26 +133,30 @@ $ python nalcos.py --help
 A detailed information about the usage of NaLCoS can be found below:
 
 ```
-usage: nalcos [-h] [-g] [-n N_MATCHES] [-b BRANCH] [-l LOOK_PAST] [-v] query location
+usage: nalcos [-h] [-g] [-n N_MATCHES] [-b BRANCH] [-l LOOK_PAST] [-s] [-v] [--version] query location
 
 Search a commit in your git repository using natural language.
 
 positional arguments:
   query                 The query to search for similar commit messages.
-  location              The repository path to search in. If `-g` flag is not passed, searches locally in the path specified, else
-                        takes in a remote GitHub repository name in the format '{owner}/{repo_name}'
+  location              The repository path to search in. If '-g' or '--github' flag is not passed, searches
+                        locally in the path specified, else takes in a remote GitHub repository name in the
+                        format '{owner}/{repo_name}'
 
 optional arguments:
   -h, --help            show this help message and exit
-  -g, --github          Flag to search on GitHub instead of searching in a local repository. Due to API limits currently this
-                        allows for around 15 lookups per hour from your IP.
+  -g, --github          Search on GitHub instead of searching in a local repository. Due to API limits
+                        currently this allows for around 15 lookups per hour from your IP.
   -n N_MATCHES, --n-matches N_MATCHES
                         The number of matching results to return. Default 10.
   -b BRANCH, --branch BRANCH
                         The branch to search in. If not specified, the current branch will be used by default.
   -l LOOK_PAST, --look-past LOOK_PAST
                         Look back this many commits. Default 100.
-  -v, --version         show program's version number and exit
+  -s, --show-score      Shows the Cosine similarity score between the query and the retrieved commit messages.
+                        1 is the best match and -1 is the worst.
+  -v, --verbose         Show the entire commit message and not just the commit title.
+  --version             show program's version number and exit
 ```
 
 ### Examples
@@ -147,7 +164,7 @@ optional arguments:
 - Input:
 
 ```console
-$ python nalcos.py "improve language" "github/docs" --github
+$ nalcos "handle nan issues" "numpy/numpy" --github
 ```
 
 - Output:
@@ -155,22 +172,22 @@ $ python nalcos.py "improve language" "github/docs" --github
 ```
 Found 100 commits.
 
-                                        Commits related to "improve language" in "github/docs"
-┏━━━━━┳━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━┓
-┃ No. ┃ Commit ID ┃ Commit Message                                                        ┃ Commit Author      ┃ Commit Date          ┃
-┡━━━━━╇━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━┩
-│  1. │ 51bfdbb95 │ Merge branch 'main' into fatenhealy-fix-supportedlanguage             │ Faten Healy        │ 2021-09-12T22:26:31Z │
-│  2. │ a9c2c8eea │ fix deprecation label spelling (#21474)                               │ Rachael Sewell     │ 2021-09-13T18:12:03Z │
-│  3. │ 94e3c092d │ English search sync (#21446)                                          │ Rachael Sewell     │ 2021-09-13T17:30:08Z │
-│  4. │ b048e27e9 │ Merge pull request #9909 from github/fatenhealy-fix-supportedlanguage │ Ramya Parimi       │ 2021-09-12T22:35:19Z │
-│  5. │ 73c2717f7 │ Fix typo                                                              │ Adrian Mato        │ 2021-09-13T06:35:27Z │
-│  6. │ 86b571982 │ Export changes to a branch for codespaces (#21462)                    │ Matthew Isabel     │ 2021-09-13T14:55:50Z │
-│  7. │ 969288662 │ Update diff limit to 500KB (#20616)                                   │ jjkennedy3         │ 2021-09-11T09:12:38Z │
-│  8. │ f28ee46d4 │ Update OpenAPI Descriptions (#21447)                                  │ github-openapi-bot │ 2021-09-11T09:22:28Z │
-│  9. │ 92af3a469 │ update search indexes                                                 │ GitHub Actions     │ 2021-09-12T09:50:46Z │
-│ 10. │ e6018f2aa │ update search indexes                                                 │ GitHub Actions     │ 2021-09-11T02:05:19Z │
-└─────┴───────────┴───────────────────────────────────────────────────────────────────────┴────────────────────┴──────────────────────┘
-
+                                                  Commits related to "handle nan issues" in "numpy/numpy"
+┏━━━━━┳━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━┓
+┃ No. ┃ Commit ID ┃ Commit Message                                                                            ┃ Commit Author       ┃ Commit Date          ┃
+┡━━━━━╇━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━┩
+│  1. │ b6d7c4680 │ BUG: Fixed an issue wherein certain `nan<x>` functions could fail for object arrays       │ Bas van Beek        │ 2021-09-03T13:41:54Z │
+│  2. │ e4f85b08c │ Merge pull request #19863 from BvB93/nanquantile                                          │ Charles Harris      │ 2021-09-13T23:21:51Z │
+│  3. │ ecba7133f │ MAINT: Let `_remove_nan_1d` attempt to identify nan-containing object arrays              │ Bas van Beek        │ 2021-09-05T21:46:34Z │
+│  4. │ 95e5d5abb │ BUG: Fixed an issue wherein `nanpercentile` and `nanquantile` would ignore the dtype for  │ Bas van Beek        │ 2021-09-11T11:54:56Z │
+│     │           │ all-nan arrays                                                                            │                     │                      │
+│  5. │ b3a66e88b │ Merge pull request #19821 from BvB93/nanfunctions                                         │ Charles Harris      │ 2021-09-05T23:32:30Z │
+│  6. │ dc7dafe70 │ Merge pull request #19869 from mhvk/median_scalar_nan                                     │ Charles Harris      │ 2021-09-14T21:09:26Z │
+│  7. │ 9ef778330 │ TST: Add more tests for `nanmedian`, `nanquantile` and `nanpercentile`                    │ Bas van Beek        │ 2021-09-03T15:01:57Z │
+│  8. │ 6ba48721e │ BUG: ensure np.median does not drop subclass for NaN result.                              │ Marten van Kerkwijk │ 2021-09-13T19:50:54Z │
+│  9. │ e62aa4968 │ Merge pull request #19854 from BvB93/nanfunctions                                         │ Charles Harris      │ 2021-09-09T15:14:09Z │
+│ 10. │ 268e8e885 │ TST: Make nanfunc test ignore overflow instead of xfailing test                           │ Sebastian Berg      │ 2021-09-07T22:55:41Z │
+└─────┴───────────┴───────────────────────────────────────────────────────────────────────────────────────────┴─────────────────────┴──────────────────────┘
 ```
 
 ## Future plans
