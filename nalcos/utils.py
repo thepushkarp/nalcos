@@ -2,13 +2,18 @@ import os
 import re
 import typing
 import requests
+from pathlib import Path
+from appdirs import user_cache_dir
 from git import Repo
+import torch
+from sentence_transformers import SentenceTransformer
 
 __all__ = [
     "get_owner_and_repo",
     "is_local_git_repo",
     "is_github_repo",
     "get_type_of_location",
+    "get_model",
 ]
 
 
@@ -108,3 +113,31 @@ def get_type_of_location(location: typing.Union[str, os.PathLike]) -> str:
         return "github"
 
     raise ValueError(f"{location} is not a valid location. Please check again.")
+
+
+def get_model() -> SentenceTransformer:
+    """
+    Return the model used for the current sentence transformer.
+
+    Returns
+    -------
+    SentenceTransformer
+        The model.
+    """
+    # Pretrained models available at: https://www.sbert.net/docs/pretrained_models.html
+    model_name = "multi-qa-MiniLM-L6-cos-v1"
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    # The path to save the model to.
+    cache_folder = user_cache_dir(
+        os.path.join(Path(__file__).resolve().parent, "models")
+    )
+
+    # Load the model.
+    model = SentenceTransformer(
+        model_name,
+        device=device,
+        cache_folder=cache_folder,
+    )
+
+    return model
