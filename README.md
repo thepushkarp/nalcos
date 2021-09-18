@@ -27,7 +27,7 @@ The key features are:
 - Look back any number of commits in history.
 - Open the commit link directly in your browser if retrieved from GitHub.
 
-![image](https://user-images.githubusercontent.com/42088801/133167351-d62accd0-34b3-4d22-a663-c7917556d16a.png)
+![image](https://user-images.githubusercontent.com/42088801/133908654-9cec1f5c-6e9f-4eba-9254-8383e05c3824.png)
 
 Internally, NaLCoS uses [Sentence Transformers](https://github.com/UKPLab/sentence-transformers) with pre-trained weights from [`multi-qa-MiniLM-L6-cos-v1`](https://huggingface.co/sentence-transformers/multi-qa-MiniLM-L6-cos-v1). I chose this particular model because it has a good [Performance vs Speed tradeoff](https://www.sbert.net/docs/pretrained_models.html). Since this model was designed for semantic search and has been pre-trained on 215M (question, answer) pairs from diverse sources, it is a good choice for tasks such as finding similarity between two sentences.
 
