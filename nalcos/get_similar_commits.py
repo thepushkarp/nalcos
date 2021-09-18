@@ -1,5 +1,4 @@
 import typing
-import torch
 from sentence_transformers import SentenceTransformer, util
 
 __all__ = ["get_similar_commits"]
