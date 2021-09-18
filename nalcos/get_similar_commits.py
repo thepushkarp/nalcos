@@ -1,7 +1,4 @@
-import os
 import typing
-from pathlib import Path
-from appdirs import user_cache_dir
 import torch
 from sentence_transformers import SentenceTransformer, util
 
@@ -9,18 +6,23 @@ __all__ = ["get_similar_commits"]
 
 
 def get_similar_commits(
-    query: str, commits: typing.List[typing.Dict[str, str]], n_matches: int = 10
+    model: SentenceTransformer,
+    query: str,
+    commits: typing.List[typing.Dict[str, str]],
+    n_matches: int = 10,
 ) -> typing.List[typing.Dict[str, str]]:
     """
     Get the n_matches most similar commits to the query commit.
 
     Arguments
     ---------
+    model: SentenceTransformer
+        The model to use for the similarity computation.
     query: str
         The query string to compare to.
     commits: typing.List[typing.Dict[str, str]]
         A list of commits to compare to the query.
-    n_matches: int
+    n_matches: int (default=10)
         The number of matches to return.
 
     Returns
@@ -28,17 +30,6 @@ def get_similar_commits(
     typing.List[typing.Dict[str, str]]
         A list of the n_matches most similar commits to the query.
     """
-    # The model to use for encoding the query and commit messages.
-    # Pretrained models available at: https://www.sbert.net/docs/pretrained_models.html
-    model_name = "multi-qa-MiniLM-L6-cos-v1"
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    # The path to save the model to.
-    cache_folder = user_cache_dir(
-        os.path.join(Path(__file__).resolve().parent, "models")
-    )
-
-    # Load the model.
-    model = SentenceTransformer(model_name, device=device, cache_folder=cache_folder)
 
     # Get all the commit messages.
     commit_messages = [commit["message"] for commit in commits]
