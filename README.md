@@ -78,6 +78,12 @@ $ git clone https://github.com/thepushkarp/nalcos.git
 
 This also downloads the model weights stored in the `nalcos/models` directory so you don't have to download them while running the model for the first time.
 
+- cd into the `nalcos` directory:
+
+```console
+$ cd nalcos
+```
+
 - Create a virtual environment ([click here](https://packaging.python.org/guides/installing-using-pip-and-virtual-environments/) to read about activating virtualenv):
 
 ```
@@ -87,32 +93,27 @@ $ virtualenv venv
 - Activate virtualenv (for Linux and MacOS):
 
 ```console
-  $ source ./venv/bin/activate
+$ source ./venv/bin/activate
 ```
 
 - Activate virtualenv (for Windows):
 
 ```console
-   $ cd venv/Scripts/
-   $ activate
+$ cd venv/Scripts/
+$ activate
 ```
 
-- Install the requirements:
+- Install the requirements and the module:
 
 ```console
 $ pip install -r requirements.txt
-```
-
-- Change directory to the `nalcos` directory:
-
-```console
-$ cd nalcos/
+$ pip install -e .
 ```
 
 - Run NaLCoS with the `--help` flag to see all the available options:
 
 ```console
-$ python nalcos.py --help
+$ nalcos.py --help
 ```
 
 ## Usage
