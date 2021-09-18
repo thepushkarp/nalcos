@@ -3,7 +3,7 @@ from rich.console import Console
 from rich.table import Table
 
 from ._version import __version__
-from .utils import get_type_of_location, get_owner_and_repo
+from .utils import get_type_of_location, get_owner_and_repo, get_model
 from .get_commits import get_local_commits, get_github_commits
 from .get_similar_commits import get_similar_commits
 
@@ -68,6 +68,9 @@ def main():
     )
     args = parser.parse_args()
 
+    # Get the model and download the weights if they are not already downloaded
+    model = get_model()
+
     console = Console()
 
     # Display a status bar while it retrieves the commits and computes similarity
@@ -101,7 +104,9 @@ def main():
         print(f"Found {len(commits)} commits.")
         print()
         # Get similar commits and display them in a clean table.
-        similar_commits = get_similar_commits(args.query, commits, args.n_matches)
+        similar_commits = get_similar_commits(
+            model, args.query, commits, args.n_matches
+        )
         table = Table(
             show_header=True,
             header_style="bold white",

@@ -22,9 +22,9 @@ def get_local_commits(
     ---------
     location: str or PathLike
         The location of the repository.
-    max_count: int
-        The maximum number of commits to return. Defaults to 100.
-    branch: str
+    max_count: int  (default=100)
+        The maximum number of commits to return.
+    branch: str (default=None)
         The branch to get the commits from. If not specified, the current branch is used.
 
     Returns
@@ -81,9 +81,9 @@ def get_github_commits(
     ---------
     location: str
         The location of the repository.
-    max_count: int
-        The maximum number of commits to return. Defaults to 100.
-    branch: str
+    max_count: int (default=100)
+        The maximum number of commits to return.
+    branch: str (default=None)
         The branch to get the commits from. If not specified, the default branch is used.
 
     Returns
