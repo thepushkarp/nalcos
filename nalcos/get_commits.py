@@ -5,7 +5,7 @@ from datetime import timezone
 import requests
 from git import Repo
 
-from .utils import get_owner_and_repo
+from utils import get_owner_and_repo
 
 __all__ = ["get_local_commits", "get_github_commits"]
 

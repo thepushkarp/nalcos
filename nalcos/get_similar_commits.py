@@ -63,5 +63,7 @@ def get_similar_commits(
 
     # Get the n_matches most similar commits.
     sorted_commits = [commits[i] for i in sorted_scores_indices]
+    for i, commit in enumerate(sorted_commits):
+        commit["score"] = f"{cosine_scores[sorted_scores_indices[i]].numpy():.2f}"
 
     return sorted_commits

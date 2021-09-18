@@ -2,10 +2,10 @@ import argparse
 from rich.console import Console
 from rich.table import Table
 
-from ._version import __version__
-from .utils import get_type_of_location
-from .get_commits import get_local_commits, get_github_commits
-from .get_similar_commits import get_similar_commits
+from _version import __version__
+from utils import get_type_of_location
+from get_commits import get_local_commits, get_github_commits
+from get_similar_commits import get_similar_commits
 
 
 def main():
@@ -52,6 +52,12 @@ def main():
         default=100,
     )
     parser.add_argument(
+        "-s",
+        "--show-score",
+        help="Shows the Cosine similarity score between the query and the retrieved commit messages. 1 is the best score and -1 is the worst.",
+        action="store_true",
+    )
+    parser.add_argument(
         "-v", "--version", action="version", version=f"%(prog)s {__version__}"
     )
     args = parser.parse_args()
@@ -94,19 +100,26 @@ def main():
             title=f'Commits related to "{args.query}" in "{args.location}"',
             title_style="bold white",
         )
-        table.add_column("No.", style="dim", justify="right")
+        table.add_column("No.", justify="right")
+        if args.show_score is True:
+            table.add_column("Score")
         table.add_column("Commit ID")
         table.add_column("Commit Message")
         table.add_column("Commit Author")
         table.add_column("Commit Date")
         for i, commit in enumerate(similar_commits):
-            table.add_row(
-                f"{i + 1}.",
-                commit["id"][:9],
-                commit["message"].split("\n")[0],
-                commit["author"],
-                commit["commit_date"],
+            row_to_add = [f"{i + 1}."]
+            if args.show_score is True:
+                row_to_add.append(commit["score"])
+            row_to_add.extend(
+                [
+                    commit["id"][:9],
+                    commit["message"].split("\n")[0],
+                    commit["author"],
+                    commit["commit_date"],
+                ]
             )
+            table.add_row(*row_to_add)
         console.print(table)
 
 
