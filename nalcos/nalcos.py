@@ -54,11 +54,17 @@ def main():
     parser.add_argument(
         "-s",
         "--show-score",
-        help="Shows the Cosine similarity score between the query and the retrieved commit messages. 1 is the best score and -1 is the worst.",
+        help="Shows the Cosine similarity score between the query and the retrieved commit messages. 1 is the best match and -1 is the worst.",
         action="store_true",
     )
     parser.add_argument(
-        "-v", "--version", action="version", version=f"%(prog)s {__version__}"
+        "-v",
+        "--verbose",
+        help="Show the entire commit message and not just the commit title.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--version", action="version", version=f"%(prog)s {__version__}"
     )
     args = parser.parse_args()
 
@@ -111,10 +117,13 @@ def main():
             row_to_add = [f"{i + 1}."]
             if args.show_score is True:
                 row_to_add.append(commit["score"])
+            row_to_add.append(commit["id"][:9])
+            if args.verbose is True:
+                row_to_add.append(commit["message"])
+            else:
+                row_to_add.append(commit["message"].split("\n")[0])
             row_to_add.extend(
                 [
-                    commit["id"][:9],
-                    commit["message"].split("\n")[0],
                     commit["author"],
                     commit["commit_date"],
                 ]
