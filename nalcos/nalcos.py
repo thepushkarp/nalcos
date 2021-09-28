@@ -74,7 +74,7 @@ def main():
     console = Console()
 
     # Display a status bar while it retrieves the commits and computes similarity
-    with console.status("[bold green]Retrieving the commits...") as status:
+    with console.status("[bold green]Retrieving the commits..."):
         # Get the location type from the location argument
         location_type = get_type_of_location(args.location)
 

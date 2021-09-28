@@ -2,6 +2,16 @@ from setuptools import setup
 
 README_FILE = "README.md"
 VERSION_FILE = "nalcos/_version.py"
+REQUIREMENTS = [
+    "requests==2.26.0",
+    "torch==1.9.0",
+    "sentence_transformers==2.0.0",
+    "appdirs==1.4.4",
+    "transformers==4.10.1",
+    "tqdm==4.62.1",
+    "GitPython==3.1.18",
+    "rich==10.9.0",
+]
 
 with open(README_FILE, "r", encoding="utf-8") as f:
     long_description = f.read()
@@ -31,15 +41,15 @@ setup(
     ],  # Information to filter the project on PyPi website
     python_requires=">=3.6",  # Minimum version requirement of the package
     entry_points={"console_scripts": ["nalcos = nalcos.nalcos:main"]},
-    install_requires=[
-        "requests==2.26.0",
-        "torch==1.9.0",
-        "sentence_transformers==2.0.0",
-        "appdirs==1.4.4",
-        "transformers==4.10.1",
-        "tqdm==4.62.1",
-        "GitPython==3.1.18",
-        "rich==10.9.0",
-        "black==19.10b0",
-    ],
+    install_requires=REQUIREMENTS,  # List of all python modules required to run the package
+    extras_require={
+        "dev": [
+            "pytest==6.2.3",
+            "pytest-pep8==1.0.6",
+            "pytest-cov==2.12.1",
+            "black==19.10b0",
+            "pylint==2.7.4",
+            "pre-commit==2.15.0",
+        ]
+    },
 )

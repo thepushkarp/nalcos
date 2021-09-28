@@ -109,11 +109,10 @@ $ cd venv/Scripts/
 $ activate
 ```
 
-- Install the requirements and the module:
+- Install the requirements and the module (Make sure you [have `make` installed](https://stackoverflow.com/a/32127632/10307491)):
 
 ```console
-$ pip install -r requirements.txt
-$ pip install -e .
+$ make install
 ```
 
 Run NaLCoS on a repository of your choice. For example:

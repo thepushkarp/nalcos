@@ -126,7 +126,7 @@ def get_model() -> SentenceTransformer:
     """
     # Pretrained models available at: https://www.sbert.net/docs/pretrained_models.html
     model_name = "multi-qa-MiniLM-L6-cos-v1"
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = "cuda" if torch.cuda.is_available() else "cpu"
 
     # The path to save the model to.
     cache_folder = user_cache_dir(
