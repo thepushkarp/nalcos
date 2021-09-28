@@ -1,7 +1,7 @@
 install:
-	pip install -e .
+	pip install --upgrade pip && pip install -e .
 install_dev:
-	pip install -e .[dev]
+	pip install --upgrade pip && pip install -e .[dev]
 install_requirements:
 	pip install --upgrade pip && pip install -r requirements.txt
 install_requirements_dev:
