@@ -1,24 +1,23 @@
-name: Python
+name: Pylint
 
 on: [push]
 
 jobs:
   build:
-
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: [ '3.6', '3.7', '3.8' ]
-    name: Python ${{ matrix.python-version }} sample
+        python-version: ["3.6", "3.7", "3.8"]
+    name: Python ${{ matrix.python-version }}
     steps:
-    - uses: actions/checkout@v2
-    - name: Set up Python 3.8
-      uses: actions/setup-python@v2
-      with:
-        python-version: ${{ matrix.python-version }}
-    - name: Install dependencies
-      run: |
-       make install_dev
-    - name: Lint
-      run: |
-        make lint
+      - uses: actions/checkout@v2
+      - name: Set up Python environment
+        uses: actions/setup-python@v2
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install dependencies
+        run: |
+          make install_dev
+      - name: Lint
+        run: |
+          make lint
