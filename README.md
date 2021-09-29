@@ -127,6 +127,14 @@ To see all available options, run with the `--help` flag:
 $ nalcos --help
 ```
 
+### Installing using Docker
+
+```console
+$ docker build . --tag nalcos
+$ docker run -it nalcos
+$ nalcos "handle nan issues" "numpy/numpy" --github
+```
+
 ## Usage
 
 A detailed information about the usage of NaLCoS can be found below:
