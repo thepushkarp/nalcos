@@ -1,10 +1,11 @@
 import os
 import re
 import typing
-import requests
 from pathlib import Path
+import requests
 from appdirs import user_cache_dir
 from git import Repo
+from git.exc import InvalidGitRepositoryError, NoSuchPathError
 import torch
 from sentence_transformers import SentenceTransformer
 
@@ -55,7 +56,7 @@ def is_local_git_repo(location: typing.Union[str, os.PathLike]) -> bool:
         # If Repo(location) returns an exception, it means the location does not exists, or is not a git repo
         _ = Repo(location)
         return True
-    except Exception:
+    except (InvalidGitRepositoryError, NoSuchPathError):
         return False
 
 
@@ -88,7 +89,7 @@ def is_github_repo(location: str) -> bool:
             "GitHub API rate limit reached. Please wait a few minutes and try again."
         )
     # If the repo exists on GitHub and is public, the status code will be 200
-    elif status_code == 200:
+    if status_code == 200:
         return True
     return False
 
@@ -111,7 +112,6 @@ def get_type_of_location(location: typing.Union[str, os.PathLike]) -> str:
         return "local"
     if is_github_repo(location):
         return "github"
-
     raise ValueError(f"{location} is not a valid location. Please check again.")
 
 

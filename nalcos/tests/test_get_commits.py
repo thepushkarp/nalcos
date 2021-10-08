@@ -1,25 +1,6 @@
-import os
 import pytest
-from git import Repo, rmtree
 from nalcos.get_commits import get_local_commits, get_github_commits
 from nalcos.exceptions import BranchNotFoundException
-
-
-@pytest.fixture(autouse=True, scope="module")
-def make_local_repo():
-    if os.path.exists("nalcos_pytest"):
-        rmtree("nalcos_pytest")
-
-    repo = Repo.clone_from(
-        url="https://github.com/thepushkarp/nalcos.git",
-        to_path="nalcos_pytest",
-        branch="pytest",
-    )
-
-    yield
-
-    repo.close()
-    rmtree("nalcos_pytest")
 
 
 def test_get_local_commits():
