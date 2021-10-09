@@ -6,6 +6,7 @@ import requests
 from git import Repo
 
 from .utils import get_owner_and_repo
+from .exceptions import BranchNotFoundException
 
 __all__ = ["get_local_commits", "get_github_commits"]
 
@@ -44,29 +45,23 @@ def get_local_commits(
 
     # Retrieve commits if branch exists in the list of branch name, else raise Exception.
     if branch in all_branches_names:
-        try:
-            for commit in repo.iter_commits(branch, max_count=max_count):
-                commits.append(
-                    {
-                        "author": str(commit.author),
-                        "email": commit.author.email,
-                        "message": commit.message.strip("\n"),
-                        "id": commit.hexsha,
-                        # Convert datetime to ISO 8601 format.
-                        "commit_date": commit.committed_datetime.astimezone(
-                            timezone.utc
-                        )
-                        .isoformat()
-                        .replace("+00:00", "Z"),
-                        "branch": branch,
-                    }
-                )
-        # If exception is raised, return an empty list.
-        except Exception:
-            pass
+        for commit in repo.iter_commits(branch, max_count=max_count):
+            commits.append(
+                {
+                    "author": str(commit.author),
+                    "email": commit.author.email,
+                    "message": commit.message.strip("\n"),
+                    "id": commit.hexsha,
+                    # Convert datetime to ISO 8601 format.
+                    "commit_date": commit.committed_datetime.astimezone(timezone.utc)
+                    .isoformat()
+                    .replace("+00:00", "Z"),
+                    "branch": branch,
+                }
+            )
 
     else:
-        raise Exception(f"Branch {branch} does not exist in {location}.")
+        raise BranchNotFoundException(f"Branch {branch} does not exist in {location}.")
 
     return commits
 
@@ -137,34 +132,32 @@ def get_github_commits(
         page = 1
         run_get_commits_loop = True
 
-        try:
-            while run_get_commits_loop:
-                commits_response = requests.get(
-                    f"https://api.github.com/repos/{owner}/{repo}/commits?sha={branch_hash}&per_page=100&page={page}"
-                ).json()
-                # If we don't get 100 commits in a page, we know we have reached the last commit.
-                if len(commits_response) < 100 or page == num_pages:
-                    run_get_commits_loop = False
-                for commit in commits_response:
-                    commits.append(
-                        {
-                            "author": commit["commit"]["author"]["name"],
-                            "email": commit["commit"]["author"]["email"],
-                            # Get the commit message title, which is the first line of the mesage.
-                            "message": commit["commit"]["message"].strip("\n"),
-                            "id": commit["sha"],
-                            "commit_date": commit["commit"]["author"]["date"],
-                            "branch": branch,
-                        }
-                    )
-                page += 1
-            # Only get the first max_count commits.
-            commits = commits[:max_count]
-        # If exception is raised, return an empty list.
-        except Exception:
-            pass
+        while run_get_commits_loop:
+            commits_response = requests.get(
+                f"https://api.github.com/repos/{owner}/{repo}/commits?sha={branch_hash}&per_page=100&page={page}"
+            ).json()
+            # If we don't get 100 commits in a page, we know we have reached the last commit.
+            if len(commits_response) < 100 or page == num_pages:
+                run_get_commits_loop = False
+            for commit in commits_response:
+                commits.append(
+                    {
+                        "author": commit["commit"]["author"]["name"],
+                        "email": commit["commit"]["author"]["email"],
+                        # Get the commit message title, which is the first line of the mesage.
+                        "message": commit["commit"]["message"].strip("\n"),
+                        "id": commit["sha"],
+                        "commit_date": commit["commit"]["author"]["date"],
+                        "branch": branch,
+                    }
+                )
+            page += 1
+        # Only get the first max_count commits.
+        commits = commits[:max_count]
 
     else:
-        raise Exception(f"Branch {branch} does not exist in {owner}/{repo}.")
+        raise BranchNotFoundException(
+            f"Branch {branch} does not exist in {owner}/{repo}."
+        )
 
     return commits
