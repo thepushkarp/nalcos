@@ -1,4 +1,5 @@
 import numpy as np
+from numpy.testing import assert_array_equal
 import pytest
 from nalcos.utils import (
     get_owner_and_repo,
@@ -42,9 +43,9 @@ def test_get_type_of_location():
 
 
 def test_get_model():
-    assert (
-        get_model().encode("This is a test.")
-        == np.asarray(
+    assert_array_equal(
+        get_model().encode("This is a test."),
+        np.asarray(
             [
                 7.31913820e-02,
                 9.68165882e-03,
@@ -432,5 +433,5 @@ def test_get_model():
                 3.89878005e-02,
             ],
             dtype=np.float32,
-        )
-    ).all()
+        ),
+    )
