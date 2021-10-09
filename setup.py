@@ -50,6 +50,7 @@ setup(
             "black==19.10b0",
             "pylint==2.7.4",
             "pre-commit==2.15.0",
+            "pytest-sugar==0.9.4",
         ]
     },
 )

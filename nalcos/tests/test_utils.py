@@ -1,5 +1,5 @@
 import numpy as np
-from numpy.testing import assert_array_equal
+from numpy.testing import assert_array_almost_equal_nulp
 import pytest
 from nalcos.utils import (
     get_owner_and_repo,
@@ -43,7 +43,7 @@ def test_get_type_of_location():
 
 
 def test_get_model():
-    assert_array_equal(
+    assert_array_almost_equal_nulp(
         get_model().encode("This is a test."),
         np.asarray(
             [
