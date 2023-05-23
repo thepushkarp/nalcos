@@ -33,7 +33,7 @@ setup(
     entry_points={"console_scripts": ["nalcos = nalcos.nalcos:main"]},
     install_requires=[
         "requests==2.31.0",
-        "torch==1.9.0",
+        "torch==1.13.1",
         "sentence_transformers==2.0.0",
         "appdirs==1.4.4",
         "transformers==4.10.1",
