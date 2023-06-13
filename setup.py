@@ -36,7 +36,7 @@ setup(
         "torch==1.13.1",
         "sentence_transformers==2.0.0",
         "appdirs==1.4.4",
-        "transformers==4.10.1",
+        "transformers==4.30.0",
         "tqdm==4.62.1",
         "GitPython==3.1.30",
         "rich==10.9.0",
