@@ -40,6 +40,6 @@ setup(
         "tqdm==4.62.1",
         "GitPython==3.1.41",
         "rich==10.9.0",
-        "black==19.10b0",
+        "black==24.3.0",
     ],
 )
