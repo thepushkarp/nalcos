@@ -37,7 +37,7 @@ setup(
         "sentence_transformers==2.0.0",
         "appdirs==1.4.4",
         "transformers==4.38.0",
-        "tqdm==4.62.1",
+        "tqdm==4.66.3",
         "GitPython==3.1.41",
         "rich==10.9.0",
         "black==24.3.0",
