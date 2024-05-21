@@ -1,4 +1,4 @@
-requests==2.31.0
+requests==2.32.0
 torch==1.13.1
 sentence_transformers==2.0.0
 appdirs==1.4.4
