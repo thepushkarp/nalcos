@@ -32,7 +32,7 @@ setup(
     python_requires=">=3.6",  # Minimum version requirement of the package
     entry_points={"console_scripts": ["nalcos = nalcos.nalcos:main"]},
     install_requires=[
-        "requests==2.32.0",
+        "requests==2.32.4",
         "torch==2.6.0",
         "sentence_transformers==2.0.0",
         "appdirs==1.4.4",
