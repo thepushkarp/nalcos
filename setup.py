@@ -38,7 +38,7 @@ setup(
         "appdirs==1.4.4",
         "transformers==5.5.0",
         "tqdm==4.66.3",
-        "GitPython==3.1.52",
+        "GitPython==3.1.54",
         "rich==10.9.0",
         "black==26.3.1",
     ],
