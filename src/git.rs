@@ -23,7 +23,7 @@ use std::time::Duration;
 const PIPE_LIMIT: usize = 256 * 1024 * 1024;
 const COMMIT_LIMIT: usize = 4 * 1024 * 1024;
 /// Canonical extraction semantics persisted by the index lifecycle.
-pub const EXTRACTION_VERSION: u32 = 2;
+pub const EXTRACTION_VERSION: u32 = 3;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Repository {
@@ -788,26 +788,20 @@ impl Repository {
                 .collect();
             let info = self.object_info(&all_blobs, execution)?;
             let mut readable = HashSet::new();
+            let mut prefixes = HashMap::new();
             for (i, change) in changes.iter().enumerate() {
                 let path = change.new_path.as_ref().or(change.old_path.as_ref());
                 let is_excluded = excluded(change, &excludes)?;
-                if !is_excluded {
-                    let commit = by_oid[change.commit_oid.as_str()];
-                    result.documents.push(make_document(
-                        commit,
-                        selected_parent(commit, parent)?,
-                        parent,
-                        DocumentKind::Diff,
-                        Some(change),
-                        (0, 0, 0, 0),
-                        file_prefix(commit, change),
-                        false,
-                    )?);
-                }
+                let prefix = file_prefix(by_oid[change.commit_oid.as_str()], change);
                 let reason = if is_excluded {
                     Some((
                         "excluded",
                         "Path is excluded by index configuration".to_string(),
+                    ))
+                } else if prefix.len() > options.max_document_bytes {
+                    Some((
+                        "document_limit",
+                        "File metadata exceeded the document byte limit".into(),
                     ))
                 } else if change.old_mode == "160000" || change.new_mode == "160000" {
                     Some((
@@ -859,6 +853,9 @@ impl Repository {
                     }
                     failure
                 };
+                if !is_excluded && prefix.len() <= options.max_document_bytes {
+                    prefixes.insert(i, prefix);
+                }
                 if let Some((reason, detail)) = reason {
                     result.omissions.push(ExtractionOmission {
                         commit_oid: change.commit_oid.clone(),
@@ -909,10 +906,36 @@ impl Repository {
             }
             for (i, change) in changes.drain(..).enumerate() {
                 execution.check()?;
+                let Some(prefix) = prefixes.remove(&i) else {
+                    continue;
+                };
+                let commit = by_oid[change.commit_oid.as_str()];
+                // Charge each file prefix once against the logical commit patch,
+                // before its hunks. Metadata-only files consume this budget too.
+                let used = patch_bytes.entry(commit.oid.clone()).or_default();
+                if used.saturating_add(prefix.len()) > options.max_patch_bytes {
+                    result.omissions.push(ExtractionOmission {
+                        commit_oid: commit.oid.clone(),
+                        path: change.new_path.clone().or(change.old_path.clone()),
+                        reason: "patch_limit".into(),
+                        detail: "Commit patch exceeded its configured byte limit".into(),
+                    });
+                    continue;
+                }
+                *used = used.saturating_add(prefix.len());
+                result.documents.push(make_document(
+                    commit,
+                    selected_parent(commit, parent)?,
+                    parent,
+                    DocumentKind::Diff,
+                    Some(&change),
+                    (0, 0, 0, 0),
+                    prefix.clone(),
+                    false,
+                )?);
                 if !readable.contains(&i) {
                     continue;
                 }
-                let commit = by_oid[change.commit_oid.as_str()];
                 let old = blob_text(change.old_blob.as_ref(), &blobs);
                 let new = blob_text(change.new_blob.as_ref(), &blobs);
                 let (old, new) = match (old, new) {
@@ -936,7 +959,6 @@ impl Repository {
                 let diff = diff_config.diff_lines(old, new);
                 execution.check()?;
                 let hunks = source_hunks(&diff, context)?;
-                let prefix = file_prefix(commit, &change);
                 for hunk in hunks {
                     let used = patch_bytes.entry(commit.oid.clone()).or_default();
                     if used.saturating_add(hunk.text.len()) > options.max_patch_bytes {
@@ -2669,6 +2691,128 @@ mod tests {
         assert_eq!(parse_objects(&output).unwrap()[&oid].1, content);
         output.pop();
         assert!(parse_objects(&output).is_err());
+    }
+
+    #[test]
+    fn metadata_only_changes_obey_patch_and_document_limits() {
+        let fixture = Fixture::new();
+        let long_path = "z".repeat(240);
+        let base = fixture.commit(
+            &[
+                (b"a-old", "alpha\n"),
+                (b"b-old", "beta\n"),
+                (b"c-old", "gamma\n"),
+                (long_path.as_bytes(), "before\n"),
+            ],
+            &[],
+            "base",
+        );
+        let tip = fixture.commit(
+            &[
+                (b"a-new", "alpha\n"),
+                (b"b-new", "beta\n"),
+                (b"c-new", "gamma\n"),
+                (long_path.as_bytes(), "after\n"),
+            ],
+            &[&base],
+            "rename and update",
+        );
+        let execution = Execution::unlimited();
+        let repository = Repository::discover(fixture.0.path(), &execution).unwrap();
+        let commits = repository.load_commits(&[tip], &execution).unwrap();
+        let complete = repository
+            .extract_documents(&commits, &IndexOptions::default(), &execution)
+            .unwrap();
+        let prefixes: Vec<_> = complete
+            .documents
+            .iter()
+            .filter(|doc| {
+                doc.kind == DocumentKind::Diff && doc.old_lines == 0 && doc.new_lines == 0
+            })
+            .collect();
+        let patch_limit = prefixes[0].text.len() + prefixes[1].text.len();
+        let limited = repository
+            .extract_documents(
+                &commits,
+                &IndexOptions {
+                    max_patch_bytes: patch_limit,
+                    max_document_bytes: 256,
+                    ..IndexOptions::default()
+                },
+                &execution,
+            )
+            .unwrap();
+        let diffs: Vec<_> = limited
+            .documents
+            .iter()
+            .filter(|doc| doc.kind == DocumentKind::Diff)
+            .collect();
+        assert_eq!(diffs.len(), 2);
+        assert_eq!(
+            diffs.iter().map(|doc| doc.text.len()).sum::<usize>(),
+            patch_limit
+        );
+        assert!(limited.documents.iter().all(|doc| doc.text.len() <= 256));
+        assert!(
+            diffs
+                .iter()
+                .all(|doc| doc.old_lines == 0 && doc.new_lines == 0)
+        );
+        assert_eq!(limited.omissions.len(), 2);
+        for (path, reason) in [
+            ("c-new", "patch_limit"),
+            (long_path.as_str(), "document_limit"),
+        ] {
+            assert!(limited.omissions.iter().any(|item| item.reason == reason
+                && item.path.as_ref().is_some_and(|p| p.display == path)));
+        }
+    }
+
+    #[test]
+    fn file_prefix_and_hunk_share_the_commit_patch_budget() {
+        let fixture = Fixture::new();
+        let base = fixture.commit(&[(b"file", "before\n")], &[], "base");
+        let tip = fixture.commit(&[(b"file", "after\n")], &[&base], "update");
+        let execution = Execution::unlimited();
+        let repository = Repository::discover(fixture.0.path(), &execution).unwrap();
+        let commits = repository.load_commits(&[tip], &execution).unwrap();
+        let complete = repository
+            .extract_documents(&commits, &IndexOptions::default(), &execution)
+            .unwrap();
+        let hunk = complete
+            .documents
+            .iter()
+            .find(|doc| doc.old_lines != 0)
+            .unwrap();
+        // A hunk document contains its file prefix and body, exactly the logical
+        // patch size for this one-file, one-hunk commit.
+        for (budget, expected_hunks) in [(hunk.text.len() - 1, 0), (hunk.text.len(), 1)] {
+            let limited = repository
+                .extract_documents(
+                    &commits,
+                    &IndexOptions {
+                        max_patch_bytes: budget,
+                        ..IndexOptions::default()
+                    },
+                    &execution,
+                )
+                .unwrap();
+            assert_eq!(
+                limited
+                    .documents
+                    .iter()
+                    .filter(|doc| doc.old_lines != 0)
+                    .count(),
+                expected_hunks
+            );
+            assert_eq!(limited.omissions.len(), 1 - expected_hunks);
+            assert!(
+                limited
+                    .omissions
+                    .iter()
+                    .all(|item| item.reason == "patch_limit")
+            );
+        }
     }
 
     #[test]

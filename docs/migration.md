@@ -31,6 +31,8 @@ Run `nalcos init` to enable semantic search with the alpha default, MiniLM INT8 
 
 The Rust index is not compatible with any Python-era derived index or cache. NaLCoS reads Git objects to build its own index outside the working tree; it does not need a conversion of old query results.
 
+Alpha.2 charges file headers as well as hunks against extraction limits. After upgrading from alpha.1, run `nalcos sync` to refresh the stored sources; unchanged source documents keep their vectors.
+
 An older Rust index can require a source-format refresh. `status`, search, and `sync --dry-run` report `source_refresh_required`; run `sync` to refresh retained indexed patches. Unchanged source records keep their evidence IDs and vectors. Searches continue to verify evidence against Git while a refresh is pending. Interrupted refreshes can be retried with `sync`.
 
 Model files are shared through the Hugging Face cache. NaLCoS does not import the old `nalcos/models/Cache` directory as an index or write new weights into the repository. Existing Python installations and caches can be kept independently; verify the Rust setup before removing anything manually.
