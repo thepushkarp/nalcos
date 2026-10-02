@@ -1,0 +1,49 @@
+# Select this file with: nalcos --config examples/config.toml ...
+version = 1
+
+# Fresh init uses minilm-int8 on CPU without configuration.
+# This named profile demonstrates explicit FP32 settings.
+# Uncomment to select it on initial setup; changing this value requests a switch.
+# An unchanged default does not override a persisted CLI --model choice.
+# default_model = "minilm-int8"
+# Or select the custom profile below with: default_model = "profile:minilm"
+
+# NALCOS_DATA_DIR overrides this optional index-storage location.
+# data_dir = "/path/to/nalcos-data"
+
+[index]
+# Exclusions apply to historical paths, including files no longer in the worktree.
+exclude_paths = []
+max_blob_bytes = 1048576
+max_patch_bytes = 2097152
+max_document_bytes = 16384
+chunk_overlap_tokens = 32
+
+[search]
+candidate_limit = 100
+rrf_k = 60.0
+lexical_weight = 1.0
+semantic_weight = 1.0
+
+[runtime]
+# auto defers to the profile device; --device overrides both workload settings.
+query_device = "auto"
+index_device = "auto"
+threads = 4
+batch_size = 8
+# Optional compatible ONNX Runtime library (macOS requires 1.23.2 or newer).
+# ort_library = "/path/to/libonnxruntime.dylib"
+
+[profiles.minilm]
+id = "sentence-transformers/multi-qa-MiniLM-L6-cos-v1"
+revision = "b207367332321f8e44f96e224ef15bc607f4dbf0"
+artifact = "onnx/model.onnx"
+backend = "onnx"
+dimensions = 384
+max_tokens = 512
+pooling = "mean"
+tokenizer = "tokenizer.json"
+query_prefix = ""
+document_prefix = ""
+extra_files = []
+device = "auto"
