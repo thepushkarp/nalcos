@@ -577,14 +577,12 @@ fn sync(
     } else {
         Some(WriterLock::acquire(path, true, cli.verbose > 0, execution)?)
     };
-    let mut opened_store = if dry_run {
-        if path.exists() {
-            Some(Store::read_only(path)?)
-        } else {
-            None
-        }
+    // Inspect the saved selection without creating an index for invalid setup
+    // requests. Keep the writer lock through validation and writable opening.
+    let opened_store = if path.exists() {
+        Some(Store::read_only(path)?)
     } else {
-        Some(Store::open(path)?)
+        None
     };
     let active = opened_store
         .as_ref()
@@ -673,7 +671,8 @@ fn sync(
             execution,
         )?;
     }
-    let mut store = opened_store.take().expect("writable index opened");
+    drop(opened_store);
+    let mut store = Store::open(path)?;
     scope = repo.resolve_scope(&scope_options, execution)?;
     let previous_policy = saved_index_policy(&store, &config.index)?;
     let policy = if apply_config {

@@ -47,6 +47,6 @@ The derived cache follows all current refs under `refs/` that resolve to commits
 
 Update shell scripts to call a verb explicitly and consume `--json`. Check `schema_version`, coverage, warnings, and `output_truncated`; do not parse terminal tables or treat a partial empty result as a definitive absence.
 
-`--timeout` accepts a duration such as `30s` or `5m`. An empty search result is successful. Invalid arguments/configuration use exit code 2, operation failures use 1, timeouts use 124, and interruption uses 130.
+`--timeout` accepts a duration such as `30s` or `5m`. GGUF checks deadlines and interruption between native batches, so an in-flight batch can delay exit; see [native runtime limitations](native-runtime.md). An empty search result is successful. Invalid arguments/configuration use exit code 2, operation failures use 1, timeouts use 124, and interruption uses 130.
 
 The Rust CLI operates on refs already available locally. It does not perform GitHub API searches, fetch remote history, generate an answer, or run a regression bisect. Its agent interface is the CLI and JSON output.

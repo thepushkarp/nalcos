@@ -12,7 +12,7 @@ pub struct Cli {
     pub json: bool,
     #[arg(long, global = true, help = "Disallow network access and downloads")]
     pub offline: bool,
-    #[arg(long, global = true, value_parser = parse_duration, help = "Overall time budget, e.g. 30s or 5m")]
+    #[arg(long, global = true, value_parser = parse_duration, help = "Time budget, e.g. 30s or 5m (GGUF checks between native batches)")]
     pub timeout: Option<Duration>,
     #[arg(long, short, global = true, action = clap::ArgAction::Count)]
     pub verbose: u8,

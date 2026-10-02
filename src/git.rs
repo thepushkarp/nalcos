@@ -1012,12 +1012,36 @@ impl Repository {
             false,
             execution,
         )?;
-        let complete = extraction
-            .documents
-            .iter()
-            .map(|d| d.text.as_str())
-            .collect::<Vec<_>>()
-            .join("\n");
+        // Indexed hunks repeat their file prefix so each is self-contained evidence.
+        // Display each file once, followed immediately by its hunks, while retaining
+        // prefix-only records for renames, mode changes, and omitted content.
+        let mut hunks_by_path = HashMap::<_, Vec<_>>::new();
+        let path_key = |doc: &DocumentRecord| {
+            (
+                doc.old_path.as_ref().map(|path| path.bytes_hex.clone()),
+                doc.new_path.as_ref().map(|path| path.bytes_hex.clone()),
+            )
+        };
+        for doc in &extraction.documents {
+            if doc.old_lines != 0 || doc.new_lines != 0 {
+                hunks_by_path.entry(path_key(doc)).or_default().push(doc);
+            }
+        }
+        let mut complete = String::new();
+        for doc in &extraction.documents {
+            if doc.old_lines == 0 && doc.new_lines == 0 {
+                complete.push_str(&doc.text);
+                if let Some(hunks) = hunks_by_path.remove(&path_key(doc)) {
+                    for hunk in hunks {
+                        complete.push_str(
+                            hunk.text
+                                .strip_prefix(&doc.text)
+                                .ok_or_else(|| malformed("show hunk file prefix"))?,
+                        );
+                    }
+                }
+            }
+        }
         let (patch, clipped) = truncate_utf8(&complete, options.max_bytes.unwrap_or(usize::MAX));
         Ok(ShowResult {
             commit,
@@ -2645,6 +2669,58 @@ mod tests {
         assert_eq!(parse_objects(&output).unwrap()[&oid].1, content);
         output.pop();
         assert!(parse_objects(&output).is_err());
+    }
+
+    #[test]
+    fn show_groups_hunks_under_one_file_header_and_preserves_metadata_only_changes() {
+        let fixture = Fixture::new();
+        let old = (1..=20)
+            .map(|line| format!("line {line}\n"))
+            .collect::<String>();
+        let new = old
+            .replace("line 2\n", "changed 2\n")
+            .replace("line 18\n", "changed 18\n");
+        let base = fixture.commit(
+            &[(b"a.txt", &old), (b"z-old.txt", "unchanged\n")],
+            &[],
+            "base",
+        );
+        let tip = fixture.commit(
+            &[(b"a.txt", &new), (b"z-new.txt", "unchanged\n")],
+            &[&base],
+            "edit and rename",
+        );
+        let execution = Execution::unlimited();
+        let repository = Repository::discover(fixture.0.path(), &execution).unwrap();
+        let options = ShowOptions {
+            context: 1,
+            max_bytes: None,
+            ..ShowOptions::default()
+        };
+        let shown = repository.show(&tip, &options, &execution).unwrap();
+        assert!(!shown.truncated);
+        let first_hunk = "@@ -1,3 +1,3 @@\n line 1\n-line 2\n+changed 2\n line 3\n";
+        let second_hunk = "@@ -17,3 +17,3 @@\n line 17\n-line 18\n+changed 18\n line 19\n";
+        let expected = format!(
+            "edit and rename\n--- a.txt\n+++ a.txt\n{first_hunk}{second_hunk}\
+             edit and rename\n--- z-old.txt\n+++ z-new.txt\n"
+        );
+        assert_eq!(shown.patch, expected);
+
+        let limit = shown.patch.find(second_hunk).unwrap();
+        let bounded = repository
+            .show(
+                &tip,
+                &ShowOptions {
+                    max_bytes: Some(limit),
+                    ..options
+                },
+                &execution,
+            )
+            .unwrap();
+        assert!(bounded.truncated);
+        assert_eq!(bounded.patch, &expected[..limit]);
+        assert!(bounded.patch.contains("+changed 2\n"));
     }
 
     #[test]

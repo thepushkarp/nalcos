@@ -112,7 +112,9 @@ impl GgufEncoder {
             .artifact_path
             .as_ref()
             .ok_or_else(|| AppError::invalid("GGUF artifact path is missing"))?;
-        let native = LlamaModel::load_from_file(backend, path, &params).map_err(|e| {
+        let loaded = LlamaModel::load_from_file(backend, path, &params);
+        execution.check()?;
+        let native = loaded.map_err(|e| {
             AppError::new(
                 if device == Device::Cpu {
                     "model_invalid"
@@ -122,7 +124,6 @@ impl GgufEncoder {
                 format!("Cannot load GGUF on {device}: {e}"),
             )
         })?;
-        execution.check()?;
         if usize::try_from(native.n_embd_out()).ok() != Some(model.profile.dimensions) {
             return Err(AppError::new(
                 "dimension_mismatch",
@@ -285,15 +286,19 @@ impl GgufEncoder {
                 .state
                 .with_dependent_mut(|_, context| -> Result<Vec<Vec<f32>>> {
                     context.clear_kv_cache();
-                    if encoder_graph {
+                    let inferred = if encoder_graph {
                         context
                             .encode(&mut batch)
-                            .map_err(|e| AppError::new("inference_failed", e.to_string()))?;
+                            .map_err(|e| AppError::new("inference_failed", e.to_string()))
                     } else {
                         context
                             .decode(&mut batch)
-                            .map_err(|e| AppError::new("inference_failed", e.to_string()))?;
-                    }
+                            .map_err(|e| AppError::new("inference_failed", e.to_string()))
+                    };
+                    // Native errors must not mask a deadline or interruption that
+                    // arrived while this synchronous batch was running.
+                    execution.check()?;
+                    inferred?;
                     (0..sequences)
                         .map(|sequence| {
                             context

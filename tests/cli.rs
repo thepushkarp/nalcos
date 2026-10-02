@@ -775,6 +775,30 @@ fn status_and_sync_dry_run_do_not_create_an_index_or_model_cache() {
 }
 
 #[test]
+fn invalid_model_selection_leaves_a_fresh_index_uninitialized() {
+    let repository = Repository::new();
+    repository.write("readme.txt", "unindexed repository\n");
+    repository.commit("Initial commit", "2024-01-01T12:00:00Z");
+    for (args, expected_code, exit_code) in [
+        (vec!["init"], "model_required", 1),
+        (vec!["init", "--model", "unknown/model"], "unknown_model", 1),
+        (
+            vec!["sync", "--model", "profile:missing"],
+            "invalid_config",
+            2,
+        ),
+    ] {
+        let output = repository.run(&args);
+        assert_eq!(output.status.code(), Some(exit_code));
+        assert_eq!(parse_json(&output)["error"]["code"], expected_code);
+        let status = repository.json(&["status"]);
+        assert_eq!(status["readiness"], "uninitialized");
+        assert!(!Path::new(status["index_path"].as_str().unwrap()).exists());
+    }
+    assert!(!repository.hf_home.exists());
+}
+
+#[test]
 fn legacy_source_refresh_is_explicit_retryable_and_preserves_embeddings() {
     let repository = Repository::new();
     repository.write("base.txt", "neutral configuration\n");
