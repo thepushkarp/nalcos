@@ -1,0 +1,266 @@
+{
+  "schema_version": 2,
+  "kind": "cli_search_matrix_saved_response_assessment",
+  "manifest_sha256": "505ece514b4ff6133ba75ea067f530c7c7c9503f79bea6cd92c11cfffa7b1ef7",
+  "binary_sha256": "669dc90d4adda35c8b9cbdba57597f2514b54b8e5fbb60369c9f01faf8e21832",
+  "driver_sha256": "42620fd20e20517712371dd80db536b798cf431030af4fa99c5dd7dd01383d46",
+  "config_sha256": {
+    "nft": "dbab12665d98aef021ba64953c61b0ed8a908cfb56a1c01e2fcb4b052b71a2a1"
+  },
+  "questions": 10,
+  "repositories": 1,
+  "rank_limit": 10,
+  "indexing_performed": false,
+  "network_allowed": false,
+  "modes": {
+    "lexical": {
+      "responses": 10,
+      "complete_responses": 10,
+      "median_wall_seconds": 0.19146035400626715,
+      "max_wall_seconds": 1.1318535000027623,
+      "incomplete_reasons": [],
+      "latency": {
+        "samples": 10,
+        "p50_seconds": 0.19146035400626715,
+        "p95_seconds": 0.7378582126562824,
+        "max_seconds": 1.1318535000027623
+      },
+      "per_repository": {
+        "nft": {
+          "samples": 10,
+          "p50_seconds": 0.19146035400626715,
+          "p95_seconds": 0.7378582126562824,
+          "max_seconds": 1.1318535000027623
+        }
+      },
+      "truncated_output_responses": 0,
+      "quality": {
+        "split": null,
+        "questions": 10,
+        "answerable_questions": 7,
+        "negative_questions": 0,
+        "unjudged_questions": 3,
+        "labels_complete": false,
+        "repositories": 1,
+        "responses": 10,
+        "complete_responses": 10,
+        "coverage_complete": true,
+        "recall": {
+          "1": 0.14285714285714285,
+          "5": 0.2857142857142857,
+          "10": 0.42857142857142855
+        },
+        "hit_rate": {
+          "1": 0.14285714285714285,
+          "5": 0.2857142857142857,
+          "10": 0.42857142857142855
+        },
+        "mrr": 0.2380952380952381,
+        "negative_correct_abstentions": 0
+      },
+      "source_verification_warning_responses": 4
+    },
+    "semantic": {
+      "responses": 10,
+      "complete_responses": 10,
+      "median_wall_seconds": 0.3589548750023823,
+      "max_wall_seconds": 1.104686082995613,
+      "incomplete_reasons": [],
+      "latency": {
+        "samples": 10,
+        "p50_seconds": 0.3589548750023823,
+        "p95_seconds": 0.8863565832958551,
+        "max_seconds": 1.104686082995613
+      },
+      "per_repository": {
+        "nft": {
+          "samples": 10,
+          "p50_seconds": 0.3589548750023823,
+          "p95_seconds": 0.8863565832958551,
+          "max_seconds": 1.104686082995613
+        }
+      },
+      "truncated_output_responses": 0,
+      "quality": {
+        "split": null,
+        "questions": 10,
+        "answerable_questions": 7,
+        "negative_questions": 0,
+        "unjudged_questions": 3,
+        "labels_complete": false,
+        "repositories": 1,
+        "responses": 10,
+        "complete_responses": 10,
+        "coverage_complete": true,
+        "recall": {
+          "1": 0.0,
+          "5": 0.7142857142857143,
+          "10": 0.8571428571428571
+        },
+        "hit_rate": {
+          "1": 0.0,
+          "5": 0.7142857142857143,
+          "10": 0.8571428571428571
+        },
+        "mrr": 0.33333333333333337,
+        "negative_correct_abstentions": 0
+      },
+      "source_verification_warning_responses": 1
+    },
+    "hybrid": {
+      "responses": 10,
+      "complete_responses": 10,
+      "median_wall_seconds": 0.4220779789975495,
+      "max_wall_seconds": 0.6523331250064075,
+      "incomplete_reasons": [],
+      "latency": {
+        "samples": 10,
+        "p50_seconds": 0.4220779789975495,
+        "p95_seconds": 0.6493535251567664,
+        "max_seconds": 0.6523331250064075
+      },
+      "per_repository": {
+        "nft": {
+          "samples": 10,
+          "p50_seconds": 0.4220779789975495,
+          "p95_seconds": 0.6493535251567664,
+          "max_seconds": 0.6523331250064075
+        }
+      },
+      "truncated_output_responses": 2,
+      "quality": {
+        "split": null,
+        "questions": 10,
+        "answerable_questions": 7,
+        "negative_questions": 0,
+        "unjudged_questions": 3,
+        "labels_complete": false,
+        "repositories": 1,
+        "responses": 10,
+        "complete_responses": 10,
+        "coverage_complete": true,
+        "recall": {
+          "1": 0.42857142857142855,
+          "5": 0.5714285714285714,
+          "10": 0.7142857142857143
+        },
+        "hit_rate": {
+          "1": 0.42857142857142855,
+          "5": 0.5714285714285714,
+          "10": 0.7142857142857143
+        },
+        "mrr": 0.4775510204081633,
+        "negative_correct_abstentions": 0
+      },
+      "source_verification_warning_responses": 4
+    }
+  },
+  "caveats": [
+    "Full CLI wall time includes process/model startup and exact Git evidence checks.",
+    "No-match retrieval is not automatically a correct negative answer.",
+    "MRR computed from these outputs is truncated at the recorded rank limit.",
+    "Latency percentiles use linear interpolation over one observation per query, not repeated-run tail estimates.",
+    "Model generation, runtime, scope and coverage are retained in local rankings; raw content stays in the chosen output directory.",
+    "Output clipping does not invalidate complete commit rankings with verified evidence; clipping remains explicitly reported.",
+    "All questions and labels remain retrospective diagnostic evidence, including three unjudged questions; no independent holdout is certified.",
+    "This run uses ARM64 INT8 ONNX MiniLM, whereas the earlier NaLCoS native matrix used FP32; these are not a controlled quantization comparison.",
+    "Timings are shared-host single observations, with no repeated-run or release-qualification claim.",
+    "Nine searches report one omitted Git-source evidence record each (4 lexical, 1 semantic, 4 hybrid); distinct-record count and cause remain under investigation. All returned evidence is verified."
+  ],
+  "original_assessment_sha256": "0865f4e415d721b558acf593331f32fc26c50882223c68f2da104ee0f8e194a2",
+  "assessment_driver_sha256": "c3d385105dcb9b5093ccd2aca901a6c5cc21dfb5ddb11be864303e7b56ccc619",
+  "assessment_note": "Reassessed the retained response bytes without rerunning any search; output clipping is separate from retrieval completeness.",
+  "assessment_rankings_sha256": {
+    "lexical": "d6bd86e8c18cbdbc96e391c3b3bca2d905f523a47a235ac98cf206d9505eba68",
+    "semantic": "2333be52e99c04f10b5c075f7e70e4f592b22136f8a95026a28f3c6affed1bce",
+    "hybrid": "9c61614f75c05d9192a8d446e481eb81cbca01f5f5a982b7d56bdc9f0afbebea"
+  },
+  "original_rankings_sha256": {
+    "lexical": "1748caedcb1499a79f191f423f4f307a1831e740c52019f12bbaef3ca68703d1",
+    "semantic": "73dfe10562077baeebb5174e3d107e0d193f824dcc077e4aa8abc3d06f654734",
+    "hybrid": "0862c47c8bb01eb9f15a7538032b2844359c1989175ceb18823447da3c563c59"
+  },
+  "repository": "https://github.com/scaffold-eth/scaffold-eth-challenges",
+  "model_variant": "MiniLM ARM64 dynamic INT8 ONNX",
+  "query_manifest_provenance": {
+    "full_locked_manifest_sha256": "18af39c123e5185892b2bc01f99f01ee5512af7097e5b5deece48d9b40970237",
+    "full_adjudicated_manifest_sha256": "ab9d054895bcd592ef235206362ef339590cf8fc85b8885033da8087ae240b15",
+    "subset_manifest_sha256": "505ece514b4ff6133ba75ea067f530c7c7c9503f79bea6cd92c11cfffa7b1ef7",
+    "source_lock_utc": "2026-10-01T21:01:53.179136+00:00",
+    "origin": "retrospective",
+    "development_questions": 7,
+    "diagnostic_heldout_questions": 3,
+    "positive_questions": 7,
+    "unjudged_questions": 3,
+    "unique_gold_commits": 7,
+    "genuine_independent_heldout_certified": 0,
+    "labels_changed_after_ranking": false,
+    "raw_sources_queries_and_gold_retained_locally": true
+  },
+  "release_qualified": false,
+  "output_budget_bytes": 1048576,
+  "message_cap_bytes": 4096,
+  "retained_first_assessment": {
+    "source_summary_sha256": "0865f4e415d721b558acf593331f32fc26c50882223c68f2da104ee0f8e194a2",
+    "complete_responses": {
+      "lexical": 10,
+      "semantic": 10,
+      "hybrid": 8
+    },
+    "note": "First adapter treated output clipping as incomplete retrieval. These original files remain unchanged; revised assessment uses identical response bytes and commit orders."
+  },
+  "active_generation": {
+    "artifact": "onnx/model_qint8_arm64.onnx",
+    "backend": "onnx",
+    "dimensions": 384,
+    "document_prefix": "",
+    "fingerprint": "a7d67d211c11d4050152065cb1f9a6422871aaa7f60cf0193f4168e7e7811326",
+    "id": 1,
+    "model": "sentence-transformers/multi-qa-MiniLM-L6-cos-v1",
+    "query_prefix": "",
+    "revision": "b207367332321f8e44f96e224ef15bc607f4dbf0",
+    "state": "active"
+  },
+  "runtime": {
+    "batch_size": 1,
+    "calibration": [],
+    "device_name": "cpu",
+    "fallback_reasons": [
+      "No matching device calibration is cached for this model and workload; CPU selected. Run init/sync with calibration to compare available accelerators"
+    ],
+    "provider": "Onnx",
+    "qualified": false,
+    "requested_device": "auto",
+    "runtime_version": "ONNX Runtime 1.23.2; ort-2.0.0-rc.10 (API 22); ORT Build Info: git-branch=HEAD, git-commit-id=a83fc4d58c, build type=Release",
+    "selected_device": "cpu"
+  },
+  "history_coverage": {
+    "complete": true,
+    "indexed": 829,
+    "omissions": 57,
+    "total": 829
+  },
+  "embedding_coverage": {
+    "complete": true,
+    "indexed": 15684,
+    "total": 15684
+  },
+  "vector_chunks": 39909,
+  "model_artifact_sha256": "89779550529b9077685f44c041cb6d5f5ce394fae8937f91d1b3a8acc675beb6",
+  "model_artifact_bytes": 23026053,
+  "diagnostics": {
+    "lexical": {
+      "file": "nft-int8-lexical-diagnostics.json",
+      "sha256": "238db2df99b2e7cf46984b7d23cec2b7cc0066e7b2e159fc634366042ff50df5"
+    },
+    "semantic": {
+      "file": "nft-int8-semantic-diagnostics.json",
+      "sha256": "9a129e3a128a8186d4765848bc2a7112c70f938226b24f5ef027130baed247e9"
+    },
+    "hybrid": {
+      "file": "nft-int8-hybrid-diagnostics.json",
+      "sha256": "df04e7d867a939fe62f1a09ffba4cb0991910acd39934ec7d9306172fb613354"
+    }
+  },
+  "source_verification_warning_responses": 9
+}

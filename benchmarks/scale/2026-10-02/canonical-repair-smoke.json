@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "purpose": "Real-index canonical repair smoke, not model or latency qualification",
+  "binary_sha256": "9513563d7439c15ccf30112db73936e1f9a0bd15d01aadeaf6ef28f6c41c8f10",
+  "canonical_documents": 15684,
+  "changed_documents": 1,
+  "unchanged_documents_preserved": 15683,
+  "unchanged_vector_chunks_byte_identical": 39907,
+  "active_generation_preserved": true,
+  "source_refresh_required_after": false,
+  "corrected_evidence_verified": true,
+  "corrected_new_line_range": [
+    1,
+    106
+  ],
+  "hybrid_source_verification_warnings": 0,
+  "repeat_sync_documents_embedded": 0,
+  "repair_seconds_shared_host": 29.526122542010853
+}

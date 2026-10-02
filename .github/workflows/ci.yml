@@ -1,0 +1,74 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_BUILD_JOBS: 2
+
+jobs:
+  cpu:
+    name: CPU checks (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Select an isolated model cache
+        shell: bash
+        run: echo "HF_HUB_CACHE=$RUNNER_TEMP/nalcos-hf/hub" >> "$GITHUB_ENV"
+      - name: Check formatting
+        if: runner.os == 'Linux'
+        run: cargo fmt --all -- --check
+      - name: Lint CPU build
+        run: cargo clippy --locked --no-default-features --all-targets -- -D warnings
+      - name: Test CPU build
+        run: cargo test --locked --no-default-features --all-targets
+      - name: Inspect an uninitialized index without network access
+        env:
+          NALCOS_DATA_DIR: ${{ runner.temp }}/nalcos-cli-smoke
+        run: cargo run --locked --offline --no-default-features -- --offline --json status
+      - name: Restore assets for the optional Metal smoke test
+        if: runner.os == 'macOS' && runner.arch == 'ARM64'
+        uses: actions/cache/restore@v5
+        with:
+          path: ${{ env.HF_HUB_CACHE }}
+          key: nalcos-hf-embeddinggemma-0f741b5a6585bd53aeb15cd1372c56f2a0f65e12
+      - name: Check actual Metal model prerequisites
+        if: runner.os == 'macOS'
+        id: metal-assets
+        shell: bash
+        run: |
+          model="$HF_HUB_CACHE/models--ggml-org--embeddinggemma-300M-GGUF/snapshots/0f741b5a6585bd53aeb15cd1372c56f2a0f65e12/embeddinggemma-300M-Q8_0.gguf"
+          if [[ "$(uname -m)" == "arm64" && -f "$model" ]]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Metal smoke skipped: Apple Silicon and the pinned cached GGUF are required. No model was downloaded."
+            echo "Metal smoke skipped because actual platform/model prerequisites were unavailable; CPU CI is not accelerator qualification." >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Run real cached-model Metal smoke test
+        if: runner.os == 'macOS' && steps.metal-assets.outputs.available == 'true'
+        env:
+          NALCOS_RUN_MODEL_TESTS: "1"
+        run: cargo test --locked --no-default-features --lib embedding::tests::cached_embeddinggemma_metal_smoke -- --ignored --exact --nocapture

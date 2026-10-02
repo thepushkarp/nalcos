@@ -1,0 +1,93 @@
+{
+  "schema_version": 1,
+  "kind": "native_auto_calibration_smoke",
+  "date": "2026-10-02",
+  "source_sha256": {
+    "init.json": "62ae1397459b90130ad4e5406d890de0590c39add71166c4e56900bbba6eb626",
+    "sync.json": "f4122a722187c40cd247b22b7588991d6d37ae957f6ec6ae6d8546b191ed7045",
+    "search.json": "bfaaaa1544ce4807a13d6b896eaabb8115a5868301f8840583ecd4f752a404a4"
+  },
+  "native_build": {
+    "binary": "nalcos",
+    "profile": "release",
+    "binary_sha256": "5ed720f48df6b8056de8c7112176034cfa86924698dda41db45a1f54340bfaaa",
+    "runtime": "llama-cpp-2-0.1.158",
+    "threads": 4
+  },
+  "environment": {
+    "os": "macOS",
+    "architecture": "aarch64",
+    "processor": "Apple M2",
+    "memory_gib": 16,
+    "offline": true
+  },
+  "model": {
+    "model": "ggml-org/embeddinggemma-300M-GGUF",
+    "revision": "0f741b5a6585bd53aeb15cd1372c56f2a0f65e12",
+    "artifact": "embeddinggemma-300M-Q8_0.gguf",
+    "backend": "gguf",
+    "dimensions": 768,
+    "document_prefix": "title: none | text: ",
+    "query_prefix": "task: search result | query: "
+  },
+  "fixture": {
+    "type": "synthetic Git repository",
+    "commits": 1,
+    "documents": 3
+  },
+  "calibration_policy": "calibration-policy-v2-parity9999-query3-doc3-10pct-32-batches",
+  "initialization": {
+    "commits_added": 1,
+    "documents_embedded": 3,
+    "workloads": {
+      "index": {
+        "requested_device": "auto",
+        "selected_device": "cpu",
+        "batch_size": 8,
+        "candidate_rejected": "metal",
+        "failed_input_kind": "query",
+        "failed_sample": 1,
+        "cosine": 0.99983677,
+        "required_cosine": 0.9999,
+        "qualified": false
+      },
+      "query": {
+        "requested_device": "auto",
+        "selected_device": "cpu",
+        "batch_size": 1,
+        "candidate_rejected": "metal",
+        "failed_input_kind": "query",
+        "failed_sample": 1,
+        "cosine": 0.99981067,
+        "required_cosine": 0.9999,
+        "qualified": false
+      }
+    }
+  },
+  "unchanged_sync": {
+    "commits_added": 0,
+    "documents_embedded": 0,
+    "same_generation_fingerprint": true,
+    "embedding_call_count": null,
+    "embedding_calls_instrumented": false
+  },
+  "search": {
+    "mode_used": "semantic",
+    "selected_device": "cpu",
+    "cached_query_selection_reason_and_measurements_match": true,
+    "results": 1,
+    "results_with_verified_evidence": 1
+  },
+  "stderr_bytes": {
+    "init": 0,
+    "sync": 0,
+    "search": 0
+  },
+  "release_qualified": false,
+  "caveats": [
+    "One synthetic commit and three documents; this is a runtime behavior smoke check.",
+    "Unchanged sync reported zero document embeddings; total embedding calls were not instrumented.",
+    "A failed sample rejects a candidate before remaining parity samples and candidate timing run.",
+    "This run does not qualify retrieval quality, performance, or a default model."
+  ]
+}

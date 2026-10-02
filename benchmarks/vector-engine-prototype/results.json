@@ -1,0 +1,287 @@
+{
+  "schema_version": 1,
+  "status": "not_qualified",
+  "date": "2026-10-02",
+  "engine": "USearch",
+  "engine_version": "2.26.2",
+  "license": "Apache-2.0",
+  "platform": "Apple M2, macOS, arm64",
+  "build": "Native Rust/C++ release build succeeded, pinned Cargo.lock; CPU NEON detected outside sandbox. Sandbox selected serial kernels because sysctl probes were denied.",
+  "metric": "inner product over normalized F32 vectors, no quantization",
+  "connectivity": 32,
+  "expansion_add": 128,
+  "expansion_search": 128,
+  "inputs": {
+    "corpus": "NaLCoS active local native MiniLM generation",
+    "commits": 111,
+    "vectors": 1282,
+    "dimensions": 384,
+    "model": "sentence-transformers/multi-qa-MiniLM-L6-cos-v1",
+    "revision": "b207367332321f8e44f96e224ef15bc607f4dbf0",
+    "artifact": "onnx/model.onnx",
+    "artifact_sha256": "826501e8460f6e1a83fa30a9b173f051100abda5559e1352efc0e3fe3136afc2",
+    "queries": 12,
+    "query_source": "Preserved minilm-original-onnx-cpu-matched.npz queries.npy from local pilot",
+    "query_vectors_sha256": "b704f243c75156aeed47ae9156f571c19984bf4c80a21ad2856e9cf3522ccdc7"
+  },
+  "provenance": {
+    "benchmark_binary_sha256": "e130a7630074a4677d48fc765fc3de81d75415509331e68366db7d99cd689c81",
+    "serialized_index_sha256": "ebe4a2cafcfd013cd28dc3d693ed0e795497f03b79fd252c07b5620fca00241d",
+    "serialized_index_bytes": 2323908,
+    "source_sha256": {
+      "src/main.rs": "5b2da86e6871eb9f74fd8bbbd80ddca03aab4d021ff88b55f22283487807cd03",
+      "Cargo.toml": "9951da192749bde041cb014839b4c34c22df49d31bbb35b7bfc8e73288739a2e",
+      "Cargo.lock": "ec32800315ac8bd6e3551e4ffc97faf5955e877141c0eaf22f688525da7ba6bc"
+    }
+  },
+  "correctness": [
+    {
+      "scope_divisor": 1,
+      "eligible_commits": 111,
+      "expansion": 128,
+      "recall_mean": {
+        "10": 0.9916666666666667,
+        "100": 0.9983333333333333
+      },
+      "recall_min": {
+        "10": 0.9,
+        "100": 0.99
+      },
+      "query_recall": [
+        {
+          "query": 0,
+          "recall_at_10": 0.9,
+          "recall_at_100": 1.0
+        },
+        {
+          "query": 1,
+          "recall_at_10": 1.0,
+          "recall_at_100": 0.99
+        },
+        {
+          "query": 2,
+          "recall_at_10": 1.0,
+          "recall_at_100": 1.0
+        },
+        {
+          "query": 3,
+          "recall_at_10": 1.0,
+          "recall_at_100": 0.99
+        },
+        {
+          "query": 4,
+          "recall_at_10": 1.0,
+          "recall_at_100": 1.0
+        },
+        {
+          "query": 5,
+          "recall_at_10": 1.0,
+          "recall_at_100": 1.0
+        },
+        {
+          "query": 6,
+          "recall_at_10": 1.0,
+          "recall_at_100": 1.0
+        },
+        {
+          "query": 7,
+          "recall_at_10": 1.0,
+          "recall_at_100": 1.0
+        },
+        {
+          "query": 8,
+          "recall_at_10": 1.0,
+          "recall_at_100": 1.0
+        },
+        {
+          "query": 9,
+          "recall_at_10": 1.0,
+          "recall_at_100": 1.0
+        },
+        {
+          "query": 10,
+          "recall_at_10": 1.0,
+          "recall_at_100": 1.0
+        },
+        {
+          "query": 11,
+          "recall_at_10": 1.0,
+          "recall_at_100": 1.0
+        }
+      ]
+    },
+    {
+      "scope_divisor": 10,
+      "eligible_commits": 12,
+      "expansion": 128,
+      "recall_mean": {
+        "10": 1.0,
+        "100": 1.0
+      },
+      "recall_min": {
+        "10": 1.0,
+        "100": 1.0
+      },
+      "query_recall": [
+        {
+          "query": 0,
+          "recall_at_10": 1.0,
+          "recall_at_100": 1.0
+        },
+        {
+          "query": 1,
+          "recall_at_10": 1.0,
+          "recall_at_100": 1.0
+        },
+        {
+          "query": 2,
+          "recall_at_10": 1.0,
+          "recall_at_100": 1.0
+        },
+        {
+          "query": 3,
+          "recall_at_10": 1.0,
+          "recall_at_100": 1.0
+        },
+        {
+          "query": 4,
+          "recall_at_10": 1.0,
+          "recall_at_100": 1.0
+        },
+        {
+          "query": 5,
+          "recall_at_10": 1.0,
+          "recall_at_100": 1.0
+        },
+        {
+          "query": 6,
+          "recall_at_10": 1.0,
+          "recall_at_100": 1.0
+        },
+        {
+          "query": 7,
+          "recall_at_10": 1.0,
+          "recall_at_100": 1.0
+        },
+        {
+          "query": 8,
+          "recall_at_10": 1.0,
+          "recall_at_100": 1.0
+        },
+        {
+          "query": 9,
+          "recall_at_10": 1.0,
+          "recall_at_100": 1.0
+        },
+        {
+          "query": 10,
+          "recall_at_10": 1.0,
+          "recall_at_100": 1.0
+        },
+        {
+          "query": 11,
+          "recall_at_10": 1.0,
+          "recall_at_100": 1.0
+        }
+      ]
+    },
+    {
+      "scope_divisor": 100,
+      "eligible_commits": 2,
+      "expansion": 128,
+      "recall_mean": {
+        "10": 1.0,
+        "100": 1.0
+      },
+      "recall_min": {
+        "10": 1.0,
+        "100": 1.0
+      },
+      "query_recall": [
+        {
+          "query": 0,
+          "recall_at_10": 1.0,
+          "recall_at_100": 1.0
+        },
+        {
+          "query": 1,
+          "recall_at_10": 1.0,
+          "recall_at_100": 1.0
+        },
+        {
+          "query": 2,
+          "recall_at_10": 1.0,
+          "recall_at_100": 1.0
+        },
+        {
+          "query": 3,
+          "recall_at_10": 1.0,
+          "recall_at_100": 1.0
+        },
+        {
+          "query": 4,
+          "recall_at_10": 1.0,
+          "recall_at_100": 1.0
+        },
+        {
+          "query": 5,
+          "recall_at_10": 1.0,
+          "recall_at_100": 1.0
+        },
+        {
+          "query": 6,
+          "recall_at_10": 1.0,
+          "recall_at_100": 1.0
+        },
+        {
+          "query": 7,
+          "recall_at_10": 1.0,
+          "recall_at_100": 1.0
+        },
+        {
+          "query": 8,
+          "recall_at_10": 1.0,
+          "recall_at_100": 1.0
+        },
+        {
+          "query": 9,
+          "recall_at_10": 1.0,
+          "recall_at_100": 1.0
+        },
+        {
+          "query": 10,
+          "recall_at_10": 1.0,
+          "recall_at_100": 1.0
+        },
+        {
+          "query": 11,
+          "recall_at_10": 1.0,
+          "recall_at_100": 1.0
+        }
+      ]
+    }
+  ],
+  "performance": {
+    "qualified": false,
+    "reason": "Small correctness runs overlapped a large index build; timing values are intentionally excluded. This prototype does not include Git scope resolution, source verification, native query inference or full CLI startup."
+  },
+  "scale_construction": {
+    "requested_vectors": 300000,
+    "dimensions": 384,
+    "synthetic": true,
+    "purpose": "Random Rademacher vectors stress ANN recall; no semantic quality meaning",
+    "status": "interrupted_by_coordinator",
+    "last_approximate_progress_vectors": 90000,
+    "workers": 4,
+    "exit_code": 130,
+    "reason": "Bounded investigation under shared-host load; one intentional timing pause. No complete scale index or scale ANN recall/latency report was produced.",
+    "files_preserved": true
+  },
+  "qualification_limitations": [
+    "12 retrospective NaLCoS queries are not a genuine locked cross-repository evaluation set.",
+    "One all-scope query retrieved only 9 of 10 exact top commits.",
+    "Dense identifier modulo scopes exercise filtering, not real Git ancestry correctness.",
+    "All retained vectors use F32, but approximate graph traversal can still lose results.",
+    "No production dependency, database or retrieval implementation changed."
+  ]
+}

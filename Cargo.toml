@@ -1,0 +1,49 @@
+[package]
+name = "nalcos"
+version = "2.0.0-alpha.1"
+edition = "2024"
+rust-version = "1.88"
+description = "Local Git history search for people and coding agents"
+license = "MIT"
+repository = "https://github.com/thepushkarp/nalcos"
+include = [
+    "/Cargo.toml", "/Cargo.lock", "/src/**", "/tests/**", "/examples/**",
+    "/README.md", "/LICENSE", "/docs/**",
+    "/benchmarks/**/*.py", "/benchmarks/**/*.json", "/benchmarks/**/*.jsonl",
+]
+
+[dependencies]
+clap = { version = "4.6", features = ["derive", "env"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+rusqlite = { version = "0.38", features = ["bundled", "hooks"] }
+sha2 = "0.10"
+toml = "1.0"
+directories = "6.0"
+fs2 = "0.4"
+ctrlc = "3.5"
+humantime = "2.3"
+chrono = { version = "0.4", default-features = false, features = ["std", "clock", "serde"] }
+globset = "0.4"
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
+tokenizers = { version = "0.22", default-features = false, features = ["onig"] }
+hf-hub = { version = "=0.4.3", default-features = false }
+ort = { version = "=2.0.0-rc.10", default-features = false, features = ["load-dynamic", "coreml", "cuda"] }
+llama-cpp-2 = { version = "=0.1.158", default-features = false }
+tar = "0.4"
+flate2 = "1"
+similar = "2.7"
+self_cell = "1"
+libloading = "0.8"
+
+[features]
+default = []
+cuda = ["llama-cpp-2/cuda"]
+vulkan = ["llama-cpp-2/vulkan"]
+
+[dev-dependencies]
+tempfile = "3.27"
+
+[profile.release]
+lto = "thin"
+strip = "debuginfo"

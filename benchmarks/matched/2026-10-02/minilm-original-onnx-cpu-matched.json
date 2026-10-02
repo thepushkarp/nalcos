@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "label": "minilm-original-onnx-cpu-matched",
+  "mode": "benchmark",
+  "model_id": "sentence-transformers/multi-qa-MiniLM-L6-cos-v1",
+  "revision": "b207367332321f8e44f96e224ef15bc607f4dbf0",
+  "artifact_sha256": "826501e8460f6e1a83fa30a9b173f051100abda5559e1352efc0e3fe3136afc2",
+  "artifact_bytes": 90405214,
+  "tokenizer_sha256": "7fa9272f7ef1ebd1666bb3bfd9d4707660ff0076ca9d1671cd9a9c6e18e03331",
+  "corpus_sha256": "190f64c5e38719221c6e0b84809ead5e1041a9e6ca1b004c0b264185cc5ab491",
+  "backend": "cpu",
+  "pooling": "mean",
+  "normalization": "L2",
+  "max_tokens": 512,
+  "threads": 4,
+  "batch_size": 8,
+  "query_prefix": "",
+  "platform": "darwin-arm64",
+  "python": "3.13.15",
+  "runtime": "onnxruntime 1.30.0",
+  "load_seconds": 0.186614666999958,
+  "dimensions": 384,
+  "documents": 401,
+  "truncated_documents": 1,
+  "tokens_mean": 154.08229426433914,
+  "tokens_max": 668,
+  "first_query_ms": 8.632167002360802,
+  "warm_query_p50_ms": 2.460936997522367,
+  "warm_query_p95_ms": 3.28519774848246,
+  "corpus_seconds": [
+    10.710749332996784,
+    11.099931167002069,
+    12.932988708002085
+  ],
+  "docs_per_second": [
+    37.43902387526077,
+    36.12635015180047,
+    31.005980833485726
+  ],
+  "unit_norm_max_error": 1.1920928955078125e-07,
+  "query_timing_includes": "tokenization, embedding, normalization; GGUF includes loopback HTTP; excludes search/Git/CLI startup",
+  "driver_peak_rss_mib": 668.34375
+}

@@ -1,0 +1,10 @@
+[package]
+name = "nalcos-usearch-prototype"
+version = "0.1.0"
+edition = "2024"
+[dependencies]
+usearch = "=2.26.2"
+rusqlite = { version = "0.38", features = ["bundled"] }
+serde_json = "1"
+[profile.release]
+opt-level = 3

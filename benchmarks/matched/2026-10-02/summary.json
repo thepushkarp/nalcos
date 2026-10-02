@@ -1,0 +1,986 @@
+{
+  "schema_version": 1,
+  "qualified_default": false,
+  "scope": "Same retrospective 12-query, 401-document corpus; not a heldout benchmark.",
+  "hardware": {
+    "chip": "Apple M2",
+    "memory_gib": 16,
+    "cpu_threads": 4
+  },
+  "method": {
+    "max_tokens": 512,
+    "document_batch_size": 8,
+    "query_samples": 36,
+    "warmups": 3,
+    "index_passes": 3,
+    "order": [
+      "minilm-original-f32-cpu-matched",
+      "minilm-original-f32-metal-matched",
+      "minilm-original-onnx-cpu-matched"
+    ],
+    "concurrent_inference_or_compile": "none coordinated",
+    "cache": "OS cache not cleared",
+    "thermal_state": "not instrumented",
+    "timing_harness_sha256": "7a9524bb0f30436ad51da7a3245a72b113b684ea660006388e184389f387b412"
+  },
+  "results": [
+    {
+      "label": "minilm-original-f32-cpu-matched",
+      "runtime": "version: 0.4.0 (build 10809, commit 5266f24da)\nbuilt with AppleClang 21.0.0.21000101 for Darwin arm64",
+      "backend": "cpu",
+      "artifact_bytes": 90899872,
+      "index_seconds": [
+        7.181714958998782,
+        6.913720874996216,
+        7.5453898339983425
+      ],
+      "median_index_seconds": 7.181714958998782,
+      "median_docs_per_second": 55.836245561032996,
+      "warm_query_p50_ms": 15.035561998956837,
+      "warm_query_p95_ms": 17.735020499458187,
+      "quality": {
+        "semantic_messages": {
+          "split": "exploratory",
+          "questions": 12,
+          "answerable_questions": 12,
+          "negative_questions": 0,
+          "repositories": 1,
+          "responses": 12,
+          "complete_responses": 12,
+          "coverage_complete": true,
+          "recall": {
+            "1": 0.5833333333333334,
+            "5": 0.6666666666666666,
+            "10": 0.75
+          },
+          "hit_rate": {
+            "1": 0.5833333333333334,
+            "5": 0.6666666666666666,
+            "10": 0.75
+          },
+          "mrr": 0.6434660033167496,
+          "negative_correct_abstentions": 0,
+          "details": [
+            {
+              "query_id": "nalcos-pilot-01",
+              "first_relevant_rank": 1
+            },
+            {
+              "query_id": "nalcos-pilot-02",
+              "first_relevant_rank": 2
+            },
+            {
+              "query_id": "nalcos-pilot-03",
+              "first_relevant_rank": 25
+            },
+            {
+              "query_id": "nalcos-pilot-04",
+              "first_relevant_rank": 1
+            },
+            {
+              "query_id": "nalcos-pilot-05",
+              "first_relevant_rank": 1
+            },
+            {
+              "query_id": "nalcos-pilot-06",
+              "first_relevant_rank": 1
+            },
+            {
+              "query_id": "nalcos-pilot-07",
+              "first_relevant_rank": 67
+            },
+            {
+              "query_id": "nalcos-pilot-08",
+              "first_relevant_rank": 1
+            },
+            {
+              "query_id": "nalcos-pilot-09",
+              "first_relevant_rank": 42
+            },
+            {
+              "query_id": "nalcos-pilot-10",
+              "first_relevant_rank": 7
+            },
+            {
+              "query_id": "nalcos-pilot-11",
+              "first_relevant_rank": 1
+            },
+            {
+              "query_id": "nalcos-pilot-12",
+              "first_relevant_rank": 1
+            }
+          ]
+        },
+        "semantic_message_diff": {
+          "split": "exploratory",
+          "questions": 12,
+          "answerable_questions": 12,
+          "negative_questions": 0,
+          "repositories": 1,
+          "responses": 12,
+          "complete_responses": 12,
+          "coverage_complete": true,
+          "recall": {
+            "1": 0.5,
+            "5": 0.6666666666666666,
+            "10": 0.8333333333333334
+          },
+          "hit_rate": {
+            "1": 0.5,
+            "5": 0.6666666666666666,
+            "10": 0.8333333333333334
+          },
+          "mrr": 0.581031746031746,
+          "negative_correct_abstentions": 0,
+          "details": [
+            {
+              "query_id": "nalcos-pilot-01",
+              "first_relevant_rank": 4
+            },
+            {
+              "query_id": "nalcos-pilot-02",
+              "first_relevant_rank": 7
+            },
+            {
+              "query_id": "nalcos-pilot-03",
+              "first_relevant_rank": 3
+            },
+            {
+              "query_id": "nalcos-pilot-04",
+              "first_relevant_rank": 1
+            },
+            {
+              "query_id": "nalcos-pilot-05",
+              "first_relevant_rank": 1
+            },
+            {
+              "query_id": "nalcos-pilot-06",
+              "first_relevant_rank": 7
+            },
+            {
+              "query_id": "nalcos-pilot-07",
+              "first_relevant_rank": 12
+            },
+            {
+              "query_id": "nalcos-pilot-08",
+              "first_relevant_rank": 1
+            },
+            {
+              "query_id": "nalcos-pilot-09",
+              "first_relevant_rank": 50
+            },
+            {
+              "query_id": "nalcos-pilot-10",
+              "first_relevant_rank": 1
+            },
+            {
+              "query_id": "nalcos-pilot-11",
+              "first_relevant_rank": 1
+            },
+            {
+              "query_id": "nalcos-pilot-12",
+              "first_relevant_rank": 1
+            }
+          ]
+        },
+        "lexical": {
+          "split": "exploratory",
+          "questions": 12,
+          "answerable_questions": 12,
+          "negative_questions": 0,
+          "repositories": 1,
+          "responses": 12,
+          "complete_responses": 12,
+          "coverage_complete": true,
+          "recall": {
+            "1": 0.16666666666666666,
+            "5": 0.5833333333333334,
+            "10": 0.9166666666666666
+          },
+          "hit_rate": {
+            "1": 0.16666666666666666,
+            "5": 0.5833333333333334,
+            "10": 0.9166666666666666
+          },
+          "mrr": 0.31620370370370376,
+          "negative_correct_abstentions": 0,
+          "details": [
+            {
+              "query_id": "nalcos-pilot-01",
+              "first_relevant_rank": 5
+            },
+            {
+              "query_id": "nalcos-pilot-02",
+              "first_relevant_rank": 8
+            },
+            {
+              "query_id": "nalcos-pilot-03",
+              "first_relevant_rank": 8
+            },
+            {
+              "query_id": "nalcos-pilot-04",
+              "first_relevant_rank": 3
+            },
+            {
+              "query_id": "nalcos-pilot-05",
+              "first_relevant_rank": 1
+            },
+            {
+              "query_id": "nalcos-pilot-06",
+              "first_relevant_rank": 6
+            },
+            {
+              "query_id": "nalcos-pilot-07",
+              "first_relevant_rank": 1
+            },
+            {
+              "query_id": "nalcos-pilot-08",
+              "first_relevant_rank": null
+            },
+            {
+              "query_id": "nalcos-pilot-09",
+              "first_relevant_rank": 3
+            },
+            {
+              "query_id": "nalcos-pilot-10",
+              "first_relevant_rank": 5
+            },
+            {
+              "query_id": "nalcos-pilot-11",
+              "first_relevant_rank": 9
+            },
+            {
+              "query_id": "nalcos-pilot-12",
+              "first_relevant_rank": 5
+            }
+          ]
+        },
+        "hybrid": {
+          "split": "exploratory",
+          "questions": 12,
+          "answerable_questions": 12,
+          "negative_questions": 0,
+          "repositories": 1,
+          "responses": 12,
+          "complete_responses": 12,
+          "coverage_complete": true,
+          "recall": {
+            "1": 0.08333333333333333,
+            "5": 0.75,
+            "10": 0.9166666666666666
+          },
+          "hit_rate": {
+            "1": 0.08333333333333333,
+            "5": 0.75,
+            "10": 0.9166666666666666
+          },
+          "mrr": 0.3678571428571429,
+          "negative_correct_abstentions": 0,
+          "details": [
+            {
+              "query_id": "nalcos-pilot-01",
+              "first_relevant_rank": 4
+            },
+            {
+              "query_id": "nalcos-pilot-02",
+              "first_relevant_rank": 7
+            },
+            {
+              "query_id": "nalcos-pilot-03",
+              "first_relevant_rank": 4
+            },
+            {
+              "query_id": "nalcos-pilot-04",
+              "first_relevant_rank": 2
+            },
+            {
+              "query_id": "nalcos-pilot-05",
+              "first_relevant_rank": 1
+            },
+            {
+              "query_id": "nalcos-pilot-06",
+              "first_relevant_rank": 5
+            },
+            {
+              "query_id": "nalcos-pilot-07",
+              "first_relevant_rank": 2
+            },
+            {
+              "query_id": "nalcos-pilot-08",
+              "first_relevant_rank": 6
+            },
+            {
+              "query_id": "nalcos-pilot-09",
+              "first_relevant_rank": 14
+            },
+            {
+              "query_id": "nalcos-pilot-10",
+              "first_relevant_rank": 2
+            },
+            {
+              "query_id": "nalcos-pilot-11",
+              "first_relevant_rank": 3
+            },
+            {
+              "query_id": "nalcos-pilot-12",
+              "first_relevant_rank": 2
+            }
+          ]
+        }
+      }
+    },
+    {
+      "label": "minilm-original-f32-metal-matched",
+      "runtime": "version: 0.4.0 (build 10809, commit 5266f24da)\nbuilt with AppleClang 21.0.0.21000101 for Darwin arm64",
+      "backend": "metal",
+      "artifact_bytes": 90899872,
+      "index_seconds": [
+        3.1815533749977476,
+        3.0826379580030334,
+        2.1961957500025164
+      ],
+      "median_index_seconds": 3.0826379580030334,
+      "median_docs_per_second": 130.0833913885146,
+      "warm_query_p50_ms": 3.8528335026057903,
+      "warm_query_p95_ms": 8.993947494673193,
+      "quality": {
+        "semantic_messages": {
+          "split": "exploratory",
+          "questions": 12,
+          "answerable_questions": 12,
+          "negative_questions": 0,
+          "repositories": 1,
+          "responses": 12,
+          "complete_responses": 12,
+          "coverage_complete": true,
+          "recall": {
+            "1": 0.5833333333333334,
+            "5": 0.6666666666666666,
+            "10": 0.75
+          },
+          "hit_rate": {
+            "1": 0.5833333333333334,
+            "5": 0.6666666666666666,
+            "10": 0.75
+          },
+          "mrr": 0.6433377981885445,
+          "negative_correct_abstentions": 0,
+          "details": [
+            {
+              "query_id": "nalcos-pilot-01",
+              "first_relevant_rank": 1
+            },
+            {
+              "query_id": "nalcos-pilot-02",
+              "first_relevant_rank": 2
+            },
+            {
+              "query_id": "nalcos-pilot-03",
+              "first_relevant_rank": 26
+            },
+            {
+              "query_id": "nalcos-pilot-04",
+              "first_relevant_rank": 1
+            },
+            {
+              "query_id": "nalcos-pilot-05",
+              "first_relevant_rank": 1
+            },
+            {
+              "query_id": "nalcos-pilot-06",
+              "first_relevant_rank": 1
+            },
+            {
+              "query_id": "nalcos-pilot-07",
+              "first_relevant_rank": 67
+            },
+            {
+              "query_id": "nalcos-pilot-08",
+              "first_relevant_rank": 1
+            },
+            {
+              "query_id": "nalcos-pilot-09",
+              "first_relevant_rank": 42
+            },
+            {
+              "query_id": "nalcos-pilot-10",
+              "first_relevant_rank": 7
+            },
+            {
+              "query_id": "nalcos-pilot-11",
+              "first_relevant_rank": 1
+            },
+            {
+              "query_id": "nalcos-pilot-12",
+              "first_relevant_rank": 1
+            }
+          ]
+        },
+        "semantic_message_diff": {
+          "split": "exploratory",
+          "questions": 12,
+          "answerable_questions": 12,
+          "negative_questions": 0,
+          "repositories": 1,
+          "responses": 12,
+          "complete_responses": 12,
+          "coverage_complete": true,
+          "recall": {
+            "1": 0.5,
+            "5": 0.6666666666666666,
+            "10": 0.8333333333333334
+          },
+          "hit_rate": {
+            "1": 0.5,
+            "5": 0.6666666666666666,
+            "10": 0.8333333333333334
+          },
+          "mrr": 0.581031746031746,
+          "negative_correct_abstentions": 0,
+          "details": [
+            {
+              "query_id": "nalcos-pilot-01",
+              "first_relevant_rank": 4
+            },
+            {
+              "query_id": "nalcos-pilot-02",
+              "first_relevant_rank": 7
+            },
+            {
+              "query_id": "nalcos-pilot-03",
+              "first_relevant_rank": 3
+            },
+            {
+              "query_id": "nalcos-pilot-04",
+              "first_relevant_rank": 1
+            },
+            {
+              "query_id": "nalcos-pilot-05",
+              "first_relevant_rank": 1
+            },
+            {
+              "query_id": "nalcos-pilot-06",
+              "first_relevant_rank": 7
+            },
+            {
+              "query_id": "nalcos-pilot-07",
+              "first_relevant_rank": 12
+            },
+            {
+              "query_id": "nalcos-pilot-08",
+              "first_relevant_rank": 1
+            },
+            {
+              "query_id": "nalcos-pilot-09",
+              "first_relevant_rank": 50
+            },
+            {
+              "query_id": "nalcos-pilot-10",
+              "first_relevant_rank": 1
+            },
+            {
+              "query_id": "nalcos-pilot-11",
+              "first_relevant_rank": 1
+            },
+            {
+              "query_id": "nalcos-pilot-12",
+              "first_relevant_rank": 1
+            }
+          ]
+        },
+        "lexical": {
+          "split": "exploratory",
+          "questions": 12,
+          "answerable_questions": 12,
+          "negative_questions": 0,
+          "repositories": 1,
+          "responses": 12,
+          "complete_responses": 12,
+          "coverage_complete": true,
+          "recall": {
+            "1": 0.16666666666666666,
+            "5": 0.5833333333333334,
+            "10": 0.9166666666666666
+          },
+          "hit_rate": {
+            "1": 0.16666666666666666,
+            "5": 0.5833333333333334,
+            "10": 0.9166666666666666
+          },
+          "mrr": 0.31620370370370376,
+          "negative_correct_abstentions": 0,
+          "details": [
+            {
+              "query_id": "nalcos-pilot-01",
+              "first_relevant_rank": 5
+            },
+            {
+              "query_id": "nalcos-pilot-02",
+              "first_relevant_rank": 8
+            },
+            {
+              "query_id": "nalcos-pilot-03",
+              "first_relevant_rank": 8
+            },
+            {
+              "query_id": "nalcos-pilot-04",
+              "first_relevant_rank": 3
+            },
+            {
+              "query_id": "nalcos-pilot-05",
+              "first_relevant_rank": 1
+            },
+            {
+              "query_id": "nalcos-pilot-06",
+              "first_relevant_rank": 6
+            },
+            {
+              "query_id": "nalcos-pilot-07",
+              "first_relevant_rank": 1
+            },
+            {
+              "query_id": "nalcos-pilot-08",
+              "first_relevant_rank": null
+            },
+            {
+              "query_id": "nalcos-pilot-09",
+              "first_relevant_rank": 3
+            },
+            {
+              "query_id": "nalcos-pilot-10",
+              "first_relevant_rank": 5
+            },
+            {
+              "query_id": "nalcos-pilot-11",
+              "first_relevant_rank": 9
+            },
+            {
+              "query_id": "nalcos-pilot-12",
+              "first_relevant_rank": 5
+            }
+          ]
+        },
+        "hybrid": {
+          "split": "exploratory",
+          "questions": 12,
+          "answerable_questions": 12,
+          "negative_questions": 0,
+          "repositories": 1,
+          "responses": 12,
+          "complete_responses": 12,
+          "coverage_complete": true,
+          "recall": {
+            "1": 0.08333333333333333,
+            "5": 0.75,
+            "10": 0.9166666666666666
+          },
+          "hit_rate": {
+            "1": 0.08333333333333333,
+            "5": 0.75,
+            "10": 0.9166666666666666
+          },
+          "mrr": 0.3678571428571429,
+          "negative_correct_abstentions": 0,
+          "details": [
+            {
+              "query_id": "nalcos-pilot-01",
+              "first_relevant_rank": 4
+            },
+            {
+              "query_id": "nalcos-pilot-02",
+              "first_relevant_rank": 7
+            },
+            {
+              "query_id": "nalcos-pilot-03",
+              "first_relevant_rank": 4
+            },
+            {
+              "query_id": "nalcos-pilot-04",
+              "first_relevant_rank": 2
+            },
+            {
+              "query_id": "nalcos-pilot-05",
+              "first_relevant_rank": 1
+            },
+            {
+              "query_id": "nalcos-pilot-06",
+              "first_relevant_rank": 5
+            },
+            {
+              "query_id": "nalcos-pilot-07",
+              "first_relevant_rank": 2
+            },
+            {
+              "query_id": "nalcos-pilot-08",
+              "first_relevant_rank": 6
+            },
+            {
+              "query_id": "nalcos-pilot-09",
+              "first_relevant_rank": 14
+            },
+            {
+              "query_id": "nalcos-pilot-10",
+              "first_relevant_rank": 2
+            },
+            {
+              "query_id": "nalcos-pilot-11",
+              "first_relevant_rank": 3
+            },
+            {
+              "query_id": "nalcos-pilot-12",
+              "first_relevant_rank": 2
+            }
+          ]
+        }
+      }
+    },
+    {
+      "label": "minilm-original-onnx-cpu-matched",
+      "runtime": "onnxruntime 1.30.0",
+      "backend": "cpu",
+      "artifact_bytes": 90405214,
+      "index_seconds": [
+        10.710749332996784,
+        11.099931167002069,
+        12.932988708002085
+      ],
+      "median_index_seconds": 11.099931167002069,
+      "median_docs_per_second": 36.12635015180047,
+      "warm_query_p50_ms": 2.460936997522367,
+      "warm_query_p95_ms": 3.28519774848246,
+      "quality": {
+        "semantic_messages": {
+          "split": "exploratory",
+          "questions": 12,
+          "answerable_questions": 12,
+          "negative_questions": 0,
+          "repositories": 1,
+          "responses": 12,
+          "complete_responses": 12,
+          "coverage_complete": true,
+          "recall": {
+            "1": 0.5833333333333334,
+            "5": 0.6666666666666666,
+            "10": 0.75
+          },
+          "hit_rate": {
+            "1": 0.5833333333333334,
+            "5": 0.6666666666666666,
+            "10": 0.75
+          },
+          "mrr": 0.6433377981885445,
+          "negative_correct_abstentions": 0,
+          "details": [
+            {
+              "query_id": "nalcos-pilot-01",
+              "first_relevant_rank": 1
+            },
+            {
+              "query_id": "nalcos-pilot-02",
+              "first_relevant_rank": 2
+            },
+            {
+              "query_id": "nalcos-pilot-03",
+              "first_relevant_rank": 26
+            },
+            {
+              "query_id": "nalcos-pilot-04",
+              "first_relevant_rank": 1
+            },
+            {
+              "query_id": "nalcos-pilot-05",
+              "first_relevant_rank": 1
+            },
+            {
+              "query_id": "nalcos-pilot-06",
+              "first_relevant_rank": 1
+            },
+            {
+              "query_id": "nalcos-pilot-07",
+              "first_relevant_rank": 67
+            },
+            {
+              "query_id": "nalcos-pilot-08",
+              "first_relevant_rank": 1
+            },
+            {
+              "query_id": "nalcos-pilot-09",
+              "first_relevant_rank": 42
+            },
+            {
+              "query_id": "nalcos-pilot-10",
+              "first_relevant_rank": 7
+            },
+            {
+              "query_id": "nalcos-pilot-11",
+              "first_relevant_rank": 1
+            },
+            {
+              "query_id": "nalcos-pilot-12",
+              "first_relevant_rank": 1
+            }
+          ]
+        },
+        "semantic_message_diff": {
+          "split": "exploratory",
+          "questions": 12,
+          "answerable_questions": 12,
+          "negative_questions": 0,
+          "repositories": 1,
+          "responses": 12,
+          "complete_responses": 12,
+          "coverage_complete": true,
+          "recall": {
+            "1": 0.5,
+            "5": 0.6666666666666666,
+            "10": 0.8333333333333334
+          },
+          "hit_rate": {
+            "1": 0.5,
+            "5": 0.6666666666666666,
+            "10": 0.8333333333333334
+          },
+          "mrr": 0.581031746031746,
+          "negative_correct_abstentions": 0,
+          "details": [
+            {
+              "query_id": "nalcos-pilot-01",
+              "first_relevant_rank": 4
+            },
+            {
+              "query_id": "nalcos-pilot-02",
+              "first_relevant_rank": 7
+            },
+            {
+              "query_id": "nalcos-pilot-03",
+              "first_relevant_rank": 3
+            },
+            {
+              "query_id": "nalcos-pilot-04",
+              "first_relevant_rank": 1
+            },
+            {
+              "query_id": "nalcos-pilot-05",
+              "first_relevant_rank": 1
+            },
+            {
+              "query_id": "nalcos-pilot-06",
+              "first_relevant_rank": 7
+            },
+            {
+              "query_id": "nalcos-pilot-07",
+              "first_relevant_rank": 12
+            },
+            {
+              "query_id": "nalcos-pilot-08",
+              "first_relevant_rank": 1
+            },
+            {
+              "query_id": "nalcos-pilot-09",
+              "first_relevant_rank": 50
+            },
+            {
+              "query_id": "nalcos-pilot-10",
+              "first_relevant_rank": 1
+            },
+            {
+              "query_id": "nalcos-pilot-11",
+              "first_relevant_rank": 1
+            },
+            {
+              "query_id": "nalcos-pilot-12",
+              "first_relevant_rank": 1
+            }
+          ]
+        },
+        "lexical": {
+          "split": "exploratory",
+          "questions": 12,
+          "answerable_questions": 12,
+          "negative_questions": 0,
+          "repositories": 1,
+          "responses": 12,
+          "complete_responses": 12,
+          "coverage_complete": true,
+          "recall": {
+            "1": 0.16666666666666666,
+            "5": 0.5833333333333334,
+            "10": 0.9166666666666666
+          },
+          "hit_rate": {
+            "1": 0.16666666666666666,
+            "5": 0.5833333333333334,
+            "10": 0.9166666666666666
+          },
+          "mrr": 0.31620370370370376,
+          "negative_correct_abstentions": 0,
+          "details": [
+            {
+              "query_id": "nalcos-pilot-01",
+              "first_relevant_rank": 5
+            },
+            {
+              "query_id": "nalcos-pilot-02",
+              "first_relevant_rank": 8
+            },
+            {
+              "query_id": "nalcos-pilot-03",
+              "first_relevant_rank": 8
+            },
+            {
+              "query_id": "nalcos-pilot-04",
+              "first_relevant_rank": 3
+            },
+            {
+              "query_id": "nalcos-pilot-05",
+              "first_relevant_rank": 1
+            },
+            {
+              "query_id": "nalcos-pilot-06",
+              "first_relevant_rank": 6
+            },
+            {
+              "query_id": "nalcos-pilot-07",
+              "first_relevant_rank": 1
+            },
+            {
+              "query_id": "nalcos-pilot-08",
+              "first_relevant_rank": null
+            },
+            {
+              "query_id": "nalcos-pilot-09",
+              "first_relevant_rank": 3
+            },
+            {
+              "query_id": "nalcos-pilot-10",
+              "first_relevant_rank": 5
+            },
+            {
+              "query_id": "nalcos-pilot-11",
+              "first_relevant_rank": 9
+            },
+            {
+              "query_id": "nalcos-pilot-12",
+              "first_relevant_rank": 5
+            }
+          ]
+        },
+        "hybrid": {
+          "split": "exploratory",
+          "questions": 12,
+          "answerable_questions": 12,
+          "negative_questions": 0,
+          "repositories": 1,
+          "responses": 12,
+          "complete_responses": 12,
+          "coverage_complete": true,
+          "recall": {
+            "1": 0.08333333333333333,
+            "5": 0.75,
+            "10": 0.9166666666666666
+          },
+          "hit_rate": {
+            "1": 0.08333333333333333,
+            "5": 0.75,
+            "10": 0.9166666666666666
+          },
+          "mrr": 0.3678571428571429,
+          "negative_correct_abstentions": 0,
+          "details": [
+            {
+              "query_id": "nalcos-pilot-01",
+              "first_relevant_rank": 4
+            },
+            {
+              "query_id": "nalcos-pilot-02",
+              "first_relevant_rank": 7
+            },
+            {
+              "query_id": "nalcos-pilot-03",
+              "first_relevant_rank": 4
+            },
+            {
+              "query_id": "nalcos-pilot-04",
+              "first_relevant_rank": 2
+            },
+            {
+              "query_id": "nalcos-pilot-05",
+              "first_relevant_rank": 1
+            },
+            {
+              "query_id": "nalcos-pilot-06",
+              "first_relevant_rank": 5
+            },
+            {
+              "query_id": "nalcos-pilot-07",
+              "first_relevant_rank": 2
+            },
+            {
+              "query_id": "nalcos-pilot-08",
+              "first_relevant_rank": 6
+            },
+            {
+              "query_id": "nalcos-pilot-09",
+              "first_relevant_rank": 14
+            },
+            {
+              "query_id": "nalcos-pilot-10",
+              "first_relevant_rank": 2
+            },
+            {
+              "query_id": "nalcos-pilot-11",
+              "first_relevant_rank": 3
+            },
+            {
+              "query_id": "nalcos-pilot-12",
+              "first_relevant_rank": 2
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "full_corpus_vector_comparison_to_onnx": {
+    "minilm-original-f32-cpu-matched": {
+      "documents": {
+        "count": 401,
+        "cosine_min": 0.9999977350234985,
+        "cosine_mean": 0.9999988675117493,
+        "max_absolute_error": 0.00043986737728118896
+      },
+      "queries": {
+        "count": 12,
+        "cosine_min": 0.9999987483024597,
+        "cosine_mean": 0.9999992251396179,
+        "max_absolute_error": 0.00028831325471401215
+      }
+    },
+    "minilm-original-f32-metal-matched": {
+      "documents": {
+        "count": 401,
+        "cosine_min": 0.9999969005584717,
+        "cosine_mean": 0.9999986290931702,
+        "max_absolute_error": 0.00045793503522872925
+      },
+      "queries": {
+        "count": 12,
+        "cosine_min": 0.999998927116394,
+        "cosine_mean": 0.9999992251396179,
+        "max_absolute_error": 0.0002630501985549927
+      }
+    }
+  },
+  "blocked": [
+    "Jina FP32 GGUF vector parity failed; no Jina GGUF timings or quantization",
+    "No genuine heldout queries across three repositories",
+    "No Linux CPU confirmation",
+    "No same-agent Git/rg task-time comparison",
+    "MiniLM weights licensing not verified"
+  ],
+  "caveats": [
+    "Runtime-specific end-to-end encode path: GGUF includes HTTP, both include HF tokenization, excludes CLI/Git/ranking.",
+    "Three sequential passes per backend; order was not counterbalanced, thermal/cache effects remain possible.",
+    "Single machine and small corpus; results do not establish large-history scaling.",
+    "Original Jina safetensors are FP16 expanded to F32 GGUF."
+  ]
+}

@@ -1,0 +1,1399 @@
+{
+  "schema_version": 1,
+  "kind": "synthetic_exact_semantic_scale",
+  "synthetic_vectors": true,
+  "retrieval_quality_evaluated": false,
+  "freshness": "cached",
+  "purpose": "Full CLI latency on 100,000 synthetic commits and 300,000 deterministic 384-D vectors; vectors do not encode document meaning",
+  "reference_hardware_report": "2026-10-02-lexical-100k.json",
+  "variants": [
+    {
+      "variant": "original",
+      "source_report": {
+        "name": "result.json",
+        "sha256": "944efd03e9394be21cab584a67bee7dd47d1a983e5460f9dc472488578a7935f"
+      },
+      "report": {
+        "schema_version": 1,
+        "measured_at_utc": "2026-10-02T04:36:33.868491+00:00",
+        "purpose": "SYNTHETIC VECTORS: exact-vector scale only; no retrieval-quality evidence",
+        "synthetic_vectors": true,
+        "retrieval_quality_evaluated": false,
+        "host": {
+          "os": "Darwin",
+          "os_release": "27.0.0",
+          "architecture": "arm64",
+          "logical_cpus": 8,
+          "cpu": null,
+          "cpu_probe_error": "sysctl: sysctl fmt -1 1024 1: Operation not permitted",
+          "memory_bytes": null,
+          "memory_bytes_probe_error": "sysctl: sysctl fmt -1 1024 1: Operation not permitted"
+        },
+        "binary_sha256": "0298b1390ec55a3f58da1d2f7f4ce2cb29d6e4b83ddf9aef81f71718d13fca11",
+        "runtime_library_sha256": "d306d2bc768540766c7ed8a1e0ff05d2870c77a934ebeee4a7bafa1b732ef299",
+        "corpus": {
+          "version": 1,
+          "commits": 100000,
+          "head": "eaa19cc3f96510a4a3b73f6081d106fa964ec808",
+          "files_at_head": 128,
+          "shape": "linear ancestry; one small UTF-8 Rust file changed per commit; 128 rotating paths; no merges, binaries, renames, or large patches",
+          "creation_seconds": 5.618044124996231
+        },
+        "vectors": {
+          "algorithm": "shake256-document-id-rademacher-384-v1",
+          "dimensions": 384,
+          "count": 300000,
+          "bytes": 460800000,
+          "chunks_per_nonempty_document": 1,
+          "derived_from_source_text": false,
+          "normalized_vector_squared_norm_error": 7.278353564288409e-08
+        },
+        "query_encoder": {
+          "id": "sentence-transformers/multi-qa-MiniLM-L6-cos-v1",
+          "backend": "onnx",
+          "artifact": "onnx/model.onnx",
+          "revision": "b207367332321f8e44f96e224ef15bc607f4dbf0",
+          "dimensions": 384,
+          "pooling": "mean",
+          "max_tokens": 512,
+          "query_prefix": "",
+          "artifact_sha256": "826501e8460f6e1a83fa30a9b173f051100abda5559e1352efc0e3fe3136afc2",
+          "native": true
+        },
+        "measurement": {
+          "process": "new CLI process per query; includes native encoder startup, exact vector scan, Git scope, evidence verification, and JSON output",
+          "cache": "filesystem/page caches not flushed; first query retained; vector preparation precedes measurements",
+          "freshness": "cached",
+          "limit": 10,
+          "evidence_budget_bytes": 16384,
+          "threads": 4,
+          "concurrency": "No competing NaLCoS indexing or benchmarks; ordinary host activity not controlled",
+          "percentile_method": "nearest-rank ceil(0.95*n)"
+        },
+        "search": {
+          "n": 20,
+          "p50_seconds": 3.8747950629986008,
+          "p95_seconds": 11.279823417004081,
+          "min_seconds": 3.3831145419972017,
+          "max_seconds": 12.568484584000544,
+          "samples": [
+            {
+              "query": "cache retry",
+              "seconds": 12.568484584000544,
+              "results": 10,
+              "verified_evidence": 10,
+              "output_truncated": false,
+              "runtime": {
+                "batch_size": 1,
+                "calibration": [],
+                "device_name": "cpu",
+                "fallback_reasons": [],
+                "provider": "Onnx",
+                "qualified": false,
+                "requested_device": "cpu",
+                "runtime_version": "ONNX Runtime 1.23.2; ort-2.0.0-rc.10 (API 22); ORT Build Info: git-branch=HEAD, git-commit-id=a83fc4d58c, build type=Release",
+                "selected_device": "cpu"
+              }
+            },
+            {
+              "query": "event007920",
+              "seconds": 5.88317200000165,
+              "results": 10,
+              "verified_evidence": 10,
+              "output_truncated": false,
+              "runtime": {
+                "batch_size": 1,
+                "calibration": [],
+                "device_name": "cpu",
+                "fallback_reasons": [],
+                "provider": "Onnx",
+                "qualified": false,
+                "requested_device": "cpu",
+                "runtime_version": "ONNX Runtime 1.23.2; ort-2.0.0-rc.10 (API 22); ORT Build Info: git-branch=HEAD, git-commit-id=a83fc4d58c, build type=Release",
+                "selected_device": "cpu"
+              }
+            },
+            {
+              "query": "network timeout",
+              "seconds": 3.977120040995942,
+              "results": 10,
+              "verified_evidence": 10,
+              "output_truncated": false,
+              "runtime": {
+                "batch_size": 1,
+                "calibration": [],
+                "device_name": "cpu",
+                "fallback_reasons": [],
+                "provider": "Onnx",
+                "qualified": false,
+                "requested_device": "cpu",
+                "runtime_version": "ONNX Runtime 1.23.2; ort-2.0.0-rc.10 (API 22); ORT Build Info: git-branch=HEAD, git-commit-id=a83fc4d58c, build type=Release",
+                "selected_device": "cpu"
+              }
+            },
+            {
+              "query": "event023758",
+              "seconds": 3.6945447499965667,
+              "results": 10,
+              "verified_evidence": 10,
+              "output_truncated": false,
+              "runtime": {
+                "batch_size": 1,
+                "calibration": [],
+                "device_name": "cpu",
+                "fallback_reasons": [],
+                "provider": "Onnx",
+                "qualified": false,
+                "requested_device": "cpu",
+                "runtime_version": "ONNX Runtime 1.23.2; ort-2.0.0-rc.10 (API 22); ORT Build Info: git-branch=HEAD, git-commit-id=a83fc4d58c, build type=Release",
+                "selected_device": "cpu"
+              }
+            },
+            {
+              "query": "parser validation",
+              "seconds": 3.8882080420007696,
+              "results": 10,
+              "verified_evidence": 10,
+              "output_truncated": false,
+              "runtime": {
+                "batch_size": 1,
+                "calibration": [],
+                "device_name": "cpu",
+                "fallback_reasons": [],
+                "provider": "Onnx",
+                "qualified": false,
+                "requested_device": "cpu",
+                "runtime_version": "ONNX Runtime 1.23.2; ort-2.0.0-rc.10 (API 22); ORT Build Info: git-branch=HEAD, git-commit-id=a83fc4d58c, build type=Release",
+                "selected_device": "cpu"
+              }
+            },
+            {
+              "query": "event039596",
+              "seconds": 4.327395624997735,
+              "results": 10,
+              "verified_evidence": 10,
+              "output_truncated": false,
+              "runtime": {
+                "batch_size": 1,
+                "calibration": [],
+                "device_name": "cpu",
+                "fallback_reasons": [],
+                "provider": "Onnx",
+                "qualified": false,
+                "requested_device": "cpu",
+                "runtime_version": "ONNX Runtime 1.23.2; ort-2.0.0-rc.10 (API 22); ORT Build Info: git-branch=HEAD, git-commit-id=a83fc4d58c, build type=Release",
+                "selected_device": "cpu"
+              }
+            },
+            {
+              "query": "scheduler cleanup",
+              "seconds": 3.8390340419937274,
+              "results": 10,
+              "verified_evidence": 10,
+              "output_truncated": false,
+              "runtime": {
+                "batch_size": 1,
+                "calibration": [],
+                "device_name": "cpu",
+                "fallback_reasons": [],
+                "provider": "Onnx",
+                "qualified": false,
+                "requested_device": "cpu",
+                "runtime_version": "ONNX Runtime 1.23.2; ort-2.0.0-rc.10 (API 22); ORT Build Info: git-branch=HEAD, git-commit-id=a83fc4d58c, build type=Release",
+                "selected_device": "cpu"
+              }
+            },
+            {
+              "query": "event055434",
+              "seconds": 3.437583791994257,
+              "results": 10,
+              "verified_evidence": 10,
+              "output_truncated": false,
+              "runtime": {
+                "batch_size": 1,
+                "calibration": [],
+                "device_name": "cpu",
+                "fallback_reasons": [],
+                "provider": "Onnx",
+                "qualified": false,
+                "requested_device": "cpu",
+                "runtime_version": "ONNX Runtime 1.23.2; ort-2.0.0-rc.10 (API 22); ORT Build Info: git-branch=HEAD, git-commit-id=a83fc4d58c, build type=Release",
+                "selected_device": "cpu"
+              }
+            },
+            {
+              "query": "storage invalidation",
+              "seconds": 3.434466540995345,
+              "results": 10,
+              "verified_evidence": 10,
+              "output_truncated": false,
+              "runtime": {
+                "batch_size": 1,
+                "calibration": [],
+                "device_name": "cpu",
+                "fallback_reasons": [],
+                "provider": "Onnx",
+                "qualified": false,
+                "requested_device": "cpu",
+                "runtime_version": "ONNX Runtime 1.23.2; ort-2.0.0-rc.10 (API 22); ORT Build Info: git-branch=HEAD, git-commit-id=a83fc4d58c, build type=Release",
+                "selected_device": "cpu"
+              }
+            },
+            {
+              "query": "event071272",
+              "seconds": 3.3831145419972017,
+              "results": 10,
+              "verified_evidence": 10,
+              "output_truncated": false,
+              "runtime": {
+                "batch_size": 1,
+                "calibration": [],
+                "device_name": "cpu",
+                "fallback_reasons": [],
+                "provider": "Onnx",
+                "qualified": false,
+                "requested_device": "cpu",
+                "runtime_version": "ONNX Runtime 1.23.2; ort-2.0.0-rc.10 (API 22); ORT Build Info: git-branch=HEAD, git-commit-id=a83fc4d58c, build type=Release",
+                "selected_device": "cpu"
+              }
+            },
+            {
+              "query": "auth fallback",
+              "seconds": 3.665018167004746,
+              "results": 10,
+              "verified_evidence": 10,
+              "output_truncated": false,
+              "runtime": {
+                "batch_size": 1,
+                "calibration": [],
+                "device_name": "cpu",
+                "fallback_reasons": [],
+                "provider": "Onnx",
+                "qualified": false,
+                "requested_device": "cpu",
+                "runtime_version": "ONNX Runtime 1.23.2; ort-2.0.0-rc.10 (API 22); ORT Build Info: git-branch=HEAD, git-commit-id=a83fc4d58c, build type=Release",
+                "selected_device": "cpu"
+              }
+            },
+            {
+              "query": "event087110",
+              "seconds": 3.8944319160000305,
+              "results": 10,
+              "verified_evidence": 10,
+              "output_truncated": false,
+              "runtime": {
+                "batch_size": 1,
+                "calibration": [],
+                "device_name": "cpu",
+                "fallback_reasons": [],
+                "provider": "Onnx",
+                "qualified": false,
+                "requested_device": "cpu",
+                "runtime_version": "ONNX Runtime 1.23.2; ort-2.0.0-rc.10 (API 22); ORT Build Info: git-branch=HEAD, git-commit-id=a83fc4d58c, build type=Release",
+                "selected_device": "cpu"
+              }
+            },
+            {
+              "query": "queue dispatch",
+              "seconds": 5.065185082996322,
+              "results": 10,
+              "verified_evidence": 10,
+              "output_truncated": false,
+              "runtime": {
+                "batch_size": 1,
+                "calibration": [],
+                "device_name": "cpu",
+                "fallback_reasons": [],
+                "provider": "Onnx",
+                "qualified": false,
+                "requested_device": "cpu",
+                "runtime_version": "ONNX Runtime 1.23.2; ort-2.0.0-rc.10 (API 22); ORT Build Info: git-branch=HEAD, git-commit-id=a83fc4d58c, build type=Release",
+                "selected_device": "cpu"
+              }
+            },
+            {
+              "query": "event002948",
+              "seconds": 3.861382083996432,
+              "results": 10,
+              "verified_evidence": 10,
+              "output_truncated": false,
+              "runtime": {
+                "batch_size": 1,
+                "calibration": [],
+                "device_name": "cpu",
+                "fallback_reasons": [],
+                "provider": "Onnx",
+                "qualified": false,
+                "requested_device": "cpu",
+                "runtime_version": "ONNX Runtime 1.23.2; ort-2.0.0-rc.10 (API 22); ORT Build Info: git-branch=HEAD, git-commit-id=a83fc4d58c, build type=Release",
+                "selected_device": "cpu"
+              }
+            },
+            {
+              "query": "transport allocation",
+              "seconds": 11.279823417004081,
+              "results": 10,
+              "verified_evidence": 10,
+              "output_truncated": false,
+              "runtime": {
+                "batch_size": 1,
+                "calibration": [],
+                "device_name": "cpu",
+                "fallback_reasons": [],
+                "provider": "Onnx",
+                "qualified": false,
+                "requested_device": "cpu",
+                "runtime_version": "ONNX Runtime 1.23.2; ort-2.0.0-rc.10 (API 22); ORT Build Info: git-branch=HEAD, git-commit-id=a83fc4d58c, build type=Release",
+                "selected_device": "cpu"
+              }
+            },
+            {
+              "query": "event018786",
+              "seconds": 9.800785583996912,
+              "results": 10,
+              "verified_evidence": 10,
+              "output_truncated": false,
+              "runtime": {
+                "batch_size": 1,
+                "calibration": [],
+                "device_name": "cpu",
+                "fallback_reasons": [],
+                "provider": "Onnx",
+                "qualified": false,
+                "requested_device": "cpu",
+                "runtime_version": "ONNX Runtime 1.23.2; ort-2.0.0-rc.10 (API 22); ORT Build Info: git-branch=HEAD, git-commit-id=a83fc4d58c, build type=Release",
+                "selected_device": "cpu"
+              }
+            },
+            {
+              "query": "cache retry",
+              "seconds": 6.584626542004116,
+              "results": 10,
+              "verified_evidence": 10,
+              "output_truncated": false,
+              "runtime": {
+                "batch_size": 1,
+                "calibration": [],
+                "device_name": "cpu",
+                "fallback_reasons": [],
+                "provider": "Onnx",
+                "qualified": false,
+                "requested_device": "cpu",
+                "runtime_version": "ONNX Runtime 1.23.2; ort-2.0.0-rc.10 (API 22); ORT Build Info: git-branch=HEAD, git-commit-id=a83fc4d58c, build type=Release",
+                "selected_device": "cpu"
+              }
+            },
+            {
+              "query": "event034624",
+              "seconds": 3.5626177080048365,
+              "results": 10,
+              "verified_evidence": 10,
+              "output_truncated": false,
+              "runtime": {
+                "batch_size": 1,
+                "calibration": [],
+                "device_name": "cpu",
+                "fallback_reasons": [],
+                "provider": "Onnx",
+                "qualified": false,
+                "requested_device": "cpu",
+                "runtime_version": "ONNX Runtime 1.23.2; ort-2.0.0-rc.10 (API 22); ORT Build Info: git-branch=HEAD, git-commit-id=a83fc4d58c, build type=Release",
+                "selected_device": "cpu"
+              }
+            },
+            {
+              "query": "network timeout",
+              "seconds": 3.4792162080048,
+              "results": 10,
+              "verified_evidence": 10,
+              "output_truncated": false,
+              "runtime": {
+                "batch_size": 1,
+                "calibration": [],
+                "device_name": "cpu",
+                "fallback_reasons": [],
+                "provider": "Onnx",
+                "qualified": false,
+                "requested_device": "cpu",
+                "runtime_version": "ONNX Runtime 1.23.2; ort-2.0.0-rc.10 (API 22); ORT Build Info: git-branch=HEAD, git-commit-id=a83fc4d58c, build type=Release",
+                "selected_device": "cpu"
+              }
+            },
+            {
+              "query": "event050462",
+              "seconds": 3.733470416998898,
+              "results": 10,
+              "verified_evidence": 10,
+              "output_truncated": false,
+              "runtime": {
+                "batch_size": 1,
+                "calibration": [],
+                "device_name": "cpu",
+                "fallback_reasons": [],
+                "provider": "Onnx",
+                "qualified": false,
+                "requested_device": "cpu",
+                "runtime_version": "ONNX Runtime 1.23.2; ort-2.0.0-rc.10 (API 22); ORT Build Info: git-branch=HEAD, git-commit-id=a83fc4d58c, build type=Release",
+                "selected_device": "cpu"
+              }
+            }
+          ]
+        },
+        "caveats": [
+          "Vectors are synthetic random signs, not model embeddings of Git documents; rankings have no semantic meaning.",
+          "Only query encoding uses the native model. This does not measure real corpus embedding throughput or retrieval quality.",
+          "One vector per source document underestimates corpora whose tokenizer requires multiple chunks per document.",
+          "The fixture has simple linear history and small textual patches; it does not represent all 100k-commit repositories."
+        ]
+      }
+    },
+    {
+      "variant": "streamed_exact_scoring",
+      "source_report": {
+        "name": "optimized.json",
+        "sha256": "5bda6bfe852c19c272048ef45441d86e73e3ddc9ea46f3d6ddb2e3094227125a"
+      },
+      "report": {
+        "schema_version": 1,
+        "measured_at_utc": "2026-10-02T04:45:11.628059+00:00",
+        "purpose": "SYNTHETIC VECTORS: exact-vector scale only; no retrieval-quality evidence",
+        "synthetic_vectors": true,
+        "retrieval_quality_evaluated": false,
+        "host": {
+          "os": "Darwin",
+          "os_release": "27.0.0",
+          "architecture": "arm64",
+          "logical_cpus": 8,
+          "cpu": null,
+          "cpu_probe_error": "sysctl: sysctl fmt -1 1024 1: Operation not permitted",
+          "memory_bytes": null,
+          "memory_bytes_probe_error": "sysctl: sysctl fmt -1 1024 1: Operation not permitted"
+        },
+        "binary_sha256": "5ed720f48df6b8056de8c7112176034cfa86924698dda41db45a1f54340bfaaa",
+        "runtime_library_sha256": "d306d2bc768540766c7ed8a1e0ff05d2870c77a934ebeee4a7bafa1b732ef299",
+        "corpus": {
+          "version": 1,
+          "commits": 100000,
+          "head": "eaa19cc3f96510a4a3b73f6081d106fa964ec808",
+          "files_at_head": 128,
+          "shape": "linear ancestry; one small UTF-8 Rust file changed per commit; 128 rotating paths; no merges, binaries, renames, or large patches",
+          "creation_seconds": 5.618044124996231
+        },
+        "vectors": {
+          "algorithm": "shake256-document-id-rademacher-384-v1",
+          "dimensions": 384,
+          "count": 300000,
+          "bytes": 460800000,
+          "chunks_per_nonempty_document": 1,
+          "derived_from_source_text": false,
+          "normalized_vector_squared_norm_error": 7.278353564288409e-08
+        },
+        "query_encoder": {
+          "id": "sentence-transformers/multi-qa-MiniLM-L6-cos-v1",
+          "backend": "onnx",
+          "artifact": "onnx/model.onnx",
+          "revision": "b207367332321f8e44f96e224ef15bc607f4dbf0",
+          "dimensions": 384,
+          "pooling": "mean",
+          "max_tokens": 512,
+          "query_prefix": "",
+          "artifact_sha256": "826501e8460f6e1a83fa30a9b173f051100abda5559e1352efc0e3fe3136afc2",
+          "native": true
+        },
+        "measurement": {
+          "process": "new CLI process per query; includes native encoder startup, exact vector scan, Git scope, evidence verification, and JSON output",
+          "cache": "filesystem/page caches not flushed; first query retained; vector preparation precedes measurements",
+          "freshness": "cached",
+          "limit": 10,
+          "evidence_budget_bytes": 16384,
+          "threads": 4,
+          "concurrency": "No competing NaLCoS inference or benchmarks; NFT indexer process paused; ordinary host activity not controlled",
+          "percentile_method": "nearest-rank ceil(0.95*n)"
+        },
+        "search": {
+          "n": 20,
+          "p50_seconds": 3.4453272920000018,
+          "p95_seconds": 11.181549332999566,
+          "min_seconds": 3.078068249997159,
+          "max_seconds": 11.799861500003317,
+          "samples": [
+            {
+              "query": "cache retry",
+              "seconds": 11.799861500003317,
+              "results": 10,
+              "verified_evidence": 10,
+              "output_truncated": false,
+              "runtime": {
+                "batch_size": 1,
+                "calibration": [],
+                "device_name": "cpu",
+                "fallback_reasons": [],
+                "provider": "Onnx",
+                "qualified": false,
+                "requested_device": "cpu",
+                "runtime_version": "ONNX Runtime 1.23.2; ort-2.0.0-rc.10 (API 22); ORT Build Info: git-branch=HEAD, git-commit-id=a83fc4d58c, build type=Release",
+                "selected_device": "cpu"
+              }
+            },
+            {
+              "query": "event007920",
+              "seconds": 3.464844834001269,
+              "results": 10,
+              "verified_evidence": 10,
+              "output_truncated": false,
+              "runtime": {
+                "batch_size": 1,
+                "calibration": [],
+                "device_name": "cpu",
+                "fallback_reasons": [],
+                "provider": "Onnx",
+                "qualified": false,
+                "requested_device": "cpu",
+                "runtime_version": "ONNX Runtime 1.23.2; ort-2.0.0-rc.10 (API 22); ORT Build Info: git-branch=HEAD, git-commit-id=a83fc4d58c, build type=Release",
+                "selected_device": "cpu"
+              }
+            },
+            {
+              "query": "network timeout",
+              "seconds": 3.3688918750049197,
+              "results": 10,
+              "verified_evidence": 10,
+              "output_truncated": false,
+              "runtime": {
+                "batch_size": 1,
+                "calibration": [],
+                "device_name": "cpu",
+                "fallback_reasons": [],
+                "provider": "Onnx",
+                "qualified": false,
+                "requested_device": "cpu",
+                "runtime_version": "ONNX Runtime 1.23.2; ort-2.0.0-rc.10 (API 22); ORT Build Info: git-branch=HEAD, git-commit-id=a83fc4d58c, build type=Release",
+                "selected_device": "cpu"
+              }
+            },
+            {
+              "query": "event023758",
+              "seconds": 3.842581083998084,
+              "results": 10,
+              "verified_evidence": 10,
+              "output_truncated": false,
+              "runtime": {
+                "batch_size": 1,
+                "calibration": [],
+                "device_name": "cpu",
+                "fallback_reasons": [],
+                "provider": "Onnx",
+                "qualified": false,
+                "requested_device": "cpu",
+                "runtime_version": "ONNX Runtime 1.23.2; ort-2.0.0-rc.10 (API 22); ORT Build Info: git-branch=HEAD, git-commit-id=a83fc4d58c, build type=Release",
+                "selected_device": "cpu"
+              }
+            },
+            {
+              "query": "parser validation",
+              "seconds": 9.527045540999097,
+              "results": 10,
+              "verified_evidence": 10,
+              "output_truncated": false,
+              "runtime": {
+                "batch_size": 1,
+                "calibration": [],
+                "device_name": "cpu",
+                "fallback_reasons": [],
+                "provider": "Onnx",
+                "qualified": false,
+                "requested_device": "cpu",
+                "runtime_version": "ONNX Runtime 1.23.2; ort-2.0.0-rc.10 (API 22); ORT Build Info: git-branch=HEAD, git-commit-id=a83fc4d58c, build type=Release",
+                "selected_device": "cpu"
+              }
+            },
+            {
+              "query": "event039596",
+              "seconds": 6.783533041998453,
+              "results": 10,
+              "verified_evidence": 10,
+              "output_truncated": false,
+              "runtime": {
+                "batch_size": 1,
+                "calibration": [],
+                "device_name": "cpu",
+                "fallback_reasons": [],
+                "provider": "Onnx",
+                "qualified": false,
+                "requested_device": "cpu",
+                "runtime_version": "ONNX Runtime 1.23.2; ort-2.0.0-rc.10 (API 22); ORT Build Info: git-branch=HEAD, git-commit-id=a83fc4d58c, build type=Release",
+                "selected_device": "cpu"
+              }
+            },
+            {
+              "query": "scheduler cleanup",
+              "seconds": 3.1743695410041255,
+              "results": 10,
+              "verified_evidence": 10,
+              "output_truncated": false,
+              "runtime": {
+                "batch_size": 1,
+                "calibration": [],
+                "device_name": "cpu",
+                "fallback_reasons": [],
+                "provider": "Onnx",
+                "qualified": false,
+                "requested_device": "cpu",
+                "runtime_version": "ONNX Runtime 1.23.2; ort-2.0.0-rc.10 (API 22); ORT Build Info: git-branch=HEAD, git-commit-id=a83fc4d58c, build type=Release",
+                "selected_device": "cpu"
+              }
+            },
+            {
+              "query": "event055434",
+              "seconds": 11.181549332999566,
+              "results": 10,
+              "verified_evidence": 10,
+              "output_truncated": false,
+              "runtime": {
+                "batch_size": 1,
+                "calibration": [],
+                "device_name": "cpu",
+                "fallback_reasons": [],
+                "provider": "Onnx",
+                "qualified": false,
+                "requested_device": "cpu",
+                "runtime_version": "ONNX Runtime 1.23.2; ort-2.0.0-rc.10 (API 22); ORT Build Info: git-branch=HEAD, git-commit-id=a83fc4d58c, build type=Release",
+                "selected_device": "cpu"
+              }
+            },
+            {
+              "query": "storage invalidation",
+              "seconds": 4.021083499996166,
+              "results": 10,
+              "verified_evidence": 10,
+              "output_truncated": false,
+              "runtime": {
+                "batch_size": 1,
+                "calibration": [],
+                "device_name": "cpu",
+                "fallback_reasons": [],
+                "provider": "Onnx",
+                "qualified": false,
+                "requested_device": "cpu",
+                "runtime_version": "ONNX Runtime 1.23.2; ort-2.0.0-rc.10 (API 22); ORT Build Info: git-branch=HEAD, git-commit-id=a83fc4d58c, build type=Release",
+                "selected_device": "cpu"
+              }
+            },
+            {
+              "query": "event071272",
+              "seconds": 3.3926438339985907,
+              "results": 10,
+              "verified_evidence": 10,
+              "output_truncated": false,
+              "runtime": {
+                "batch_size": 1,
+                "calibration": [],
+                "device_name": "cpu",
+                "fallback_reasons": [],
+                "provider": "Onnx",
+                "qualified": false,
+                "requested_device": "cpu",
+                "runtime_version": "ONNX Runtime 1.23.2; ort-2.0.0-rc.10 (API 22); ORT Build Info: git-branch=HEAD, git-commit-id=a83fc4d58c, build type=Release",
+                "selected_device": "cpu"
+              }
+            },
+            {
+              "query": "auth fallback",
+              "seconds": 3.078068249997159,
+              "results": 10,
+              "verified_evidence": 10,
+              "output_truncated": false,
+              "runtime": {
+                "batch_size": 1,
+                "calibration": [],
+                "device_name": "cpu",
+                "fallback_reasons": [],
+                "provider": "Onnx",
+                "qualified": false,
+                "requested_device": "cpu",
+                "runtime_version": "ONNX Runtime 1.23.2; ort-2.0.0-rc.10 (API 22); ORT Build Info: git-branch=HEAD, git-commit-id=a83fc4d58c, build type=Release",
+                "selected_device": "cpu"
+              }
+            },
+            {
+              "query": "event087110",
+              "seconds": 3.0804850829954376,
+              "results": 10,
+              "verified_evidence": 10,
+              "output_truncated": false,
+              "runtime": {
+                "batch_size": 1,
+                "calibration": [],
+                "device_name": "cpu",
+                "fallback_reasons": [],
+                "provider": "Onnx",
+                "qualified": false,
+                "requested_device": "cpu",
+                "runtime_version": "ONNX Runtime 1.23.2; ort-2.0.0-rc.10 (API 22); ORT Build Info: git-branch=HEAD, git-commit-id=a83fc4d58c, build type=Release",
+                "selected_device": "cpu"
+              }
+            },
+            {
+              "query": "queue dispatch",
+              "seconds": 3.1062007500004256,
+              "results": 10,
+              "verified_evidence": 10,
+              "output_truncated": false,
+              "runtime": {
+                "batch_size": 1,
+                "calibration": [],
+                "device_name": "cpu",
+                "fallback_reasons": [],
+                "provider": "Onnx",
+                "qualified": false,
+                "requested_device": "cpu",
+                "runtime_version": "ONNX Runtime 1.23.2; ort-2.0.0-rc.10 (API 22); ORT Build Info: git-branch=HEAD, git-commit-id=a83fc4d58c, build type=Release",
+                "selected_device": "cpu"
+              }
+            },
+            {
+              "query": "event002948",
+              "seconds": 3.532346542000596,
+              "results": 10,
+              "verified_evidence": 10,
+              "output_truncated": false,
+              "runtime": {
+                "batch_size": 1,
+                "calibration": [],
+                "device_name": "cpu",
+                "fallback_reasons": [],
+                "provider": "Onnx",
+                "qualified": false,
+                "requested_device": "cpu",
+                "runtime_version": "ONNX Runtime 1.23.2; ort-2.0.0-rc.10 (API 22); ORT Build Info: git-branch=HEAD, git-commit-id=a83fc4d58c, build type=Release",
+                "selected_device": "cpu"
+              }
+            },
+            {
+              "query": "transport allocation",
+              "seconds": 3.756230291000975,
+              "results": 10,
+              "verified_evidence": 10,
+              "output_truncated": false,
+              "runtime": {
+                "batch_size": 1,
+                "calibration": [],
+                "device_name": "cpu",
+                "fallback_reasons": [],
+                "provider": "Onnx",
+                "qualified": false,
+                "requested_device": "cpu",
+                "runtime_version": "ONNX Runtime 1.23.2; ort-2.0.0-rc.10 (API 22); ORT Build Info: git-branch=HEAD, git-commit-id=a83fc4d58c, build type=Release",
+                "selected_device": "cpu"
+              }
+            },
+            {
+              "query": "event018786",
+              "seconds": 3.3666060420000576,
+              "results": 10,
+              "verified_evidence": 10,
+              "output_truncated": false,
+              "runtime": {
+                "batch_size": 1,
+                "calibration": [],
+                "device_name": "cpu",
+                "fallback_reasons": [],
+                "provider": "Onnx",
+                "qualified": false,
+                "requested_device": "cpu",
+                "runtime_version": "ONNX Runtime 1.23.2; ort-2.0.0-rc.10 (API 22); ORT Build Info: git-branch=HEAD, git-commit-id=a83fc4d58c, build type=Release",
+                "selected_device": "cpu"
+              }
+            },
+            {
+              "query": "cache retry",
+              "seconds": 3.087991249994957,
+              "results": 10,
+              "verified_evidence": 10,
+              "output_truncated": false,
+              "runtime": {
+                "batch_size": 1,
+                "calibration": [],
+                "device_name": "cpu",
+                "fallback_reasons": [],
+                "provider": "Onnx",
+                "qualified": false,
+                "requested_device": "cpu",
+                "runtime_version": "ONNX Runtime 1.23.2; ort-2.0.0-rc.10 (API 22); ORT Build Info: git-branch=HEAD, git-commit-id=a83fc4d58c, build type=Release",
+                "selected_device": "cpu"
+              }
+            },
+            {
+              "query": "event034624",
+              "seconds": 3.110514667001553,
+              "results": 10,
+              "verified_evidence": 10,
+              "output_truncated": false,
+              "runtime": {
+                "batch_size": 1,
+                "calibration": [],
+                "device_name": "cpu",
+                "fallback_reasons": [],
+                "provider": "Onnx",
+                "qualified": false,
+                "requested_device": "cpu",
+                "runtime_version": "ONNX Runtime 1.23.2; ort-2.0.0-rc.10 (API 22); ORT Build Info: git-branch=HEAD, git-commit-id=a83fc4d58c, build type=Release",
+                "selected_device": "cpu"
+              }
+            },
+            {
+              "query": "network timeout",
+              "seconds": 3.4258097499987343,
+              "results": 10,
+              "verified_evidence": 10,
+              "output_truncated": false,
+              "runtime": {
+                "batch_size": 1,
+                "calibration": [],
+                "device_name": "cpu",
+                "fallback_reasons": [],
+                "provider": "Onnx",
+                "qualified": false,
+                "requested_device": "cpu",
+                "runtime_version": "ONNX Runtime 1.23.2; ort-2.0.0-rc.10 (API 22); ORT Build Info: git-branch=HEAD, git-commit-id=a83fc4d58c, build type=Release",
+                "selected_device": "cpu"
+              }
+            },
+            {
+              "query": "event050462",
+              "seconds": 4.67694629199832,
+              "results": 10,
+              "verified_evidence": 10,
+              "output_truncated": false,
+              "runtime": {
+                "batch_size": 1,
+                "calibration": [],
+                "device_name": "cpu",
+                "fallback_reasons": [],
+                "provider": "Onnx",
+                "qualified": false,
+                "requested_device": "cpu",
+                "runtime_version": "ONNX Runtime 1.23.2; ort-2.0.0-rc.10 (API 22); ORT Build Info: git-branch=HEAD, git-commit-id=a83fc4d58c, build type=Release",
+                "selected_device": "cpu"
+              }
+            }
+          ]
+        },
+        "caveats": [
+          "Vectors are synthetic random signs, not model embeddings of Git documents; rankings have no semantic meaning.",
+          "Only query encoding uses the native model. This does not measure real corpus embedding throughput or retrieval quality.",
+          "One vector per source document underestimates corpora whose tokenizer requires multiple chunks per document.",
+          "The fixture has simple linear history and small textual patches; it does not represent all 100k-commit repositories."
+        ]
+      }
+    },
+    {
+      "variant": "covering_index_with_statistics",
+      "source_report": {
+        "name": "covering.json",
+        "sha256": "52ccb3e9552046e7376ae6b26c9f89f967e38c0275a7ac4ea997cee22b5458a8"
+      },
+      "report": {
+        "schema_version": 1,
+        "measured_at_utc": "2026-10-02T04:54:25.928413+00:00",
+        "purpose": "SYNTHETIC VECTORS: exact-vector scale only; no retrieval-quality evidence",
+        "synthetic_vectors": true,
+        "retrieval_quality_evaluated": false,
+        "host": {
+          "os": "Darwin",
+          "os_release": "27.0.0",
+          "architecture": "arm64",
+          "logical_cpus": 8,
+          "cpu": null,
+          "cpu_probe_error": "sysctl: sysctl fmt -1 1024 1: Operation not permitted",
+          "memory_bytes": null,
+          "memory_bytes_probe_error": "sysctl: sysctl fmt -1 1024 1: Operation not permitted"
+        },
+        "binary_sha256": "5ed720f48df6b8056de8c7112176034cfa86924698dda41db45a1f54340bfaaa",
+        "runtime_library_sha256": "d306d2bc768540766c7ed8a1e0ff05d2870c77a934ebeee4a7bafa1b732ef299",
+        "corpus": {
+          "version": 1,
+          "commits": 100000,
+          "head": "eaa19cc3f96510a4a3b73f6081d106fa964ec808",
+          "files_at_head": 128,
+          "shape": "linear ancestry; one small UTF-8 Rust file changed per commit; 128 rotating paths; no merges, binaries, renames, or large patches",
+          "creation_seconds": 5.618044124996231
+        },
+        "vectors": {
+          "algorithm": "shake256-document-id-rademacher-384-v1",
+          "dimensions": 384,
+          "count": 300000,
+          "bytes": 460800000,
+          "chunks_per_nonempty_document": 1,
+          "derived_from_source_text": false,
+          "normalized_vector_squared_norm_error": 7.278353564288409e-08
+        },
+        "query_encoder": {
+          "id": "sentence-transformers/multi-qa-MiniLM-L6-cos-v1",
+          "backend": "onnx",
+          "artifact": "onnx/model.onnx",
+          "revision": "b207367332321f8e44f96e224ef15bc607f4dbf0",
+          "dimensions": 384,
+          "pooling": "mean",
+          "max_tokens": 512,
+          "query_prefix": "",
+          "artifact_sha256": "826501e8460f6e1a83fa30a9b173f051100abda5559e1352efc0e3fe3136afc2",
+          "native": true
+        },
+        "measurement": {
+          "process": "new CLI process per query; includes native encoder startup, exact vector scan, Git scope, evidence verification, and JSON output",
+          "cache": "filesystem/page caches not flushed; first query retained; vector preparation precedes measurements",
+          "freshness": "cached",
+          "limit": 10,
+          "evidence_budget_bytes": 16384,
+          "threads": 4,
+          "concurrency": "No competing NaLCoS inference or benchmarks; NFT indexer process paused; ordinary host activity not controlled; same pinned binary, copy has documents(id,commit_oid) index and ANALYZE documents",
+          "percentile_method": "nearest-rank ceil(0.95*n)"
+        },
+        "search": {
+          "n": 20,
+          "p50_seconds": 2.328154896502383,
+          "p95_seconds": 2.82182629199815,
+          "min_seconds": 2.0351672079996206,
+          "max_seconds": 7.014883875002852,
+          "samples": [
+            {
+              "query": "cache retry",
+              "seconds": 7.014883875002852,
+              "results": 10,
+              "verified_evidence": 10,
+              "output_truncated": false,
+              "runtime": {
+                "batch_size": 1,
+                "calibration": [],
+                "device_name": "cpu",
+                "fallback_reasons": [],
+                "provider": "Onnx",
+                "qualified": false,
+                "requested_device": "cpu",
+                "runtime_version": "ONNX Runtime 1.23.2; ort-2.0.0-rc.10 (API 22); ORT Build Info: git-branch=HEAD, git-commit-id=a83fc4d58c, build type=Release",
+                "selected_device": "cpu"
+              }
+            },
+            {
+              "query": "event007920",
+              "seconds": 2.241025042007095,
+              "results": 10,
+              "verified_evidence": 10,
+              "output_truncated": false,
+              "runtime": {
+                "batch_size": 1,
+                "calibration": [],
+                "device_name": "cpu",
+                "fallback_reasons": [],
+                "provider": "Onnx",
+                "qualified": false,
+                "requested_device": "cpu",
+                "runtime_version": "ONNX Runtime 1.23.2; ort-2.0.0-rc.10 (API 22); ORT Build Info: git-branch=HEAD, git-commit-id=a83fc4d58c, build type=Release",
+                "selected_device": "cpu"
+              }
+            },
+            {
+              "query": "network timeout",
+              "seconds": 2.220120458994643,
+              "results": 10,
+              "verified_evidence": 10,
+              "output_truncated": false,
+              "runtime": {
+                "batch_size": 1,
+                "calibration": [],
+                "device_name": "cpu",
+                "fallback_reasons": [],
+                "provider": "Onnx",
+                "qualified": false,
+                "requested_device": "cpu",
+                "runtime_version": "ONNX Runtime 1.23.2; ort-2.0.0-rc.10 (API 22); ORT Build Info: git-branch=HEAD, git-commit-id=a83fc4d58c, build type=Release",
+                "selected_device": "cpu"
+              }
+            },
+            {
+              "query": "event023758",
+              "seconds": 2.0351672079996206,
+              "results": 10,
+              "verified_evidence": 10,
+              "output_truncated": false,
+              "runtime": {
+                "batch_size": 1,
+                "calibration": [],
+                "device_name": "cpu",
+                "fallback_reasons": [],
+                "provider": "Onnx",
+                "qualified": false,
+                "requested_device": "cpu",
+                "runtime_version": "ONNX Runtime 1.23.2; ort-2.0.0-rc.10 (API 22); ORT Build Info: git-branch=HEAD, git-commit-id=a83fc4d58c, build type=Release",
+                "selected_device": "cpu"
+              }
+            },
+            {
+              "query": "parser validation",
+              "seconds": 2.31642745899444,
+              "results": 10,
+              "verified_evidence": 10,
+              "output_truncated": false,
+              "runtime": {
+                "batch_size": 1,
+                "calibration": [],
+                "device_name": "cpu",
+                "fallback_reasons": [],
+                "provider": "Onnx",
+                "qualified": false,
+                "requested_device": "cpu",
+                "runtime_version": "ONNX Runtime 1.23.2; ort-2.0.0-rc.10 (API 22); ORT Build Info: git-branch=HEAD, git-commit-id=a83fc4d58c, build type=Release",
+                "selected_device": "cpu"
+              }
+            },
+            {
+              "query": "event039596",
+              "seconds": 2.522702209011186,
+              "results": 10,
+              "verified_evidence": 10,
+              "output_truncated": false,
+              "runtime": {
+                "batch_size": 1,
+                "calibration": [],
+                "device_name": "cpu",
+                "fallback_reasons": [],
+                "provider": "Onnx",
+                "qualified": false,
+                "requested_device": "cpu",
+                "runtime_version": "ONNX Runtime 1.23.2; ort-2.0.0-rc.10 (API 22); ORT Build Info: git-branch=HEAD, git-commit-id=a83fc4d58c, build type=Release",
+                "selected_device": "cpu"
+              }
+            },
+            {
+              "query": "scheduler cleanup",
+              "seconds": 2.2754451250075363,
+              "results": 10,
+              "verified_evidence": 10,
+              "output_truncated": false,
+              "runtime": {
+                "batch_size": 1,
+                "calibration": [],
+                "device_name": "cpu",
+                "fallback_reasons": [],
+                "provider": "Onnx",
+                "qualified": false,
+                "requested_device": "cpu",
+                "runtime_version": "ONNX Runtime 1.23.2; ort-2.0.0-rc.10 (API 22); ORT Build Info: git-branch=HEAD, git-commit-id=a83fc4d58c, build type=Release",
+                "selected_device": "cpu"
+              }
+            },
+            {
+              "query": "event055434",
+              "seconds": 2.82182629199815,
+              "results": 10,
+              "verified_evidence": 10,
+              "output_truncated": false,
+              "runtime": {
+                "batch_size": 1,
+                "calibration": [],
+                "device_name": "cpu",
+                "fallback_reasons": [],
+                "provider": "Onnx",
+                "qualified": false,
+                "requested_device": "cpu",
+                "runtime_version": "ONNX Runtime 1.23.2; ort-2.0.0-rc.10 (API 22); ORT Build Info: git-branch=HEAD, git-commit-id=a83fc4d58c, build type=Release",
+                "selected_device": "cpu"
+              }
+            },
+            {
+              "query": "storage invalidation",
+              "seconds": 2.2394689159991685,
+              "results": 10,
+              "verified_evidence": 10,
+              "output_truncated": false,
+              "runtime": {
+                "batch_size": 1,
+                "calibration": [],
+                "device_name": "cpu",
+                "fallback_reasons": [],
+                "provider": "Onnx",
+                "qualified": false,
+                "requested_device": "cpu",
+                "runtime_version": "ONNX Runtime 1.23.2; ort-2.0.0-rc.10 (API 22); ORT Build Info: git-branch=HEAD, git-commit-id=a83fc4d58c, build type=Release",
+                "selected_device": "cpu"
+              }
+            },
+            {
+              "query": "event071272",
+              "seconds": 2.6626250830013305,
+              "results": 10,
+              "verified_evidence": 10,
+              "output_truncated": false,
+              "runtime": {
+                "batch_size": 1,
+                "calibration": [],
+                "device_name": "cpu",
+                "fallback_reasons": [],
+                "provider": "Onnx",
+                "qualified": false,
+                "requested_device": "cpu",
+                "runtime_version": "ONNX Runtime 1.23.2; ort-2.0.0-rc.10 (API 22); ORT Build Info: git-branch=HEAD, git-commit-id=a83fc4d58c, build type=Release",
+                "selected_device": "cpu"
+              }
+            },
+            {
+              "query": "auth fallback",
+              "seconds": 2.6842312079970725,
+              "results": 10,
+              "verified_evidence": 10,
+              "output_truncated": false,
+              "runtime": {
+                "batch_size": 1,
+                "calibration": [],
+                "device_name": "cpu",
+                "fallback_reasons": [],
+                "provider": "Onnx",
+                "qualified": false,
+                "requested_device": "cpu",
+                "runtime_version": "ONNX Runtime 1.23.2; ort-2.0.0-rc.10 (API 22); ORT Build Info: git-branch=HEAD, git-commit-id=a83fc4d58c, build type=Release",
+                "selected_device": "cpu"
+              }
+            },
+            {
+              "query": "event087110",
+              "seconds": 2.7370553750079125,
+              "results": 10,
+              "verified_evidence": 10,
+              "output_truncated": false,
+              "runtime": {
+                "batch_size": 1,
+                "calibration": [],
+                "device_name": "cpu",
+                "fallback_reasons": [],
+                "provider": "Onnx",
+                "qualified": false,
+                "requested_device": "cpu",
+                "runtime_version": "ONNX Runtime 1.23.2; ort-2.0.0-rc.10 (API 22); ORT Build Info: git-branch=HEAD, git-commit-id=a83fc4d58c, build type=Release",
+                "selected_device": "cpu"
+              }
+            },
+            {
+              "query": "queue dispatch",
+              "seconds": 2.2986754169978667,
+              "results": 10,
+              "verified_evidence": 10,
+              "output_truncated": false,
+              "runtime": {
+                "batch_size": 1,
+                "calibration": [],
+                "device_name": "cpu",
+                "fallback_reasons": [],
+                "provider": "Onnx",
+                "qualified": false,
+                "requested_device": "cpu",
+                "runtime_version": "ONNX Runtime 1.23.2; ort-2.0.0-rc.10 (API 22); ORT Build Info: git-branch=HEAD, git-commit-id=a83fc4d58c, build type=Release",
+                "selected_device": "cpu"
+              }
+            },
+            {
+              "query": "event002948",
+              "seconds": 2.3398823340103263,
+              "results": 10,
+              "verified_evidence": 10,
+              "output_truncated": false,
+              "runtime": {
+                "batch_size": 1,
+                "calibration": [],
+                "device_name": "cpu",
+                "fallback_reasons": [],
+                "provider": "Onnx",
+                "qualified": false,
+                "requested_device": "cpu",
+                "runtime_version": "ONNX Runtime 1.23.2; ort-2.0.0-rc.10 (API 22); ORT Build Info: git-branch=HEAD, git-commit-id=a83fc4d58c, build type=Release",
+                "selected_device": "cpu"
+              }
+            },
+            {
+              "query": "transport allocation",
+              "seconds": 2.2810119170026155,
+              "results": 10,
+              "verified_evidence": 10,
+              "output_truncated": false,
+              "runtime": {
+                "batch_size": 1,
+                "calibration": [],
+                "device_name": "cpu",
+                "fallback_reasons": [],
+                "provider": "Onnx",
+                "qualified": false,
+                "requested_device": "cpu",
+                "runtime_version": "ONNX Runtime 1.23.2; ort-2.0.0-rc.10 (API 22); ORT Build Info: git-branch=HEAD, git-commit-id=a83fc4d58c, build type=Release",
+                "selected_device": "cpu"
+              }
+            },
+            {
+              "query": "event018786",
+              "seconds": 2.199725375001435,
+              "results": 10,
+              "verified_evidence": 10,
+              "output_truncated": false,
+              "runtime": {
+                "batch_size": 1,
+                "calibration": [],
+                "device_name": "cpu",
+                "fallback_reasons": [],
+                "provider": "Onnx",
+                "qualified": false,
+                "requested_device": "cpu",
+                "runtime_version": "ONNX Runtime 1.23.2; ort-2.0.0-rc.10 (API 22); ORT Build Info: git-branch=HEAD, git-commit-id=a83fc4d58c, build type=Release",
+                "selected_device": "cpu"
+              }
+            },
+            {
+              "query": "cache retry",
+              "seconds": 2.3434427920001326,
+              "results": 10,
+              "verified_evidence": 10,
+              "output_truncated": false,
+              "runtime": {
+                "batch_size": 1,
+                "calibration": [],
+                "device_name": "cpu",
+                "fallback_reasons": [],
+                "provider": "Onnx",
+                "qualified": false,
+                "requested_device": "cpu",
+                "runtime_version": "ONNX Runtime 1.23.2; ort-2.0.0-rc.10 (API 22); ORT Build Info: git-branch=HEAD, git-commit-id=a83fc4d58c, build type=Release",
+                "selected_device": "cpu"
+              }
+            },
+            {
+              "query": "event034624",
+              "seconds": 2.2037653329898603,
+              "results": 10,
+              "verified_evidence": 10,
+              "output_truncated": false,
+              "runtime": {
+                "batch_size": 1,
+                "calibration": [],
+                "device_name": "cpu",
+                "fallback_reasons": [],
+                "provider": "Onnx",
+                "qualified": false,
+                "requested_device": "cpu",
+                "runtime_version": "ONNX Runtime 1.23.2; ort-2.0.0-rc.10 (API 22); ORT Build Info: git-branch=HEAD, git-commit-id=a83fc4d58c, build type=Release",
+                "selected_device": "cpu"
+              }
+            },
+            {
+              "query": "network timeout",
+              "seconds": 2.3837104580015875,
+              "results": 10,
+              "verified_evidence": 10,
+              "output_truncated": false,
+              "runtime": {
+                "batch_size": 1,
+                "calibration": [],
+                "device_name": "cpu",
+                "fallback_reasons": [],
+                "provider": "Onnx",
+                "qualified": false,
+                "requested_device": "cpu",
+                "runtime_version": "ONNX Runtime 1.23.2; ort-2.0.0-rc.10 (API 22); ORT Build Info: git-branch=HEAD, git-commit-id=a83fc4d58c, build type=Release",
+                "selected_device": "cpu"
+              }
+            },
+            {
+              "query": "event050462",
+              "seconds": 2.470733082998777,
+              "results": 10,
+              "verified_evidence": 10,
+              "output_truncated": false,
+              "runtime": {
+                "batch_size": 1,
+                "calibration": [],
+                "device_name": "cpu",
+                "fallback_reasons": [],
+                "provider": "Onnx",
+                "qualified": false,
+                "requested_device": "cpu",
+                "runtime_version": "ONNX Runtime 1.23.2; ort-2.0.0-rc.10 (API 22); ORT Build Info: git-branch=HEAD, git-commit-id=a83fc4d58c, build type=Release",
+                "selected_device": "cpu"
+              }
+            }
+          ]
+        },
+        "caveats": [
+          "Vectors are synthetic random signs, not model embeddings of Git documents; rankings have no semantic meaning.",
+          "Only query encoding uses the native model. This does not measure real corpus embedding throughput or retrieval quality.",
+          "One vector per source document underestimates corpora whose tokenizer requires multiple chunks per document.",
+          "The fixture has simple linear history and small textual patches; it does not represent all 100k-commit repositories."
+        ]
+      }
+    }
+  ],
+  "equivalence": [
+    {
+      "schema_version": 1,
+      "purpose": "SYNTHETIC VECTORS: exact-vector scale only; no retrieval-quality evidence",
+      "synthetic_vectors": true,
+      "retrieval_quality_evaluated": false,
+      "baseline_binary_sha256": "0298b1390ec55a3f58da1d2f7f4ce2cb29d6e4b83ddf9aef81f71718d13fca11",
+      "optimized_binary_sha256": "5ed720f48df6b8056de8c7112176034cfa86924698dda41db45a1f54340bfaaa",
+      "queries_compared": 20,
+      "result_arrays_exactly_equal": true,
+      "compared_fields": "Entire ordered results array, including commit IDs, evidence IDs, excerpts, paths, ranges, scores and verified flags; history and embedding coverage also equal",
+      "baseline": {
+        "n": 20,
+        "p50_seconds": 3.8747950629986008,
+        "p95_seconds": 11.279823417004081,
+        "min_seconds": 3.3831145419972017,
+        "max_seconds": 12.568484584000544
+      },
+      "optimized": {
+        "n": 20,
+        "p50_seconds": 3.4453272920000018,
+        "p95_seconds": 11.181549332999566,
+        "min_seconds": 3.078068249997159,
+        "max_seconds": 11.799861500003317
+      },
+      "limitation": "Runs are sequential, filesystem caches were not flushed, the first query is retained, and ordinary host activity was not controlled. These observations do not isolate code effects on p95."
+    },
+    {
+      "schema_version": 1,
+      "purpose": "SYNTHETIC VECTORS: exact-vector scale only; no retrieval-quality evidence",
+      "synthetic_vectors": true,
+      "retrieval_quality_evaluated": false,
+      "binary_sha256": "5ed720f48df6b8056de8c7112176034cfa86924698dda41db45a1f54340bfaaa",
+      "queries_compared": 20,
+      "result_arrays_exactly_equal": true,
+      "without_covering_index": {
+        "n": 20,
+        "p50_seconds": 3.4453272920000018,
+        "p95_seconds": 11.181549332999566,
+        "min_seconds": 3.078068249997159,
+        "max_seconds": 11.799861500003317
+      },
+      "with_covering_index_and_statistics": {
+        "n": 20,
+        "p50_seconds": 2.328154896502383,
+        "p95_seconds": 2.82182629199815,
+        "min_seconds": 2.0351672079996206,
+        "max_seconds": 7.014883875002852
+      },
+      "limitation": "Sequential cached-mode runs; no filesystem cache flush; first query retained; ordinary host activity not controlled. Does not establish default auto freshness latency."
+    }
+  ],
+  "limitations": [
+    "All variants use cached freshness; they do not establish default auto freshness latency.",
+    "Sequential runs retained the first query without flushing filesystem/page caches. Ordinary host activity and thermal conditions were not controlled.",
+    "Other indexing, model inference and build processes were paused during query timing; they may have affected memory/cache state before each run.",
+    "These 20-invocation samples are observed nearest-rank percentiles, not a release latency guarantee.",
+    "The recorded covering-index p95 is 2.821826 seconds, above the two-second target.",
+    "One synthetic vector per source document does not represent the chunk expansion or relevance of real repository history."
+  ],
+  "acceptance": {
+    "latency_target_met": false,
+    "default_auto_p95_measured": false,
+    "final_default_auto_diagnostic_seconds": 2.413885375004611,
+    "final_profile_binary_sha256": "669dc90d4adda35c8b9cbdba57597f2514b54b8e5fbb60369c9f01faf8e21832",
+    "diagnostic_report": "2026-10-02-semantic-sql-diagnostics.json",
+    "note": "Final auto timing is one diagnostic observation after the pending-check change, not a p95 estimate."
+  }
+}

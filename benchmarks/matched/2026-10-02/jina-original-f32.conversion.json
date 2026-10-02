@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "model_id": "jinaai/jina-embeddings-v2-base-code",
+  "revision": "516f4baf13dec4ddddda8631e019b5737c8bc250",
+  "llama_cpp_revision": "5266f24da",
+  "precision": "F32",
+  "source_weights": {
+    "model.safetensors": "8b53bfd4ae2cd586004a6ca4a16551b630a2a1b1d655ff1ee9be1286a1781c5b"
+  },
+  "tokenizer_sha256": "b01c78a902aa4facb2f47f95449f48e2f7bbfea5d2472ee2f6ce92323c6f86e5",
+  "pooling_config": {
+    "word_embedding_dimension": 768,
+    "pooling_mode_cls_token": false,
+    "pooling_mode_mean_tokens": true,
+    "pooling_mode_max_tokens": false,
+    "pooling_mode_mean_sqrt_len_tokens": false
+  },
+  "converter_source_tree_sha256": "98f3ffe1556d8e37cf6b39987d77a6dd18c2e007fa5c347234bd20e680226306",
+  "converter_sha256": "e38975e1c68d98ac1664dfd530616eb35c72294382a4dd873d4746b23f27779f",
+  "conversion_command": [
+    "python",
+    "${LLAMA_SOURCE}/convert_hf_to_gguf.py",
+    "${HF_SNAPSHOT}",
+    "--outfile",
+    "${OUTPUT}",
+    "--outtype",
+    "f32"
+  ],
+  "qualification": "Unverified until tokenizer, pooling and vector parity pass; conversion success alone is insufficient.",
+  "artifact_sha256": "8652c33c8aa14e196d1c2af25387cc8bfafd06af6c9516c185ac63e3ed7dd679",
+  "artifact_bytes": 643271680
+}

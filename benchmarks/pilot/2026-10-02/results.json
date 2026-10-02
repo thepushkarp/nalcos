@@ -1,0 +1,4838 @@
+{
+  "kind": "exploratory_local_embedding_benchmark",
+  "hardware": {
+    "device": "MacBook Air",
+    "chip": "Apple M2",
+    "memory_gib": 16,
+    "cpu_cores": 8,
+    "performance_cores": 4,
+    "efficiency_cores": 4
+  },
+  "system": {
+    "os": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+    "python": "3.13.15"
+  },
+  "corpus": {
+    "repo": "https://github.com/thepushkarp/nalcos",
+    "head": "57bd49f174811f6bbaf4e541019f9a7e9f34a98e",
+    "scope": "HEAD ancestry; all commit messages, non-merge text diffs; bundled model trees excluded",
+    "commits": 111,
+    "documents": 401,
+    "messages": 111,
+    "diff_chunks": 290,
+    "questions": 12,
+    "sha256": "190f64c5e38719221c6e0b84809ead5e1041a9e6ca1b004c0b264185cc5ab491"
+  },
+  "method": {
+    "cpu_threads": 4,
+    "document_batch_size": 8,
+    "query_timing_samples": 36,
+    "query_warmup_calls": 3,
+    "ranking": "cosine; commit ranked by best matching document",
+    "lexical": "SQLite FTS5 OR term match after fixed stopwords; commit ranked by best matching document",
+    "hybrid": "equal-weight reciprocal rank fusion, k=60, top 50 commits from semantic and lexical",
+    "precision": "upstream ONNX f32/int8, official Qwen GGUF Q8_0, llama.cpp maintainers EmbeddingGemma GGUF Q8_0 including dense layers",
+    "weight_storage": "standard shared Hugging Face cache",
+    "corpus_chunking": "commit messages plus non-merge textual diff chunks; model/cache paths excluded; approximately 850-character diff bodies",
+    "query_format": "Model-specific prompts are recorded in each result. EmbeddingGemma also has an alternate code-retrieval query profile evaluated against the same document embeddings."
+  },
+  "caveats": [
+    "12 retrospective questions from inspected commits in one 111-commit repository; not independent holdout or validated regression tasks.",
+    "Top-k counts measure retrieval of one known gold commit; other useful commits may be unlabeled.",
+    "Original ONNX runs cap at 512 tokens; Jina has a separate 1024-token rerun that preserves every document. Qwen and EmbeddingGemma consume full documents. One MiniLM/BGE document and eight original Jina documents were truncated; see metadata.",
+    "Warm query latency measures embedding only, not Git extraction, index lookup, ranking, CLI startup, or end-to-end search.",
+    "Document throughput is for this short corpus, not commits per second and not a 100k-commit scalability measurement.",
+    "Model size is the tested weight artifact only, not whole installation size or runtime RAM.",
+    "ONNX load time measures InferenceSession creation; llama.cpp load time measures fresh server readiness; OS file cache was not cleared.",
+    "ONNX peak memory is Python process RSS; Qwen reports server and driver RSS separately. Metal allocation accounting is not equivalent to CPU RSS.",
+    "Naive FTS/RRF baselines are not a competent Git-using agent baseline.",
+    "The MiniLM tokenizer initially reported fixed-padding/truncation token metadata; metadata was corrected with unbounded tokenization. Inference already used the intended 512-token dynamic padding configuration.",
+    "No Linux, Rust end-to-end, battery, sustained thermal, or large repository measurements were performed.",
+    "Separate Jina rerun was faster despite longer context. Machine load and thermal state were not controlled; do not infer a speedup from increasing the context cap.",
+    "EmbeddingGemma timings use its search-result query prefix; the alternate code-retrieval profile has quality metrics only.",
+    "EmbeddingGemma source is Google; tested converted artifact is published by llama.cpp maintainers, not Google directly.",
+    "Runtime device enumeration detected MTL0: Apple M2 and BLAS: Accelerate. Metal benchmarks requested all GPU layers; detailed per-operation device placement was not measured."
+  ],
+  "results": [
+    {
+      "label": "minilm-f32",
+      "config": {
+        "label": "minilm-f32",
+        "model": "sentence-transformers/multi-qa-MiniLM-L6-cos-v1",
+        "revision": "b207367332321f8e44f96e224ef15bc607f4dbf0",
+        "file": "onnx/model.onnx"
+      },
+      "runtime": "onnxruntime 1.30.0",
+      "provider": "CPUExecutionProvider",
+      "threads": 4,
+      "batch_size": 8,
+      "max_tokens": 512,
+      "pooling": "mean",
+      "dimensions": 384,
+      "artifact_bytes": 90405214,
+      "corpus_sha256": "190f64c5e38719221c6e0b84809ead5e1041a9e6ca1b004c0b264185cc5ab491",
+      "documents": 401,
+      "tokens_mean": 154.08229426433914,
+      "truncated_documents": 1,
+      "load_seconds": 0.10469341699717916,
+      "first_query_ms": 6.958332996873651,
+      "warm_query_p50_ms": 2.350395499888691,
+      "warm_query_p95_ms": 3.00932300160639,
+      "corpus_seconds": 9.53489054199963,
+      "docs_per_second": 42.05606747488718,
+      "repeat128_docs_per_second": [
+        49.184106585266754,
+        48.953884010538836
+      ],
+      "peak_rss_mib": 728.375,
+      "quality": {
+        "semantic_messages": {
+          "top1": 7,
+          "top5": 8,
+          "top10": 9,
+          "mrr": 0.6433,
+          "questions": 12
+        },
+        "semantic_message_diff": {
+          "top1": 6,
+          "top5": 8,
+          "top10": 10,
+          "mrr": 0.581,
+          "questions": 12
+        },
+        "hybrid": {
+          "top1": 1,
+          "top5": 9,
+          "top10": 11,
+          "mrr": 0.3679,
+          "questions": 12
+        },
+        "lexical": {
+          "top1": 2,
+          "top5": 7,
+          "top10": 11,
+          "mrr": 0.3162,
+          "questions": 12
+        }
+      },
+      "details": [
+        {
+          "query": "When did search stop considering the description below a commit's first line?",
+          "gold": "2cbe5d33d81f05d154744b0c101db73b1d51f63d",
+          "ranks": {
+            "semantic_messages": 1,
+            "semantic_message_diff": 4,
+            "hybrid": 4,
+            "lexical": 5
+          },
+          "semantic_top5": [
+            "017cb50985de6328aad910c88745ed35751bb69c",
+            "0972bb124eccfdbfb042168f691716f1343623df",
+            "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+            "2cbe5d33d81f05d154744b0c101db73b1d51f63d",
+            "7c08368328a0a2bd8561bbb5331f6db698209bb2"
+          ],
+          "hybrid_top5": [
+            "017cb50985de6328aad910c88745ed35751bb69c",
+            "7c08368328a0a2bd8561bbb5331f6db698209bb2",
+            "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+            "2cbe5d33d81f05d154744b0c101db73b1d51f63d",
+            "0972bb124eccfdbfb042168f691716f1343623df"
+          ]
+        },
+        {
+          "query": "Which change restored searching the body of a commit while keeping result rows short?",
+          "gold": "7c08368328a0a2bd8561bbb5331f6db698209bb2",
+          "ranks": {
+            "semantic_messages": 2,
+            "semantic_message_diff": 7,
+            "hybrid": 7,
+            "lexical": 8
+          },
+          "semantic_top5": [
+            "0972bb124eccfdbfb042168f691716f1343623df",
+            "017cb50985de6328aad910c88745ed35751bb69c",
+            "a4092841e6f51389b50fff839664c5ddd1d845f1",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+            "2cbe5d33d81f05d154744b0c101db73b1d51f63d"
+          ],
+          "hybrid_top5": [
+            "017cb50985de6328aad910c88745ed35751bb69c",
+            "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+            "a4092841e6f51389b50fff839664c5ddd1d845f1",
+            "2cbe5d33d81f05d154744b0c101db73b1d51f63d"
+          ]
+        },
+        {
+          "query": "Find the change that removed explicit GPU selection when loading the sentence model.",
+          "gold": "d88290f451ab79804759cf6637e33d5e51bd96e3",
+          "ranks": {
+            "semantic_messages": 26,
+            "semantic_message_diff": 3,
+            "hybrid": 4,
+            "lexical": 8
+          },
+          "semantic_top5": [
+            "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+            "af71e0f0a269155c16a87c941deeaf5be9b4f382",
+            "d88290f451ab79804759cf6637e33d5e51bd96e3",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+            "b6e5f708027297b76bf4c4b660a74a44cfae40b2"
+          ],
+          "hybrid_top5": [
+            "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+            "af71e0f0a269155c16a87c941deeaf5be9b4f382",
+            "18d7ffb27c8263949c8cd86fd1e36a32ee622d42",
+            "d88290f451ab79804759cf6637e33d5e51bd96e3",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c"
+          ]
+        },
+        {
+          "query": "Find where loading the model started explicitly choosing CUDA again when a GPU was available.",
+          "gold": "b6e5f708027297b76bf4c4b660a74a44cfae40b2",
+          "ranks": {
+            "semantic_messages": 1,
+            "semantic_message_diff": 1,
+            "hybrid": 2,
+            "lexical": 3
+          },
+          "semantic_top5": [
+            "b6e5f708027297b76bf4c4b660a74a44cfae40b2",
+            "d88290f451ab79804759cf6637e33d5e51bd96e3",
+            "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+            "af71e0f0a269155c16a87c941deeaf5be9b4f382"
+          ],
+          "hybrid_top5": [
+            "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+            "b6e5f708027297b76bf4c4b660a74a44cfae40b2",
+            "d88290f451ab79804759cf6637e33d5e51bd96e3",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+            "af71e0f0a269155c16a87c941deeaf5be9b4f382"
+          ]
+        },
+        {
+          "query": "Where did ranking start using a dot product on unit-length vectors instead of calculating cosine similarity directly?",
+          "gold": "669120d18c1738247c678b6fcb5126c5f97791a2",
+          "ranks": {
+            "semantic_messages": 1,
+            "semantic_message_diff": 1,
+            "hybrid": 1,
+            "lexical": 1
+          },
+          "semantic_top5": [
+            "669120d18c1738247c678b6fcb5126c5f97791a2",
+            "3d30fd08dcabf1af0d3b88afb0d64f43e1c80674",
+            "017cb50985de6328aad910c88745ed35751bb69c",
+            "a4092841e6f51389b50fff839664c5ddd1d845f1",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c"
+          ],
+          "hybrid_top5": [
+            "669120d18c1738247c678b6fcb5126c5f97791a2",
+            "3d30fd08dcabf1af0d3b88afb0d64f43e1c80674",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+            "a4092841e6f51389b50fff839664c5ddd1d845f1",
+            "017cb50985de6328aad910c88745ed35751bb69c"
+          ]
+        },
+        {
+          "query": "Which change fixed the malformed query-string separator used to request later pages of GitHub commits?",
+          "gold": "7e5498635ce2c22b3bbdfd32d716d2c62af9a9a0",
+          "ranks": {
+            "semantic_messages": 1,
+            "semantic_message_diff": 7,
+            "hybrid": 5,
+            "lexical": 6
+          },
+          "semantic_top5": [
+            "983eccfb60c2d8d7d3184894eeeb1f1290a5efee",
+            "18d7ffb27c8263949c8cd86fd1e36a32ee622d42",
+            "d88290f451ab79804759cf6637e33d5e51bd96e3",
+            "017cb50985de6328aad910c88745ed35751bb69c",
+            "c7e66e6cec0dcb74a85735a24b429e24c68cca98"
+          ],
+          "hybrid_top5": [
+            "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+            "a4092841e6f51389b50fff839664c5ddd1d845f1",
+            "017cb50985de6328aad910c88745ed35751bb69c",
+            "2cbe5d33d81f05d154744b0c101db73b1d51f63d",
+            "7e5498635ce2c22b3bbdfd32d716d2c62af9a9a0"
+          ]
+        },
+        {
+          "query": "When was model creation pulled out of the ranking function so callers could pass in an already-loaded model?",
+          "gold": "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+          "ranks": {
+            "semantic_messages": 67,
+            "semantic_message_diff": 12,
+            "hybrid": 2,
+            "lexical": 1
+          },
+          "semantic_top5": [
+            "af71e0f0a269155c16a87c941deeaf5be9b4f382",
+            "caed7cfc99e04bcf4410558b19453866d5f7cfdd",
+            "41fe13046baad8b4d5a526189eba9e3c1367037b",
+            "f5875d88ab5d817ce4183a60bbb82046832cbfe3",
+            "24719f23eb5e4c6a1859071b9b5eabd9f03588e1"
+          ],
+          "hybrid_top5": [
+            "af71e0f0a269155c16a87c941deeaf5be9b4f382",
+            "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+            "caed7cfc99e04bcf4410558b19453866d5f7cfdd",
+            "41fe13046baad8b4d5a526189eba9e3c1367037b",
+            "6b4ae69847ed03d84f7b3115658f20645b73227a"
+          ]
+        },
+        {
+          "query": "Which fix restored relative imports for sibling modules after bare imports had been introduced?",
+          "gold": "41fe13046baad8b4d5a526189eba9e3c1367037b",
+          "ranks": {
+            "semantic_messages": 1,
+            "semantic_message_diff": 1,
+            "hybrid": 6,
+            "lexical": null
+          },
+          "semantic_top5": [
+            "41fe13046baad8b4d5a526189eba9e3c1367037b",
+            "fa5e5ec2a005171bf050e833c245c315adebe4c2",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+            "24719f23eb5e4c6a1859071b9b5eabd9f03588e1",
+            "f5875d88ab5d817ce4183a60bbb82046832cbfe3"
+          ],
+          "hybrid_top5": [
+            "017cb50985de6328aad910c88745ed35751bb69c",
+            "01faefd136435585bfa3b587bd8afac9a1a2f8fd",
+            "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+            "12efdfc32d1eb5646b3179eea2986723e2893d8d",
+            "03109a103e521535440cbcf8ff41c5999170ab97"
+          ]
+        },
+        {
+          "query": "When did the short -v option stop printing the version and start showing longer result descriptions?",
+          "gold": "1c3ebff5bb4bf4fa9272cc469d7e5f4560e4309e",
+          "ranks": {
+            "semantic_messages": 42,
+            "semantic_message_diff": 50,
+            "hybrid": 14,
+            "lexical": 3
+          },
+          "semantic_top5": [
+            "2e410f45bad8a33cffa6b9ea0bf145006c580894",
+            "fa5e5ec2a005171bf050e833c245c315adebe4c2",
+            "b7a713ae76c4bbbd3c4b956b5fba91391b5a91be",
+            "af71e0f0a269155c16a87c941deeaf5be9b4f382",
+            "22eb87fce284c10038ce223b589eedc520577b92"
+          ],
+          "hybrid_top5": [
+            "fa5e5ec2a005171bf050e833c245c315adebe4c2",
+            "2e410f45bad8a33cffa6b9ea0bf145006c580894",
+            "7c08368328a0a2bd8561bbb5331f6db698209bb2",
+            "22eb87fce284c10038ce223b589eedc520577b92",
+            "0972bb124eccfdbfb042168f691716f1343623df"
+          ]
+        },
+        {
+          "query": "Where was a forbidden response from GitHub turned into an error telling the user to wait before trying again?",
+          "gold": "b2a35a2838f410bf3a521239ca0b2cc011b8b83f",
+          "ranks": {
+            "semantic_messages": 7,
+            "semantic_message_diff": 1,
+            "hybrid": 2,
+            "lexical": 5
+          },
+          "semantic_top5": [
+            "b2a35a2838f410bf3a521239ca0b2cc011b8b83f",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+            "e0dcd6ba47e3ed647c81499d4b202d60394e93ec",
+            "7e5498635ce2c22b3bbdfd32d716d2c62af9a9a0",
+            "c7e66e6cec0dcb74a85735a24b429e24c68cca98"
+          ],
+          "hybrid_top5": [
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+            "b2a35a2838f410bf3a521239ca0b2cc011b8b83f",
+            "7e5498635ce2c22b3bbdfd32d716d2c62af9a9a0",
+            "e78e2a808111fe6e5a5a365fe139c1c8ce21aec2",
+            "41fe13046baad8b4d5a526189eba9e3c1367037b"
+          ]
+        },
+        {
+          "query": "Which change made a returned commit identifier open its GitHub page from the terminal?",
+          "gold": "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+          "ranks": {
+            "semantic_messages": 1,
+            "semantic_message_diff": 1,
+            "hybrid": 3,
+            "lexical": 9
+          },
+          "semantic_top5": [
+            "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+            "2cbe5d33d81f05d154744b0c101db73b1d51f63d",
+            "18d7ffb27c8263949c8cd86fd1e36a32ee622d42",
+            "017cb50985de6328aad910c88745ed35751bb69c",
+            "983eccfb60c2d8d7d3184894eeeb1f1290a5efee"
+          ],
+          "hybrid_top5": [
+            "2cbe5d33d81f05d154744b0c101db73b1d51f63d",
+            "7e5498635ce2c22b3bbdfd32d716d2c62af9a9a0",
+            "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+            "18d7ffb27c8263949c8cd86fd1e36a32ee622d42",
+            "017cb50985de6328aad910c88745ed35751bb69c"
+          ]
+        },
+        {
+          "query": "When did the command line start scanning only a hundred previous revisions by default instead of a thousand?",
+          "gold": "0972bb124eccfdbfb042168f691716f1343623df",
+          "ranks": {
+            "semantic_messages": 1,
+            "semantic_message_diff": 1,
+            "hybrid": 2,
+            "lexical": 5
+          },
+          "semantic_top5": [
+            "0972bb124eccfdbfb042168f691716f1343623df",
+            "a4092841e6f51389b50fff839664c5ddd1d845f1",
+            "017cb50985de6328aad910c88745ed35751bb69c",
+            "12efdfc32d1eb5646b3179eea2986723e2893d8d",
+            "05e2af195ae7f944f489d4b74d2b7c42ac7cfb5e"
+          ],
+          "hybrid_top5": [
+            "017cb50985de6328aad910c88745ed35751bb69c",
+            "0972bb124eccfdbfb042168f691716f1343623df",
+            "709b649cbc2abc22a8952523d89445ff71eb6098",
+            "d88290f451ab79804759cf6637e33d5e51bd96e3",
+            "baeb7006b419c15efcd88a8f7969b03a35b1b615"
+          ]
+        }
+      ],
+      "tokens_max": 668,
+      "truncation_details": [
+        {
+          "document_index": 21,
+          "sha": "5a5630f22f8d8ad602f7d9f04541086b21859c7a",
+          "path": "",
+          "tokens": 668,
+          "gold_commit": false
+        }
+      ],
+      "token_count_method": "tokenizer.json with padding and truncation disabled; inference capped at 512 tokens"
+    },
+    {
+      "label": "minilm-int8",
+      "config": {
+        "label": "minilm-int8",
+        "model": "sentence-transformers/multi-qa-MiniLM-L6-cos-v1",
+        "revision": "b207367332321f8e44f96e224ef15bc607f4dbf0",
+        "file": "onnx/model_qint8_arm64.onnx"
+      },
+      "runtime": "onnxruntime 1.30.0",
+      "provider": "CPUExecutionProvider",
+      "threads": 4,
+      "batch_size": 8,
+      "max_tokens": 512,
+      "pooling": "mean",
+      "dimensions": 384,
+      "artifact_bytes": 23026053,
+      "corpus_sha256": "190f64c5e38719221c6e0b84809ead5e1041a9e6ca1b004c0b264185cc5ab491",
+      "documents": 401,
+      "tokens_mean": 154.08229426433914,
+      "truncated_documents": 1,
+      "load_seconds": 0.047038042001076974,
+      "first_query_ms": 2.036707999650389,
+      "warm_query_p50_ms": 1.1436455006332835,
+      "warm_query_p95_ms": 1.3470522508214344,
+      "corpus_seconds": 4.908114375000878,
+      "docs_per_second": 81.70143753015705,
+      "repeat128_docs_per_second": [
+        83.1468416258382,
+        80.3291318994241
+      ],
+      "peak_rss_mib": 632.734375,
+      "quality": {
+        "semantic_messages": {
+          "top1": 6,
+          "top5": 8,
+          "top10": 9,
+          "mrr": 0.6012,
+          "questions": 12
+        },
+        "semantic_message_diff": {
+          "top1": 6,
+          "top5": 10,
+          "top10": 11,
+          "mrr": 0.625,
+          "questions": 12
+        },
+        "hybrid": {
+          "top1": 3,
+          "top5": 8,
+          "top10": 11,
+          "mrr": 0.4449,
+          "questions": 12
+        },
+        "lexical": {
+          "top1": 2,
+          "top5": 7,
+          "top10": 11,
+          "mrr": 0.3162,
+          "questions": 12
+        }
+      },
+      "details": [
+        {
+          "query": "When did search stop considering the description below a commit's first line?",
+          "gold": "2cbe5d33d81f05d154744b0c101db73b1d51f63d",
+          "ranks": {
+            "semantic_messages": 1,
+            "semantic_message_diff": 4,
+            "hybrid": 4,
+            "lexical": 5
+          },
+          "semantic_top5": [
+            "017cb50985de6328aad910c88745ed35751bb69c",
+            "0972bb124eccfdbfb042168f691716f1343623df",
+            "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+            "2cbe5d33d81f05d154744b0c101db73b1d51f63d",
+            "7c08368328a0a2bd8561bbb5331f6db698209bb2"
+          ],
+          "hybrid_top5": [
+            "017cb50985de6328aad910c88745ed35751bb69c",
+            "7c08368328a0a2bd8561bbb5331f6db698209bb2",
+            "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+            "2cbe5d33d81f05d154744b0c101db73b1d51f63d",
+            "0972bb124eccfdbfb042168f691716f1343623df"
+          ]
+        },
+        {
+          "query": "Which change restored searching the body of a commit while keeping result rows short?",
+          "gold": "7c08368328a0a2bd8561bbb5331f6db698209bb2",
+          "ranks": {
+            "semantic_messages": 2,
+            "semantic_message_diff": 7,
+            "hybrid": 7,
+            "lexical": 8
+          },
+          "semantic_top5": [
+            "0972bb124eccfdbfb042168f691716f1343623df",
+            "a4092841e6f51389b50fff839664c5ddd1d845f1",
+            "017cb50985de6328aad910c88745ed35751bb69c",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+            "c7e66e6cec0dcb74a85735a24b429e24c68cca98"
+          ],
+          "hybrid_top5": [
+            "017cb50985de6328aad910c88745ed35751bb69c",
+            "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+            "a4092841e6f51389b50fff839664c5ddd1d845f1",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+            "2cbe5d33d81f05d154744b0c101db73b1d51f63d"
+          ]
+        },
+        {
+          "query": "Find the change that removed explicit GPU selection when loading the sentence model.",
+          "gold": "d88290f451ab79804759cf6637e33d5e51bd96e3",
+          "ranks": {
+            "semantic_messages": 30,
+            "semantic_message_diff": 4,
+            "hybrid": 7,
+            "lexical": 8
+          },
+          "semantic_top5": [
+            "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+            "af71e0f0a269155c16a87c941deeaf5be9b4f382",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+            "d88290f451ab79804759cf6637e33d5e51bd96e3",
+            "b6e5f708027297b76bf4c4b660a74a44cfae40b2"
+          ],
+          "hybrid_top5": [
+            "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+            "18d7ffb27c8263949c8cd86fd1e36a32ee622d42",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+            "af71e0f0a269155c16a87c941deeaf5be9b4f382",
+            "a4092841e6f51389b50fff839664c5ddd1d845f1"
+          ]
+        },
+        {
+          "query": "Find where loading the model started explicitly choosing CUDA again when a GPU was available.",
+          "gold": "b6e5f708027297b76bf4c4b660a74a44cfae40b2",
+          "ranks": {
+            "semantic_messages": 1,
+            "semantic_message_diff": 1,
+            "hybrid": 1,
+            "lexical": 3
+          },
+          "semantic_top5": [
+            "b6e5f708027297b76bf4c4b660a74a44cfae40b2",
+            "d88290f451ab79804759cf6637e33d5e51bd96e3",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+            "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+            "6b4ae69847ed03d84f7b3115658f20645b73227a"
+          ],
+          "hybrid_top5": [
+            "b6e5f708027297b76bf4c4b660a74a44cfae40b2",
+            "d88290f451ab79804759cf6637e33d5e51bd96e3",
+            "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+            "af71e0f0a269155c16a87c941deeaf5be9b4f382"
+          ]
+        },
+        {
+          "query": "Where did ranking start using a dot product on unit-length vectors instead of calculating cosine similarity directly?",
+          "gold": "669120d18c1738247c678b6fcb5126c5f97791a2",
+          "ranks": {
+            "semantic_messages": 1,
+            "semantic_message_diff": 1,
+            "hybrid": 1,
+            "lexical": 1
+          },
+          "semantic_top5": [
+            "669120d18c1738247c678b6fcb5126c5f97791a2",
+            "3d30fd08dcabf1af0d3b88afb0d64f43e1c80674",
+            "017cb50985de6328aad910c88745ed35751bb69c",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+            "a4092841e6f51389b50fff839664c5ddd1d845f1"
+          ],
+          "hybrid_top5": [
+            "669120d18c1738247c678b6fcb5126c5f97791a2",
+            "3d30fd08dcabf1af0d3b88afb0d64f43e1c80674",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+            "017cb50985de6328aad910c88745ed35751bb69c",
+            "a4092841e6f51389b50fff839664c5ddd1d845f1"
+          ]
+        },
+        {
+          "query": "Which change fixed the malformed query-string separator used to request later pages of GitHub commits?",
+          "gold": "7e5498635ce2c22b3bbdfd32d716d2c62af9a9a0",
+          "ranks": {
+            "semantic_messages": 1,
+            "semantic_message_diff": 3,
+            "hybrid": 3,
+            "lexical": 6
+          },
+          "semantic_top5": [
+            "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+            "18d7ffb27c8263949c8cd86fd1e36a32ee622d42",
+            "7e5498635ce2c22b3bbdfd32d716d2c62af9a9a0",
+            "d88290f451ab79804759cf6637e33d5e51bd96e3",
+            "017cb50985de6328aad910c88745ed35751bb69c"
+          ],
+          "hybrid_top5": [
+            "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+            "2cbe5d33d81f05d154744b0c101db73b1d51f63d",
+            "7e5498635ce2c22b3bbdfd32d716d2c62af9a9a0",
+            "a4092841e6f51389b50fff839664c5ddd1d845f1",
+            "017cb50985de6328aad910c88745ed35751bb69c"
+          ]
+        },
+        {
+          "query": "When was model creation pulled out of the ranking function so callers could pass in an already-loaded model?",
+          "gold": "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+          "ranks": {
+            "semantic_messages": 72,
+            "semantic_message_diff": 2,
+            "hybrid": 1,
+            "lexical": 1
+          },
+          "semantic_top5": [
+            "af71e0f0a269155c16a87c941deeaf5be9b4f382",
+            "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+            "f5875d88ab5d817ce4183a60bbb82046832cbfe3",
+            "41fe13046baad8b4d5a526189eba9e3c1367037b",
+            "bb44d5d7d94e178cbe4eb9d1ec45f95a2455ea45"
+          ],
+          "hybrid_top5": [
+            "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+            "af71e0f0a269155c16a87c941deeaf5be9b4f382",
+            "41fe13046baad8b4d5a526189eba9e3c1367037b",
+            "6b4ae69847ed03d84f7b3115658f20645b73227a",
+            "caed7cfc99e04bcf4410558b19453866d5f7cfdd"
+          ]
+        },
+        {
+          "query": "Which fix restored relative imports for sibling modules after bare imports had been introduced?",
+          "gold": "41fe13046baad8b4d5a526189eba9e3c1367037b",
+          "ranks": {
+            "semantic_messages": 1,
+            "semantic_message_diff": 1,
+            "hybrid": 7,
+            "lexical": null
+          },
+          "semantic_top5": [
+            "41fe13046baad8b4d5a526189eba9e3c1367037b",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+            "fa5e5ec2a005171bf050e833c245c315adebe4c2",
+            "d88290f451ab79804759cf6637e33d5e51bd96e3",
+            "3d427675d5d95efe297bf9fc6ea31dc6bb97a7fd"
+          ],
+          "hybrid_top5": [
+            "017cb50985de6328aad910c88745ed35751bb69c",
+            "01faefd136435585bfa3b587bd8afac9a1a2f8fd",
+            "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+            "0972bb124eccfdbfb042168f691716f1343623df",
+            "12efdfc32d1eb5646b3179eea2986723e2893d8d"
+          ]
+        },
+        {
+          "query": "When did the short -v option stop printing the version and start showing longer result descriptions?",
+          "gold": "1c3ebff5bb4bf4fa9272cc469d7e5f4560e4309e",
+          "ranks": {
+            "semantic_messages": 41,
+            "semantic_message_diff": 43,
+            "hybrid": 13,
+            "lexical": 3
+          },
+          "semantic_top5": [
+            "fa5e5ec2a005171bf050e833c245c315adebe4c2",
+            "2cbe5d33d81f05d154744b0c101db73b1d51f63d",
+            "af71e0f0a269155c16a87c941deeaf5be9b4f382",
+            "2e410f45bad8a33cffa6b9ea0bf145006c580894",
+            "b7a713ae76c4bbbd3c4b956b5fba91391b5a91be"
+          ],
+          "hybrid_top5": [
+            "fa5e5ec2a005171bf050e833c245c315adebe4c2",
+            "7c08368328a0a2bd8561bbb5331f6db698209bb2",
+            "22eb87fce284c10038ce223b589eedc520577b92",
+            "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+            "0972bb124eccfdbfb042168f691716f1343623df"
+          ]
+        },
+        {
+          "query": "Where was a forbidden response from GitHub turned into an error telling the user to wait before trying again?",
+          "gold": "b2a35a2838f410bf3a521239ca0b2cc011b8b83f",
+          "ranks": {
+            "semantic_messages": 7,
+            "semantic_message_diff": 1,
+            "hybrid": 2,
+            "lexical": 5
+          },
+          "semantic_top5": [
+            "b2a35a2838f410bf3a521239ca0b2cc011b8b83f",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+            "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+            "e0dcd6ba47e3ed647c81499d4b202d60394e93ec",
+            "7e5498635ce2c22b3bbdfd32d716d2c62af9a9a0"
+          ],
+          "hybrid_top5": [
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+            "b2a35a2838f410bf3a521239ca0b2cc011b8b83f",
+            "e78e2a808111fe6e5a5a365fe139c1c8ce21aec2",
+            "7e5498635ce2c22b3bbdfd32d716d2c62af9a9a0",
+            "41fe13046baad8b4d5a526189eba9e3c1367037b"
+          ]
+        },
+        {
+          "query": "Which change made a returned commit identifier open its GitHub page from the terminal?",
+          "gold": "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+          "ranks": {
+            "semantic_messages": 2,
+            "semantic_message_diff": 1,
+            "hybrid": 4,
+            "lexical": 9
+          },
+          "semantic_top5": [
+            "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+            "18d7ffb27c8263949c8cd86fd1e36a32ee622d42",
+            "2cbe5d33d81f05d154744b0c101db73b1d51f63d",
+            "017cb50985de6328aad910c88745ed35751bb69c",
+            "983eccfb60c2d8d7d3184894eeeb1f1290a5efee"
+          ],
+          "hybrid_top5": [
+            "7e5498635ce2c22b3bbdfd32d716d2c62af9a9a0",
+            "2cbe5d33d81f05d154744b0c101db73b1d51f63d",
+            "18d7ffb27c8263949c8cd86fd1e36a32ee622d42",
+            "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+            "017cb50985de6328aad910c88745ed35751bb69c"
+          ]
+        },
+        {
+          "query": "When did the command line start scanning only a hundred previous revisions by default instead of a thousand?",
+          "gold": "0972bb124eccfdbfb042168f691716f1343623df",
+          "ranks": {
+            "semantic_messages": 1,
+            "semantic_message_diff": 1,
+            "hybrid": 2,
+            "lexical": 5
+          },
+          "semantic_top5": [
+            "0972bb124eccfdbfb042168f691716f1343623df",
+            "a4092841e6f51389b50fff839664c5ddd1d845f1",
+            "017cb50985de6328aad910c88745ed35751bb69c",
+            "12efdfc32d1eb5646b3179eea2986723e2893d8d",
+            "983eccfb60c2d8d7d3184894eeeb1f1290a5efee"
+          ],
+          "hybrid_top5": [
+            "017cb50985de6328aad910c88745ed35751bb69c",
+            "0972bb124eccfdbfb042168f691716f1343623df",
+            "709b649cbc2abc22a8952523d89445ff71eb6098",
+            "d88290f451ab79804759cf6637e33d5e51bd96e3",
+            "baeb7006b419c15efcd88a8f7969b03a35b1b615"
+          ]
+        }
+      ],
+      "tokens_max": 668,
+      "truncation_details": [
+        {
+          "document_index": 21,
+          "sha": "5a5630f22f8d8ad602f7d9f04541086b21859c7a",
+          "path": "",
+          "tokens": 668,
+          "gold_commit": false
+        }
+      ],
+      "token_count_method": "tokenizer.json with padding and truncation disabled; inference capped at 512 tokens"
+    },
+    {
+      "label": "bge-small-f32",
+      "config": {
+        "label": "bge-small-f32",
+        "model": "BAAI/bge-small-en-v1.5",
+        "revision": "5c38ec7c405ec4b44b94cc5a9bb96e735b38267a",
+        "file": "onnx/model.onnx",
+        "prefix": "Represent this sentence for searching relevant passages: "
+      },
+      "runtime": "onnxruntime 1.30.0",
+      "provider": "CPUExecutionProvider",
+      "threads": 4,
+      "batch_size": 8,
+      "max_tokens": 512,
+      "pooling": "cls",
+      "dimensions": 384,
+      "artifact_bytes": 133093490,
+      "corpus_sha256": "190f64c5e38719221c6e0b84809ead5e1041a9e6ca1b004c0b264185cc5ab491",
+      "documents": 401,
+      "tokens_mean": 154.08229426433914,
+      "truncated_documents": 1,
+      "load_seconds": 0.10688820799987298,
+      "first_query_ms": 5.9441249977680854,
+      "warm_query_p50_ms": 5.94910400104709,
+      "warm_query_p95_ms": 7.240771000397217,
+      "corpus_seconds": 20.642322333002085,
+      "docs_per_second": 19.426108822983444,
+      "repeat128_docs_per_second": [
+        22.905019288395714,
+        22.77977855963173
+      ],
+      "peak_rss_mib": 705.25,
+      "quality": {
+        "semantic_messages": {
+          "top1": 3,
+          "top5": 6,
+          "top10": 8,
+          "mrr": 0.3893,
+          "questions": 12
+        },
+        "semantic_message_diff": {
+          "top1": 5,
+          "top5": 9,
+          "top10": 10,
+          "mrr": 0.558,
+          "questions": 12
+        },
+        "hybrid": {
+          "top1": 2,
+          "top5": 9,
+          "top10": 11,
+          "mrr": 0.4111,
+          "questions": 12
+        },
+        "lexical": {
+          "top1": 2,
+          "top5": 7,
+          "top10": 11,
+          "mrr": 0.3162,
+          "questions": 12
+        }
+      },
+      "details": [
+        {
+          "query": "When did search stop considering the description below a commit's first line?",
+          "gold": "2cbe5d33d81f05d154744b0c101db73b1d51f63d",
+          "ranks": {
+            "semantic_messages": 3,
+            "semantic_message_diff": 4,
+            "hybrid": 4,
+            "lexical": 5
+          },
+          "semantic_top5": [
+            "0972bb124eccfdbfb042168f691716f1343623df",
+            "7c08368328a0a2bd8561bbb5331f6db698209bb2",
+            "017cb50985de6328aad910c88745ed35751bb69c",
+            "2cbe5d33d81f05d154744b0c101db73b1d51f63d",
+            "a4092841e6f51389b50fff839664c5ddd1d845f1"
+          ],
+          "hybrid_top5": [
+            "7c08368328a0a2bd8561bbb5331f6db698209bb2",
+            "017cb50985de6328aad910c88745ed35751bb69c",
+            "0972bb124eccfdbfb042168f691716f1343623df",
+            "2cbe5d33d81f05d154744b0c101db73b1d51f63d",
+            "c7e66e6cec0dcb74a85735a24b429e24c68cca98"
+          ]
+        },
+        {
+          "query": "Which change restored searching the body of a commit while keeping result rows short?",
+          "gold": "7c08368328a0a2bd8561bbb5331f6db698209bb2",
+          "ranks": {
+            "semantic_messages": 2,
+            "semantic_message_diff": 4,
+            "hybrid": 6,
+            "lexical": 8
+          },
+          "semantic_top5": [
+            "a4092841e6f51389b50fff839664c5ddd1d845f1",
+            "0972bb124eccfdbfb042168f691716f1343623df",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+            "7c08368328a0a2bd8561bbb5331f6db698209bb2",
+            "2cbe5d33d81f05d154744b0c101db73b1d51f63d"
+          ],
+          "hybrid_top5": [
+            "a4092841e6f51389b50fff839664c5ddd1d845f1",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+            "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+            "3d30fd08dcabf1af0d3b88afb0d64f43e1c80674",
+            "017cb50985de6328aad910c88745ed35751bb69c"
+          ]
+        },
+        {
+          "query": "Find the change that removed explicit GPU selection when loading the sentence model.",
+          "gold": "d88290f451ab79804759cf6637e33d5e51bd96e3",
+          "ranks": {
+            "semantic_messages": 40,
+            "semantic_message_diff": 21,
+            "hybrid": 6,
+            "lexical": 8
+          },
+          "semantic_top5": [
+            "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+            "8da11d3bc79f8632c063ff30b40b312a06703ad8",
+            "af71e0f0a269155c16a87c941deeaf5be9b4f382",
+            "0972bb124eccfdbfb042168f691716f1343623df",
+            "756135666f896f1611a4e0929ea92e6b4e47392e"
+          ],
+          "hybrid_top5": [
+            "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+            "af71e0f0a269155c16a87c941deeaf5be9b4f382",
+            "3f2b22c9c6b1918642fab04f5ae4123ec7f83f39",
+            "017cb50985de6328aad910c88745ed35751bb69c",
+            "18d7ffb27c8263949c8cd86fd1e36a32ee622d42"
+          ]
+        },
+        {
+          "query": "Find where loading the model started explicitly choosing CUDA again when a GPU was available.",
+          "gold": "b6e5f708027297b76bf4c4b660a74a44cfae40b2",
+          "ranks": {
+            "semantic_messages": 1,
+            "semantic_message_diff": 2,
+            "hybrid": 2,
+            "lexical": 3
+          },
+          "semantic_top5": [
+            "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+            "b6e5f708027297b76bf4c4b660a74a44cfae40b2",
+            "6b4ae69847ed03d84f7b3115658f20645b73227a",
+            "af71e0f0a269155c16a87c941deeaf5be9b4f382",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c"
+          ],
+          "hybrid_top5": [
+            "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+            "b6e5f708027297b76bf4c4b660a74a44cfae40b2",
+            "d88290f451ab79804759cf6637e33d5e51bd96e3",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+            "af71e0f0a269155c16a87c941deeaf5be9b4f382"
+          ]
+        },
+        {
+          "query": "Where did ranking start using a dot product on unit-length vectors instead of calculating cosine similarity directly?",
+          "gold": "669120d18c1738247c678b6fcb5126c5f97791a2",
+          "ranks": {
+            "semantic_messages": 2,
+            "semantic_message_diff": 1,
+            "hybrid": 1,
+            "lexical": 1
+          },
+          "semantic_top5": [
+            "669120d18c1738247c678b6fcb5126c5f97791a2",
+            "18d7ffb27c8263949c8cd86fd1e36a32ee622d42",
+            "017cb50985de6328aad910c88745ed35751bb69c",
+            "3d30fd08dcabf1af0d3b88afb0d64f43e1c80674",
+            "a4092841e6f51389b50fff839664c5ddd1d845f1"
+          ],
+          "hybrid_top5": [
+            "669120d18c1738247c678b6fcb5126c5f97791a2",
+            "3d30fd08dcabf1af0d3b88afb0d64f43e1c80674",
+            "18d7ffb27c8263949c8cd86fd1e36a32ee622d42",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+            "017cb50985de6328aad910c88745ed35751bb69c"
+          ]
+        },
+        {
+          "query": "Which change fixed the malformed query-string separator used to request later pages of GitHub commits?",
+          "gold": "7e5498635ce2c22b3bbdfd32d716d2c62af9a9a0",
+          "ranks": {
+            "semantic_messages": 10,
+            "semantic_message_diff": 2,
+            "hybrid": 3,
+            "lexical": 6
+          },
+          "semantic_top5": [
+            "0972bb124eccfdbfb042168f691716f1343623df",
+            "7e5498635ce2c22b3bbdfd32d716d2c62af9a9a0",
+            "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+            "d88290f451ab79804759cf6637e33d5e51bd96e3"
+          ],
+          "hybrid_top5": [
+            "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+            "a4092841e6f51389b50fff839664c5ddd1d845f1",
+            "7e5498635ce2c22b3bbdfd32d716d2c62af9a9a0",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+            "0972bb124eccfdbfb042168f691716f1343623df"
+          ]
+        },
+        {
+          "query": "When was model creation pulled out of the ranking function so callers could pass in an already-loaded model?",
+          "gold": "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+          "ranks": {
+            "semantic_messages": 73,
+            "semantic_message_diff": 1,
+            "hybrid": 1,
+            "lexical": 1
+          },
+          "semantic_top5": [
+            "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+            "baeb7006b419c15efcd88a8f7969b03a35b1b615",
+            "6b4ae69847ed03d84f7b3115658f20645b73227a",
+            "709b649cbc2abc22a8952523d89445ff71eb6098",
+            "017cb50985de6328aad910c88745ed35751bb69c"
+          ],
+          "hybrid_top5": [
+            "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+            "6b4ae69847ed03d84f7b3115658f20645b73227a",
+            "af71e0f0a269155c16a87c941deeaf5be9b4f382",
+            "c7579b50edbab8cbcb4321aab20df37deab6956f"
+          ]
+        },
+        {
+          "query": "Which fix restored relative imports for sibling modules after bare imports had been introduced?",
+          "gold": "41fe13046baad8b4d5a526189eba9e3c1367037b",
+          "ranks": {
+            "semantic_messages": 1,
+            "semantic_message_diff": 1,
+            "hybrid": 4,
+            "lexical": null
+          },
+          "semantic_top5": [
+            "41fe13046baad8b4d5a526189eba9e3c1367037b",
+            "640033a2064c72111d5bccd79e6aabdd81c447be",
+            "c9ae56a7fc4390096b188db169a7ed198553c486",
+            "57bd49f174811f6bbaf4e541019f9a7e9f34a98e",
+            "a9a5168cb6af46ddcb6bb9bd94d75a3b8b2736eb"
+          ],
+          "hybrid_top5": [
+            "0972bb124eccfdbfb042168f691716f1343623df",
+            "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+            "03109a103e521535440cbcf8ff41c5999170ab97",
+            "41fe13046baad8b4d5a526189eba9e3c1367037b",
+            "640033a2064c72111d5bccd79e6aabdd81c447be"
+          ]
+        },
+        {
+          "query": "When did the short -v option stop printing the version and start showing longer result descriptions?",
+          "gold": "1c3ebff5bb4bf4fa9272cc469d7e5f4560e4309e",
+          "ranks": {
+            "semantic_messages": 76,
+            "semantic_message_diff": 42,
+            "hybrid": 15,
+            "lexical": 3
+          },
+          "semantic_top5": [
+            "0972bb124eccfdbfb042168f691716f1343623df",
+            "7c08368328a0a2bd8561bbb5331f6db698209bb2",
+            "af71e0f0a269155c16a87c941deeaf5be9b4f382",
+            "2e410f45bad8a33cffa6b9ea0bf145006c580894",
+            "3f2b22c9c6b1918642fab04f5ae4123ec7f83f39"
+          ],
+          "hybrid_top5": [
+            "7c08368328a0a2bd8561bbb5331f6db698209bb2",
+            "0972bb124eccfdbfb042168f691716f1343623df",
+            "12efdfc32d1eb5646b3179eea2986723e2893d8d",
+            "01faefd136435585bfa3b587bd8afac9a1a2f8fd",
+            "2e410f45bad8a33cffa6b9ea0bf145006c580894"
+          ]
+        },
+        {
+          "query": "Where was a forbidden response from GitHub turned into an error telling the user to wait before trying again?",
+          "gold": "b2a35a2838f410bf3a521239ca0b2cc011b8b83f",
+          "ranks": {
+            "semantic_messages": 52,
+            "semantic_message_diff": 1,
+            "hybrid": 2,
+            "lexical": 5
+          },
+          "semantic_top5": [
+            "b2a35a2838f410bf3a521239ca0b2cc011b8b83f",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+            "e0dcd6ba47e3ed647c81499d4b202d60394e93ec",
+            "7e5498635ce2c22b3bbdfd32d716d2c62af9a9a0",
+            "e78e2a808111fe6e5a5a365fe139c1c8ce21aec2"
+          ],
+          "hybrid_top5": [
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+            "b2a35a2838f410bf3a521239ca0b2cc011b8b83f",
+            "e78e2a808111fe6e5a5a365fe139c1c8ce21aec2",
+            "7e5498635ce2c22b3bbdfd32d716d2c62af9a9a0",
+            "41fe13046baad8b4d5a526189eba9e3c1367037b"
+          ]
+        },
+        {
+          "query": "Which change made a returned commit identifier open its GitHub page from the terminal?",
+          "gold": "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+          "ranks": {
+            "semantic_messages": 6,
+            "semantic_message_diff": 8,
+            "hybrid": 5,
+            "lexical": 9
+          },
+          "semantic_top5": [
+            "7c08368328a0a2bd8561bbb5331f6db698209bb2",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+            "7e5498635ce2c22b3bbdfd32d716d2c62af9a9a0",
+            "2cbe5d33d81f05d154744b0c101db73b1d51f63d",
+            "a4092841e6f51389b50fff839664c5ddd1d845f1"
+          ],
+          "hybrid_top5": [
+            "7e5498635ce2c22b3bbdfd32d716d2c62af9a9a0",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+            "2cbe5d33d81f05d154744b0c101db73b1d51f63d",
+            "017cb50985de6328aad910c88745ed35751bb69c",
+            "c7e66e6cec0dcb74a85735a24b429e24c68cca98"
+          ]
+        },
+        {
+          "query": "When did the command line start scanning only a hundred previous revisions by default instead of a thousand?",
+          "gold": "0972bb124eccfdbfb042168f691716f1343623df",
+          "ranks": {
+            "semantic_messages": 1,
+            "semantic_message_diff": 1,
+            "hybrid": 2,
+            "lexical": 5
+          },
+          "semantic_top5": [
+            "0972bb124eccfdbfb042168f691716f1343623df",
+            "7c08368328a0a2bd8561bbb5331f6db698209bb2",
+            "017cb50985de6328aad910c88745ed35751bb69c",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+            "a4092841e6f51389b50fff839664c5ddd1d845f1"
+          ],
+          "hybrid_top5": [
+            "017cb50985de6328aad910c88745ed35751bb69c",
+            "0972bb124eccfdbfb042168f691716f1343623df",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+            "7c08368328a0a2bd8561bbb5331f6db698209bb2",
+            "c7e66e6cec0dcb74a85735a24b429e24c68cca98"
+          ]
+        }
+      ],
+      "tokens_max": 668,
+      "truncation_details": [
+        {
+          "document_index": 21,
+          "sha": "5a5630f22f8d8ad602f7d9f04541086b21859c7a",
+          "path": "",
+          "tokens": 668,
+          "gold_commit": false
+        }
+      ],
+      "token_count_method": "tokenizer.json with padding and truncation disabled; inference capped at 512 tokens"
+    },
+    {
+      "label": "jina-code-f32",
+      "config": {
+        "label": "jina-code-f32",
+        "model": "jinaai/jina-embeddings-v2-base-code",
+        "revision": "516f4baf13dec4ddddda8631e019b5737c8bc250",
+        "file": "onnx/model.onnx"
+      },
+      "runtime": "onnxruntime 1.30.0",
+      "provider": "CPUExecutionProvider",
+      "threads": 4,
+      "batch_size": 8,
+      "max_tokens": 512,
+      "pooling": "mean",
+      "dimensions": 768,
+      "artifact_bytes": 641517466,
+      "corpus_sha256": "190f64c5e38719221c6e0b84809ead5e1041a9e6ca1b004c0b264185cc5ab491",
+      "documents": 401,
+      "tokens_mean": 156.51122194513715,
+      "truncated_documents": 8,
+      "load_seconds": 0.552614165997511,
+      "first_query_ms": 15.683958001318388,
+      "warm_query_p50_ms": 17.717479000566527,
+      "warm_query_p95_ms": 23.226051500387257,
+      "corpus_seconds": 101.75846050000109,
+      "docs_per_second": 3.9407042719558016,
+      "repeat128_docs_per_second": [
+        4.289891927065209,
+        3.42539523842132
+      ],
+      "peak_rss_mib": 1185.609375,
+      "quality": {
+        "semantic_messages": {
+          "top1": 6,
+          "top5": 8,
+          "top10": 11,
+          "mrr": 0.6003,
+          "questions": 12
+        },
+        "semantic_message_diff": {
+          "top1": 7,
+          "top5": 10,
+          "top10": 12,
+          "mrr": 0.6807,
+          "questions": 12
+        },
+        "hybrid": {
+          "top1": 3,
+          "top5": 10,
+          "top10": 12,
+          "mrr": 0.5132,
+          "questions": 12
+        },
+        "lexical": {
+          "top1": 2,
+          "top5": 7,
+          "top10": 11,
+          "mrr": 0.3162,
+          "questions": 12
+        }
+      },
+      "details": [
+        {
+          "query": "When did search stop considering the description below a commit's first line?",
+          "gold": "2cbe5d33d81f05d154744b0c101db73b1d51f63d",
+          "ranks": {
+            "semantic_messages": 3,
+            "semantic_message_diff": 2,
+            "hybrid": 3,
+            "lexical": 5
+          },
+          "semantic_top5": [
+            "7c08368328a0a2bd8561bbb5331f6db698209bb2",
+            "2cbe5d33d81f05d154744b0c101db73b1d51f63d",
+            "017cb50985de6328aad910c88745ed35751bb69c",
+            "983eccfb60c2d8d7d3184894eeeb1f1290a5efee",
+            "dd2f73053c0cbd8b0392cdb6ea74dd42221135e4"
+          ],
+          "hybrid_top5": [
+            "7c08368328a0a2bd8561bbb5331f6db698209bb2",
+            "017cb50985de6328aad910c88745ed35751bb69c",
+            "2cbe5d33d81f05d154744b0c101db73b1d51f63d",
+            "e78e2a808111fe6e5a5a365fe139c1c8ce21aec2",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c"
+          ]
+        },
+        {
+          "query": "Which change restored searching the body of a commit while keeping result rows short?",
+          "gold": "7c08368328a0a2bd8561bbb5331f6db698209bb2",
+          "ranks": {
+            "semantic_messages": 1,
+            "semantic_message_diff": 1,
+            "hybrid": 2,
+            "lexical": 8
+          },
+          "semantic_top5": [
+            "7c08368328a0a2bd8561bbb5331f6db698209bb2",
+            "c7579b50edbab8cbcb4321aab20df37deab6956f",
+            "2cbe5d33d81f05d154744b0c101db73b1d51f63d",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+            "1c3ebff5bb4bf4fa9272cc469d7e5f4560e4309e"
+          ],
+          "hybrid_top5": [
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+            "7c08368328a0a2bd8561bbb5331f6db698209bb2",
+            "2cbe5d33d81f05d154744b0c101db73b1d51f63d",
+            "3d30fd08dcabf1af0d3b88afb0d64f43e1c80674",
+            "1c3ebff5bb4bf4fa9272cc469d7e5f4560e4309e"
+          ]
+        },
+        {
+          "query": "Find the change that removed explicit GPU selection when loading the sentence model.",
+          "gold": "d88290f451ab79804759cf6637e33d5e51bd96e3",
+          "ranks": {
+            "semantic_messages": 10,
+            "semantic_message_diff": 7,
+            "hybrid": 8,
+            "lexical": 8
+          },
+          "semantic_top5": [
+            "b6e5f708027297b76bf4c4b660a74a44cfae40b2",
+            "18d7ffb27c8263949c8cd86fd1e36a32ee622d42",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+            "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+            "a4092841e6f51389b50fff839664c5ddd1d845f1"
+          ],
+          "hybrid_top5": [
+            "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+            "18d7ffb27c8263949c8cd86fd1e36a32ee622d42",
+            "b6e5f708027297b76bf4c4b660a74a44cfae40b2",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+            "a4092841e6f51389b50fff839664c5ddd1d845f1"
+          ]
+        },
+        {
+          "query": "Find where loading the model started explicitly choosing CUDA again when a GPU was available.",
+          "gold": "b6e5f708027297b76bf4c4b660a74a44cfae40b2",
+          "ranks": {
+            "semantic_messages": 1,
+            "semantic_message_diff": 1,
+            "hybrid": 2,
+            "lexical": 3
+          },
+          "semantic_top5": [
+            "b6e5f708027297b76bf4c4b660a74a44cfae40b2",
+            "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+            "d88290f451ab79804759cf6637e33d5e51bd96e3",
+            "53a70ee2c6c52661310c5404e776f34405369425",
+            "89767b73632b830535fd3167e15885e6fcd07ed2"
+          ],
+          "hybrid_top5": [
+            "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+            "b6e5f708027297b76bf4c4b660a74a44cfae40b2",
+            "d88290f451ab79804759cf6637e33d5e51bd96e3",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+            "af71e0f0a269155c16a87c941deeaf5be9b4f382"
+          ]
+        },
+        {
+          "query": "Where did ranking start using a dot product on unit-length vectors instead of calculating cosine similarity directly?",
+          "gold": "669120d18c1738247c678b6fcb5126c5f97791a2",
+          "ranks": {
+            "semantic_messages": 1,
+            "semantic_message_diff": 1,
+            "hybrid": 1,
+            "lexical": 1
+          },
+          "semantic_top5": [
+            "669120d18c1738247c678b6fcb5126c5f97791a2",
+            "3d30fd08dcabf1af0d3b88afb0d64f43e1c80674",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+            "017cb50985de6328aad910c88745ed35751bb69c",
+            "18d7ffb27c8263949c8cd86fd1e36a32ee622d42"
+          ],
+          "hybrid_top5": [
+            "669120d18c1738247c678b6fcb5126c5f97791a2",
+            "3d30fd08dcabf1af0d3b88afb0d64f43e1c80674",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+            "017cb50985de6328aad910c88745ed35751bb69c",
+            "a4092841e6f51389b50fff839664c5ddd1d845f1"
+          ]
+        },
+        {
+          "query": "Which change fixed the malformed query-string separator used to request later pages of GitHub commits?",
+          "gold": "7e5498635ce2c22b3bbdfd32d716d2c62af9a9a0",
+          "ranks": {
+            "semantic_messages": 9,
+            "semantic_message_diff": 8,
+            "hybrid": 6,
+            "lexical": 6
+          },
+          "semantic_top5": [
+            "e78e2a808111fe6e5a5a365fe139c1c8ce21aec2",
+            "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+            "a4092841e6f51389b50fff839664c5ddd1d845f1",
+            "0972bb124eccfdbfb042168f691716f1343623df",
+            "7c08368328a0a2bd8561bbb5331f6db698209bb2"
+          ],
+          "hybrid_top5": [
+            "a4092841e6f51389b50fff839664c5ddd1d845f1",
+            "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+            "e78e2a808111fe6e5a5a365fe139c1c8ce21aec2",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+            "2cbe5d33d81f05d154744b0c101db73b1d51f63d"
+          ]
+        },
+        {
+          "query": "When was model creation pulled out of the ranking function so callers could pass in an already-loaded model?",
+          "gold": "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+          "ranks": {
+            "semantic_messages": 21,
+            "semantic_message_diff": 5,
+            "hybrid": 1,
+            "lexical": 1
+          },
+          "semantic_top5": [
+            "af71e0f0a269155c16a87c941deeaf5be9b4f382",
+            "caed7cfc99e04bcf4410558b19453866d5f7cfdd",
+            "6b4ae69847ed03d84f7b3115658f20645b73227a",
+            "017cb50985de6328aad910c88745ed35751bb69c",
+            "72cd11b4ac1a755b3a705a6fd446980eaf61648f"
+          ],
+          "hybrid_top5": [
+            "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+            "af71e0f0a269155c16a87c941deeaf5be9b4f382",
+            "6b4ae69847ed03d84f7b3115658f20645b73227a",
+            "caed7cfc99e04bcf4410558b19453866d5f7cfdd",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c"
+          ]
+        },
+        {
+          "query": "Which fix restored relative imports for sibling modules after bare imports had been introduced?",
+          "gold": "41fe13046baad8b4d5a526189eba9e3c1367037b",
+          "ranks": {
+            "semantic_messages": 1,
+            "semantic_message_diff": 1,
+            "hybrid": 3,
+            "lexical": null
+          },
+          "semantic_top5": [
+            "41fe13046baad8b4d5a526189eba9e3c1367037b",
+            "d641e1d08f2e7e9d16becdb35590bef890829574",
+            "a9a5168cb6af46ddcb6bb9bd94d75a3b8b2736eb",
+            "57bd49f174811f6bbaf4e541019f9a7e9f34a98e",
+            "78749daa93e15301895e0cb6bbc065d07fbfa1f5"
+          ],
+          "hybrid_top5": [
+            "01faefd136435585bfa3b587bd8afac9a1a2f8fd",
+            "03109a103e521535440cbcf8ff41c5999170ab97",
+            "41fe13046baad8b4d5a526189eba9e3c1367037b",
+            "a4092841e6f51389b50fff839664c5ddd1d845f1",
+            "d641e1d08f2e7e9d16becdb35590bef890829574"
+          ]
+        },
+        {
+          "query": "When did the short -v option stop printing the version and start showing longer result descriptions?",
+          "gold": "1c3ebff5bb4bf4fa9272cc469d7e5f4560e4309e",
+          "ranks": {
+            "semantic_messages": 1,
+            "semantic_message_diff": 5,
+            "hybrid": 2,
+            "lexical": 3
+          },
+          "semantic_top5": [
+            "fa5e5ec2a005171bf050e833c245c315adebe4c2",
+            "22eb87fce284c10038ce223b589eedc520577b92",
+            "01faefd136435585bfa3b587bd8afac9a1a2f8fd",
+            "7c08368328a0a2bd8561bbb5331f6db698209bb2",
+            "1c3ebff5bb4bf4fa9272cc469d7e5f4560e4309e"
+          ],
+          "hybrid_top5": [
+            "fa5e5ec2a005171bf050e833c245c315adebe4c2",
+            "1c3ebff5bb4bf4fa9272cc469d7e5f4560e4309e",
+            "7c08368328a0a2bd8561bbb5331f6db698209bb2",
+            "3d30fd08dcabf1af0d3b88afb0d64f43e1c80674",
+            "22eb87fce284c10038ce223b589eedc520577b92"
+          ]
+        },
+        {
+          "query": "Where was a forbidden response from GitHub turned into an error telling the user to wait before trying again?",
+          "gold": "b2a35a2838f410bf3a521239ca0b2cc011b8b83f",
+          "ranks": {
+            "semantic_messages": 9,
+            "semantic_message_diff": 1,
+            "hybrid": 1,
+            "lexical": 5
+          },
+          "semantic_top5": [
+            "b2a35a2838f410bf3a521239ca0b2cc011b8b83f",
+            "017cb50985de6328aad910c88745ed35751bb69c",
+            "7e5498635ce2c22b3bbdfd32d716d2c62af9a9a0",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+            "0972bb124eccfdbfb042168f691716f1343623df"
+          ],
+          "hybrid_top5": [
+            "b2a35a2838f410bf3a521239ca0b2cc011b8b83f",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+            "7e5498635ce2c22b3bbdfd32d716d2c62af9a9a0",
+            "017cb50985de6328aad910c88745ed35751bb69c",
+            "e78e2a808111fe6e5a5a365fe139c1c8ce21aec2"
+          ]
+        },
+        {
+          "query": "Which change made a returned commit identifier open its GitHub page from the terminal?",
+          "gold": "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+          "ranks": {
+            "semantic_messages": 1,
+            "semantic_message_diff": 1,
+            "hybrid": 5,
+            "lexical": 9
+          },
+          "semantic_top5": [
+            "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+            "18d7ffb27c8263949c8cd86fd1e36a32ee622d42",
+            "e78e2a808111fe6e5a5a365fe139c1c8ce21aec2",
+            "7e5498635ce2c22b3bbdfd32d716d2c62af9a9a0",
+            "7c08368328a0a2bd8561bbb5331f6db698209bb2"
+          ],
+          "hybrid_top5": [
+            "7e5498635ce2c22b3bbdfd32d716d2c62af9a9a0",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+            "e78e2a808111fe6e5a5a365fe139c1c8ce21aec2",
+            "18d7ffb27c8263949c8cd86fd1e36a32ee622d42",
+            "c7e66e6cec0dcb74a85735a24b429e24c68cca98"
+          ]
+        },
+        {
+          "query": "When did the command line start scanning only a hundred previous revisions by default instead of a thousand?",
+          "gold": "0972bb124eccfdbfb042168f691716f1343623df",
+          "ranks": {
+            "semantic_messages": 2,
+            "semantic_message_diff": 1,
+            "hybrid": 2,
+            "lexical": 5
+          },
+          "semantic_top5": [
+            "0972bb124eccfdbfb042168f691716f1343623df",
+            "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+            "22eb87fce284c10038ce223b589eedc520577b92",
+            "017cb50985de6328aad910c88745ed35751bb69c",
+            "e78e2a808111fe6e5a5a365fe139c1c8ce21aec2"
+          ],
+          "hybrid_top5": [
+            "017cb50985de6328aad910c88745ed35751bb69c",
+            "0972bb124eccfdbfb042168f691716f1343623df",
+            "e78e2a808111fe6e5a5a365fe139c1c8ce21aec2",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+            "d88290f451ab79804759cf6637e33d5e51bd96e3"
+          ]
+        }
+      ],
+      "tokens_max": 745,
+      "truncation_details": [
+        {
+          "document_index": 21,
+          "sha": "5a5630f22f8d8ad602f7d9f04541086b21859c7a",
+          "path": "",
+          "tokens": 603,
+          "gold_commit": false
+        },
+        {
+          "document_index": 141,
+          "sha": "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+          "path": "README.md",
+          "tokens": 745,
+          "gold_commit": true
+        },
+        {
+          "document_index": 143,
+          "sha": "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+          "path": "README.md",
+          "tokens": 515,
+          "gold_commit": true
+        },
+        {
+          "document_index": 144,
+          "sha": "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+          "path": "README.md",
+          "tokens": 583,
+          "gold_commit": true
+        },
+        {
+          "document_index": 224,
+          "sha": "a4092841e6f51389b50fff839664c5ddd1d845f1",
+          "path": "README.md",
+          "tokens": 724,
+          "gold_commit": false
+        },
+        {
+          "document_index": 229,
+          "sha": "12efdfc32d1eb5646b3179eea2986723e2893d8d",
+          "path": "README.md",
+          "tokens": 726,
+          "gold_commit": false
+        },
+        {
+          "document_index": 281,
+          "sha": "0972bb124eccfdbfb042168f691716f1343623df",
+          "path": "README.md",
+          "tokens": 702,
+          "gold_commit": true
+        },
+        {
+          "document_index": 284,
+          "sha": "0972bb124eccfdbfb042168f691716f1343623df",
+          "path": "README.md",
+          "tokens": 716,
+          "gold_commit": true
+        }
+      ],
+      "token_count_method": "tokenizer.json with padding and truncation disabled; inference capped at 512 tokens"
+    },
+    {
+      "label": "jina-code-int8",
+      "config": {
+        "label": "jina-code-int8",
+        "model": "jinaai/jina-embeddings-v2-base-code",
+        "revision": "516f4baf13dec4ddddda8631e019b5737c8bc250",
+        "file": "onnx/model_quantized.onnx"
+      },
+      "runtime": "onnxruntime 1.30.0",
+      "provider": "CPUExecutionProvider",
+      "threads": 4,
+      "batch_size": 8,
+      "max_tokens": 512,
+      "pooling": "mean",
+      "dimensions": 768,
+      "artifact_bytes": 161895621,
+      "corpus_sha256": "190f64c5e38719221c6e0b84809ead5e1041a9e6ca1b004c0b264185cc5ab491",
+      "documents": 401,
+      "tokens_mean": 156.51122194513715,
+      "truncated_documents": 8,
+      "load_seconds": 0.20162100000015926,
+      "first_query_ms": 8.061374999670079,
+      "warm_query_p50_ms": 10.462104000907857,
+      "warm_query_p95_ms": 13.741125498199835,
+      "corpus_seconds": 69.17400308400101,
+      "docs_per_second": 5.796975483882987,
+      "repeat128_docs_per_second": [
+        8.721501026198633,
+        9.164832201096209
+      ],
+      "peak_rss_mib": 738.984375,
+      "quality": {
+        "semantic_messages": {
+          "top1": 6,
+          "top5": 8,
+          "top10": 10,
+          "mrr": 0.5888,
+          "questions": 12
+        },
+        "semantic_message_diff": {
+          "top1": 7,
+          "top5": 10,
+          "top10": 12,
+          "mrr": 0.6972,
+          "questions": 12
+        },
+        "hybrid": {
+          "top1": 3,
+          "top5": 11,
+          "top10": 12,
+          "mrr": 0.5549,
+          "questions": 12
+        },
+        "lexical": {
+          "top1": 2,
+          "top5": 7,
+          "top10": 11,
+          "mrr": 0.3162,
+          "questions": 12
+        }
+      },
+      "details": [
+        {
+          "query": "When did search stop considering the description below a commit's first line?",
+          "gold": "2cbe5d33d81f05d154744b0c101db73b1d51f63d",
+          "ranks": {
+            "semantic_messages": 3,
+            "semantic_message_diff": 3,
+            "hybrid": 2,
+            "lexical": 5
+          },
+          "semantic_top5": [
+            "7c08368328a0a2bd8561bbb5331f6db698209bb2",
+            "983eccfb60c2d8d7d3184894eeeb1f1290a5efee",
+            "2cbe5d33d81f05d154744b0c101db73b1d51f63d",
+            "dd2f73053c0cbd8b0392cdb6ea74dd42221135e4",
+            "1c3ebff5bb4bf4fa9272cc469d7e5f4560e4309e"
+          ],
+          "hybrid_top5": [
+            "7c08368328a0a2bd8561bbb5331f6db698209bb2",
+            "2cbe5d33d81f05d154744b0c101db73b1d51f63d",
+            "017cb50985de6328aad910c88745ed35751bb69c",
+            "e78e2a808111fe6e5a5a365fe139c1c8ce21aec2",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c"
+          ]
+        },
+        {
+          "query": "Which change restored searching the body of a commit while keeping result rows short?",
+          "gold": "7c08368328a0a2bd8561bbb5331f6db698209bb2",
+          "ranks": {
+            "semantic_messages": 1,
+            "semantic_message_diff": 1,
+            "hybrid": 2,
+            "lexical": 8
+          },
+          "semantic_top5": [
+            "7c08368328a0a2bd8561bbb5331f6db698209bb2",
+            "c7579b50edbab8cbcb4321aab20df37deab6956f",
+            "2cbe5d33d81f05d154744b0c101db73b1d51f63d",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+            "1c3ebff5bb4bf4fa9272cc469d7e5f4560e4309e"
+          ],
+          "hybrid_top5": [
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+            "7c08368328a0a2bd8561bbb5331f6db698209bb2",
+            "2cbe5d33d81f05d154744b0c101db73b1d51f63d",
+            "e78e2a808111fe6e5a5a365fe139c1c8ce21aec2",
+            "1c3ebff5bb4bf4fa9272cc469d7e5f4560e4309e"
+          ]
+        },
+        {
+          "query": "Find the change that removed explicit GPU selection when loading the sentence model.",
+          "gold": "d88290f451ab79804759cf6637e33d5e51bd96e3",
+          "ranks": {
+            "semantic_messages": 11,
+            "semantic_message_diff": 6,
+            "hybrid": 8,
+            "lexical": 8
+          },
+          "semantic_top5": [
+            "b6e5f708027297b76bf4c4b660a74a44cfae40b2",
+            "18d7ffb27c8263949c8cd86fd1e36a32ee622d42",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+            "a4092841e6f51389b50fff839664c5ddd1d845f1",
+            "af71e0f0a269155c16a87c941deeaf5be9b4f382"
+          ],
+          "hybrid_top5": [
+            "18d7ffb27c8263949c8cd86fd1e36a32ee622d42",
+            "b6e5f708027297b76bf4c4b660a74a44cfae40b2",
+            "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+            "a4092841e6f51389b50fff839664c5ddd1d845f1",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c"
+          ]
+        },
+        {
+          "query": "Find where loading the model started explicitly choosing CUDA again when a GPU was available.",
+          "gold": "b6e5f708027297b76bf4c4b660a74a44cfae40b2",
+          "ranks": {
+            "semantic_messages": 1,
+            "semantic_message_diff": 1,
+            "hybrid": 2,
+            "lexical": 3
+          },
+          "semantic_top5": [
+            "b6e5f708027297b76bf4c4b660a74a44cfae40b2",
+            "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+            "d88290f451ab79804759cf6637e33d5e51bd96e3",
+            "69f742eef13569309e3bfb89220001891f0817ff"
+          ],
+          "hybrid_top5": [
+            "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+            "b6e5f708027297b76bf4c4b660a74a44cfae40b2",
+            "d88290f451ab79804759cf6637e33d5e51bd96e3",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+            "af71e0f0a269155c16a87c941deeaf5be9b4f382"
+          ]
+        },
+        {
+          "query": "Where did ranking start using a dot product on unit-length vectors instead of calculating cosine similarity directly?",
+          "gold": "669120d18c1738247c678b6fcb5126c5f97791a2",
+          "ranks": {
+            "semantic_messages": 1,
+            "semantic_message_diff": 1,
+            "hybrid": 1,
+            "lexical": 1
+          },
+          "semantic_top5": [
+            "669120d18c1738247c678b6fcb5126c5f97791a2",
+            "3d30fd08dcabf1af0d3b88afb0d64f43e1c80674",
+            "017cb50985de6328aad910c88745ed35751bb69c",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+            "18d7ffb27c8263949c8cd86fd1e36a32ee622d42"
+          ],
+          "hybrid_top5": [
+            "669120d18c1738247c678b6fcb5126c5f97791a2",
+            "3d30fd08dcabf1af0d3b88afb0d64f43e1c80674",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+            "017cb50985de6328aad910c88745ed35751bb69c",
+            "a4092841e6f51389b50fff839664c5ddd1d845f1"
+          ]
+        },
+        {
+          "query": "Which change fixed the malformed query-string separator used to request later pages of GitHub commits?",
+          "gold": "7e5498635ce2c22b3bbdfd32d716d2c62af9a9a0",
+          "ranks": {
+            "semantic_messages": 10,
+            "semantic_message_diff": 5,
+            "hybrid": 3,
+            "lexical": 6
+          },
+          "semantic_top5": [
+            "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+            "e78e2a808111fe6e5a5a365fe139c1c8ce21aec2",
+            "7c08368328a0a2bd8561bbb5331f6db698209bb2",
+            "0972bb124eccfdbfb042168f691716f1343623df",
+            "7e5498635ce2c22b3bbdfd32d716d2c62af9a9a0"
+          ],
+          "hybrid_top5": [
+            "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+            "a4092841e6f51389b50fff839664c5ddd1d845f1",
+            "7e5498635ce2c22b3bbdfd32d716d2c62af9a9a0",
+            "e78e2a808111fe6e5a5a365fe139c1c8ce21aec2",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c"
+          ]
+        },
+        {
+          "query": "When was model creation pulled out of the ranking function so callers could pass in an already-loaded model?",
+          "gold": "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+          "ranks": {
+            "semantic_messages": 24,
+            "semantic_message_diff": 6,
+            "hybrid": 1,
+            "lexical": 1
+          },
+          "semantic_top5": [
+            "af71e0f0a269155c16a87c941deeaf5be9b4f382",
+            "caed7cfc99e04bcf4410558b19453866d5f7cfdd",
+            "6b4ae69847ed03d84f7b3115658f20645b73227a",
+            "f4006bc05160eccac21a44fd14b2d5667efa3f0a",
+            "69f742eef13569309e3bfb89220001891f0817ff"
+          ],
+          "hybrid_top5": [
+            "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+            "af71e0f0a269155c16a87c941deeaf5be9b4f382",
+            "6b4ae69847ed03d84f7b3115658f20645b73227a",
+            "caed7cfc99e04bcf4410558b19453866d5f7cfdd",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c"
+          ]
+        },
+        {
+          "query": "Which fix restored relative imports for sibling modules after bare imports had been introduced?",
+          "gold": "41fe13046baad8b4d5a526189eba9e3c1367037b",
+          "ranks": {
+            "semantic_messages": 1,
+            "semantic_message_diff": 1,
+            "hybrid": 2,
+            "lexical": null
+          },
+          "semantic_top5": [
+            "41fe13046baad8b4d5a526189eba9e3c1367037b",
+            "a9a5168cb6af46ddcb6bb9bd94d75a3b8b2736eb",
+            "57bd49f174811f6bbaf4e541019f9a7e9f34a98e",
+            "81e8ef359c3eebede36594fb0663a195fb2418b9",
+            "d641e1d08f2e7e9d16becdb35590bef890829574"
+          ],
+          "hybrid_top5": [
+            "03109a103e521535440cbcf8ff41c5999170ab97",
+            "41fe13046baad8b4d5a526189eba9e3c1367037b",
+            "a4092841e6f51389b50fff839664c5ddd1d845f1",
+            "a9a5168cb6af46ddcb6bb9bd94d75a3b8b2736eb",
+            "12efdfc32d1eb5646b3179eea2986723e2893d8d"
+          ]
+        },
+        {
+          "query": "When did the short -v option stop printing the version and start showing longer result descriptions?",
+          "gold": "1c3ebff5bb4bf4fa9272cc469d7e5f4560e4309e",
+          "ranks": {
+            "semantic_messages": 1,
+            "semantic_message_diff": 2,
+            "hybrid": 2,
+            "lexical": 3
+          },
+          "semantic_top5": [
+            "fa5e5ec2a005171bf050e833c245c315adebe4c2",
+            "1c3ebff5bb4bf4fa9272cc469d7e5f4560e4309e",
+            "22eb87fce284c10038ce223b589eedc520577b92",
+            "7c08368328a0a2bd8561bbb5331f6db698209bb2",
+            "0972bb124eccfdbfb042168f691716f1343623df"
+          ],
+          "hybrid_top5": [
+            "fa5e5ec2a005171bf050e833c245c315adebe4c2",
+            "1c3ebff5bb4bf4fa9272cc469d7e5f4560e4309e",
+            "7c08368328a0a2bd8561bbb5331f6db698209bb2",
+            "3d30fd08dcabf1af0d3b88afb0d64f43e1c80674",
+            "0972bb124eccfdbfb042168f691716f1343623df"
+          ]
+        },
+        {
+          "query": "Where was a forbidden response from GitHub turned into an error telling the user to wait before trying again?",
+          "gold": "b2a35a2838f410bf3a521239ca0b2cc011b8b83f",
+          "ranks": {
+            "semantic_messages": 6,
+            "semantic_message_diff": 1,
+            "hybrid": 1,
+            "lexical": 5
+          },
+          "semantic_top5": [
+            "b2a35a2838f410bf3a521239ca0b2cc011b8b83f",
+            "017cb50985de6328aad910c88745ed35751bb69c",
+            "03109a103e521535440cbcf8ff41c5999170ab97",
+            "7e5498635ce2c22b3bbdfd32d716d2c62af9a9a0",
+            "a4092841e6f51389b50fff839664c5ddd1d845f1"
+          ],
+          "hybrid_top5": [
+            "b2a35a2838f410bf3a521239ca0b2cc011b8b83f",
+            "7e5498635ce2c22b3bbdfd32d716d2c62af9a9a0",
+            "017cb50985de6328aad910c88745ed35751bb69c",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+            "a4092841e6f51389b50fff839664c5ddd1d845f1"
+          ]
+        },
+        {
+          "query": "Which change made a returned commit identifier open its GitHub page from the terminal?",
+          "gold": "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+          "ranks": {
+            "semantic_messages": 1,
+            "semantic_message_diff": 1,
+            "hybrid": 5,
+            "lexical": 9
+          },
+          "semantic_top5": [
+            "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+            "18d7ffb27c8263949c8cd86fd1e36a32ee622d42",
+            "e78e2a808111fe6e5a5a365fe139c1c8ce21aec2",
+            "7c08368328a0a2bd8561bbb5331f6db698209bb2",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c"
+          ],
+          "hybrid_top5": [
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+            "7e5498635ce2c22b3bbdfd32d716d2c62af9a9a0",
+            "e78e2a808111fe6e5a5a365fe139c1c8ce21aec2",
+            "18d7ffb27c8263949c8cd86fd1e36a32ee622d42",
+            "c7e66e6cec0dcb74a85735a24b429e24c68cca98"
+          ]
+        },
+        {
+          "query": "When did the command line start scanning only a hundred previous revisions by default instead of a thousand?",
+          "gold": "0972bb124eccfdbfb042168f691716f1343623df",
+          "ranks": {
+            "semantic_messages": 3,
+            "semantic_message_diff": 1,
+            "hybrid": 2,
+            "lexical": 5
+          },
+          "semantic_top5": [
+            "0972bb124eccfdbfb042168f691716f1343623df",
+            "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+            "017cb50985de6328aad910c88745ed35751bb69c",
+            "e78e2a808111fe6e5a5a365fe139c1c8ce21aec2"
+          ],
+          "hybrid_top5": [
+            "017cb50985de6328aad910c88745ed35751bb69c",
+            "0972bb124eccfdbfb042168f691716f1343623df",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+            "d88290f451ab79804759cf6637e33d5e51bd96e3",
+            "e78e2a808111fe6e5a5a365fe139c1c8ce21aec2"
+          ]
+        }
+      ],
+      "tokens_max": 745,
+      "truncation_details": [
+        {
+          "document_index": 21,
+          "sha": "5a5630f22f8d8ad602f7d9f04541086b21859c7a",
+          "path": "",
+          "tokens": 603,
+          "gold_commit": false
+        },
+        {
+          "document_index": 141,
+          "sha": "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+          "path": "README.md",
+          "tokens": 745,
+          "gold_commit": true
+        },
+        {
+          "document_index": 143,
+          "sha": "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+          "path": "README.md",
+          "tokens": 515,
+          "gold_commit": true
+        },
+        {
+          "document_index": 144,
+          "sha": "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+          "path": "README.md",
+          "tokens": 583,
+          "gold_commit": true
+        },
+        {
+          "document_index": 224,
+          "sha": "a4092841e6f51389b50fff839664c5ddd1d845f1",
+          "path": "README.md",
+          "tokens": 724,
+          "gold_commit": false
+        },
+        {
+          "document_index": 229,
+          "sha": "12efdfc32d1eb5646b3179eea2986723e2893d8d",
+          "path": "README.md",
+          "tokens": 726,
+          "gold_commit": false
+        },
+        {
+          "document_index": 281,
+          "sha": "0972bb124eccfdbfb042168f691716f1343623df",
+          "path": "README.md",
+          "tokens": 702,
+          "gold_commit": true
+        },
+        {
+          "document_index": 284,
+          "sha": "0972bb124eccfdbfb042168f691716f1343623df",
+          "path": "README.md",
+          "tokens": 716,
+          "gold_commit": true
+        }
+      ],
+      "token_count_method": "tokenizer.json with padding and truncation disabled; inference capped at 512 tokens"
+    },
+    {
+      "label": "jina-code-int8-1024",
+      "config": {
+        "label": "jina-code-int8-1024",
+        "model": "jinaai/jina-embeddings-v2-base-code",
+        "revision": "516f4baf13dec4ddddda8631e019b5737c8bc250",
+        "file": "onnx/model_quantized.onnx"
+      },
+      "runtime": "onnxruntime 1.30.0",
+      "provider": "CPUExecutionProvider",
+      "threads": 4,
+      "batch_size": 8,
+      "max_tokens": 1024,
+      "pooling": "mean",
+      "dimensions": 768,
+      "artifact_bytes": 161895621,
+      "corpus_sha256": "190f64c5e38719221c6e0b84809ead5e1041a9e6ca1b004c0b264185cc5ab491",
+      "documents": 401,
+      "tokens_mean": 156.51122194513715,
+      "truncated_documents": 0,
+      "load_seconds": 0.17752562500027125,
+      "first_query_ms": 10.11554199794773,
+      "warm_query_p50_ms": 7.1476670000265585,
+      "warm_query_p95_ms": 9.038166751452081,
+      "corpus_seconds": 41.43193370800145,
+      "docs_per_second": 9.67852485056853,
+      "repeat128_docs_per_second": [
+        13.37043763201728,
+        13.361659821108757
+      ],
+      "peak_rss_mib": 1163.34375,
+      "quality": {
+        "semantic_messages": {
+          "top1": 6,
+          "top5": 8,
+          "top10": 10,
+          "mrr": 0.5888,
+          "questions": 12
+        },
+        "semantic_message_diff": {
+          "top1": 7,
+          "top5": 10,
+          "top10": 12,
+          "mrr": 0.7014,
+          "questions": 12
+        },
+        "hybrid": {
+          "top1": 3,
+          "top5": 11,
+          "top10": 12,
+          "mrr": 0.5549,
+          "questions": 12
+        },
+        "lexical": {
+          "top1": 2,
+          "top5": 7,
+          "top10": 11,
+          "mrr": 0.3162,
+          "questions": 12
+        }
+      },
+      "details": [
+        {
+          "query": "When did search stop considering the description below a commit's first line?",
+          "gold": "2cbe5d33d81f05d154744b0c101db73b1d51f63d",
+          "ranks": {
+            "semantic_messages": 3,
+            "semantic_message_diff": 3,
+            "hybrid": 2,
+            "lexical": 5
+          },
+          "semantic_top5": [
+            "7c08368328a0a2bd8561bbb5331f6db698209bb2",
+            "983eccfb60c2d8d7d3184894eeeb1f1290a5efee",
+            "2cbe5d33d81f05d154744b0c101db73b1d51f63d",
+            "dd2f73053c0cbd8b0392cdb6ea74dd42221135e4",
+            "1c3ebff5bb4bf4fa9272cc469d7e5f4560e4309e"
+          ],
+          "hybrid_top5": [
+            "7c08368328a0a2bd8561bbb5331f6db698209bb2",
+            "2cbe5d33d81f05d154744b0c101db73b1d51f63d",
+            "017cb50985de6328aad910c88745ed35751bb69c",
+            "e78e2a808111fe6e5a5a365fe139c1c8ce21aec2",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c"
+          ]
+        },
+        {
+          "query": "Which change restored searching the body of a commit while keeping result rows short?",
+          "gold": "7c08368328a0a2bd8561bbb5331f6db698209bb2",
+          "ranks": {
+            "semantic_messages": 1,
+            "semantic_message_diff": 1,
+            "hybrid": 2,
+            "lexical": 8
+          },
+          "semantic_top5": [
+            "7c08368328a0a2bd8561bbb5331f6db698209bb2",
+            "c7579b50edbab8cbcb4321aab20df37deab6956f",
+            "2cbe5d33d81f05d154744b0c101db73b1d51f63d",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+            "1c3ebff5bb4bf4fa9272cc469d7e5f4560e4309e"
+          ],
+          "hybrid_top5": [
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+            "7c08368328a0a2bd8561bbb5331f6db698209bb2",
+            "2cbe5d33d81f05d154744b0c101db73b1d51f63d",
+            "e78e2a808111fe6e5a5a365fe139c1c8ce21aec2",
+            "3d30fd08dcabf1af0d3b88afb0d64f43e1c80674"
+          ]
+        },
+        {
+          "query": "Find the change that removed explicit GPU selection when loading the sentence model.",
+          "gold": "d88290f451ab79804759cf6637e33d5e51bd96e3",
+          "ranks": {
+            "semantic_messages": 11,
+            "semantic_message_diff": 6,
+            "hybrid": 8,
+            "lexical": 8
+          },
+          "semantic_top5": [
+            "b6e5f708027297b76bf4c4b660a74a44cfae40b2",
+            "18d7ffb27c8263949c8cd86fd1e36a32ee622d42",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+            "a4092841e6f51389b50fff839664c5ddd1d845f1",
+            "af71e0f0a269155c16a87c941deeaf5be9b4f382"
+          ],
+          "hybrid_top5": [
+            "18d7ffb27c8263949c8cd86fd1e36a32ee622d42",
+            "b6e5f708027297b76bf4c4b660a74a44cfae40b2",
+            "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+            "a4092841e6f51389b50fff839664c5ddd1d845f1",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c"
+          ]
+        },
+        {
+          "query": "Find where loading the model started explicitly choosing CUDA again when a GPU was available.",
+          "gold": "b6e5f708027297b76bf4c4b660a74a44cfae40b2",
+          "ranks": {
+            "semantic_messages": 1,
+            "semantic_message_diff": 1,
+            "hybrid": 2,
+            "lexical": 3
+          },
+          "semantic_top5": [
+            "b6e5f708027297b76bf4c4b660a74a44cfae40b2",
+            "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+            "d88290f451ab79804759cf6637e33d5e51bd96e3",
+            "69f742eef13569309e3bfb89220001891f0817ff"
+          ],
+          "hybrid_top5": [
+            "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+            "b6e5f708027297b76bf4c4b660a74a44cfae40b2",
+            "d88290f451ab79804759cf6637e33d5e51bd96e3",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+            "af71e0f0a269155c16a87c941deeaf5be9b4f382"
+          ]
+        },
+        {
+          "query": "Where did ranking start using a dot product on unit-length vectors instead of calculating cosine similarity directly?",
+          "gold": "669120d18c1738247c678b6fcb5126c5f97791a2",
+          "ranks": {
+            "semantic_messages": 1,
+            "semantic_message_diff": 1,
+            "hybrid": 1,
+            "lexical": 1
+          },
+          "semantic_top5": [
+            "669120d18c1738247c678b6fcb5126c5f97791a2",
+            "3d30fd08dcabf1af0d3b88afb0d64f43e1c80674",
+            "017cb50985de6328aad910c88745ed35751bb69c",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+            "18d7ffb27c8263949c8cd86fd1e36a32ee622d42"
+          ],
+          "hybrid_top5": [
+            "669120d18c1738247c678b6fcb5126c5f97791a2",
+            "3d30fd08dcabf1af0d3b88afb0d64f43e1c80674",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+            "017cb50985de6328aad910c88745ed35751bb69c",
+            "a4092841e6f51389b50fff839664c5ddd1d845f1"
+          ]
+        },
+        {
+          "query": "Which change fixed the malformed query-string separator used to request later pages of GitHub commits?",
+          "gold": "7e5498635ce2c22b3bbdfd32d716d2c62af9a9a0",
+          "ranks": {
+            "semantic_messages": 10,
+            "semantic_message_diff": 4,
+            "hybrid": 3,
+            "lexical": 6
+          },
+          "semantic_top5": [
+            "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+            "e78e2a808111fe6e5a5a365fe139c1c8ce21aec2",
+            "7c08368328a0a2bd8561bbb5331f6db698209bb2",
+            "7e5498635ce2c22b3bbdfd32d716d2c62af9a9a0",
+            "017cb50985de6328aad910c88745ed35751bb69c"
+          ],
+          "hybrid_top5": [
+            "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+            "a4092841e6f51389b50fff839664c5ddd1d845f1",
+            "7e5498635ce2c22b3bbdfd32d716d2c62af9a9a0",
+            "e78e2a808111fe6e5a5a365fe139c1c8ce21aec2",
+            "017cb50985de6328aad910c88745ed35751bb69c"
+          ]
+        },
+        {
+          "query": "When was model creation pulled out of the ranking function so callers could pass in an already-loaded model?",
+          "gold": "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+          "ranks": {
+            "semantic_messages": 24,
+            "semantic_message_diff": 6,
+            "hybrid": 1,
+            "lexical": 1
+          },
+          "semantic_top5": [
+            "af71e0f0a269155c16a87c941deeaf5be9b4f382",
+            "caed7cfc99e04bcf4410558b19453866d5f7cfdd",
+            "6b4ae69847ed03d84f7b3115658f20645b73227a",
+            "f4006bc05160eccac21a44fd14b2d5667efa3f0a",
+            "69f742eef13569309e3bfb89220001891f0817ff"
+          ],
+          "hybrid_top5": [
+            "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+            "af71e0f0a269155c16a87c941deeaf5be9b4f382",
+            "6b4ae69847ed03d84f7b3115658f20645b73227a",
+            "caed7cfc99e04bcf4410558b19453866d5f7cfdd",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c"
+          ]
+        },
+        {
+          "query": "Which fix restored relative imports for sibling modules after bare imports had been introduced?",
+          "gold": "41fe13046baad8b4d5a526189eba9e3c1367037b",
+          "ranks": {
+            "semantic_messages": 1,
+            "semantic_message_diff": 1,
+            "hybrid": 2,
+            "lexical": null
+          },
+          "semantic_top5": [
+            "41fe13046baad8b4d5a526189eba9e3c1367037b",
+            "a9a5168cb6af46ddcb6bb9bd94d75a3b8b2736eb",
+            "57bd49f174811f6bbaf4e541019f9a7e9f34a98e",
+            "5a5630f22f8d8ad602f7d9f04541086b21859c7a",
+            "d641e1d08f2e7e9d16becdb35590bef890829574"
+          ],
+          "hybrid_top5": [
+            "03109a103e521535440cbcf8ff41c5999170ab97",
+            "41fe13046baad8b4d5a526189eba9e3c1367037b",
+            "a4092841e6f51389b50fff839664c5ddd1d845f1",
+            "a9a5168cb6af46ddcb6bb9bd94d75a3b8b2736eb",
+            "12efdfc32d1eb5646b3179eea2986723e2893d8d"
+          ]
+        },
+        {
+          "query": "When did the short -v option stop printing the version and start showing longer result descriptions?",
+          "gold": "1c3ebff5bb4bf4fa9272cc469d7e5f4560e4309e",
+          "ranks": {
+            "semantic_messages": 1,
+            "semantic_message_diff": 2,
+            "hybrid": 2,
+            "lexical": 3
+          },
+          "semantic_top5": [
+            "fa5e5ec2a005171bf050e833c245c315adebe4c2",
+            "1c3ebff5bb4bf4fa9272cc469d7e5f4560e4309e",
+            "22eb87fce284c10038ce223b589eedc520577b92",
+            "7c08368328a0a2bd8561bbb5331f6db698209bb2",
+            "0972bb124eccfdbfb042168f691716f1343623df"
+          ],
+          "hybrid_top5": [
+            "fa5e5ec2a005171bf050e833c245c315adebe4c2",
+            "1c3ebff5bb4bf4fa9272cc469d7e5f4560e4309e",
+            "7c08368328a0a2bd8561bbb5331f6db698209bb2",
+            "3d30fd08dcabf1af0d3b88afb0d64f43e1c80674",
+            "0972bb124eccfdbfb042168f691716f1343623df"
+          ]
+        },
+        {
+          "query": "Where was a forbidden response from GitHub turned into an error telling the user to wait before trying again?",
+          "gold": "b2a35a2838f410bf3a521239ca0b2cc011b8b83f",
+          "ranks": {
+            "semantic_messages": 6,
+            "semantic_message_diff": 1,
+            "hybrid": 1,
+            "lexical": 5
+          },
+          "semantic_top5": [
+            "b2a35a2838f410bf3a521239ca0b2cc011b8b83f",
+            "017cb50985de6328aad910c88745ed35751bb69c",
+            "03109a103e521535440cbcf8ff41c5999170ab97",
+            "7e5498635ce2c22b3bbdfd32d716d2c62af9a9a0",
+            "a4092841e6f51389b50fff839664c5ddd1d845f1"
+          ],
+          "hybrid_top5": [
+            "b2a35a2838f410bf3a521239ca0b2cc011b8b83f",
+            "7e5498635ce2c22b3bbdfd32d716d2c62af9a9a0",
+            "017cb50985de6328aad910c88745ed35751bb69c",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+            "a4092841e6f51389b50fff839664c5ddd1d845f1"
+          ]
+        },
+        {
+          "query": "Which change made a returned commit identifier open its GitHub page from the terminal?",
+          "gold": "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+          "ranks": {
+            "semantic_messages": 1,
+            "semantic_message_diff": 1,
+            "hybrid": 5,
+            "lexical": 9
+          },
+          "semantic_top5": [
+            "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+            "18d7ffb27c8263949c8cd86fd1e36a32ee622d42",
+            "e78e2a808111fe6e5a5a365fe139c1c8ce21aec2",
+            "7c08368328a0a2bd8561bbb5331f6db698209bb2",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c"
+          ],
+          "hybrid_top5": [
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+            "7e5498635ce2c22b3bbdfd32d716d2c62af9a9a0",
+            "e78e2a808111fe6e5a5a365fe139c1c8ce21aec2",
+            "18d7ffb27c8263949c8cd86fd1e36a32ee622d42",
+            "c7e66e6cec0dcb74a85735a24b429e24c68cca98"
+          ]
+        },
+        {
+          "query": "When did the command line start scanning only a hundred previous revisions by default instead of a thousand?",
+          "gold": "0972bb124eccfdbfb042168f691716f1343623df",
+          "ranks": {
+            "semantic_messages": 3,
+            "semantic_message_diff": 1,
+            "hybrid": 2,
+            "lexical": 5
+          },
+          "semantic_top5": [
+            "0972bb124eccfdbfb042168f691716f1343623df",
+            "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+            "017cb50985de6328aad910c88745ed35751bb69c",
+            "c7e66e6cec0dcb74a85735a24b429e24c68cca98"
+          ],
+          "hybrid_top5": [
+            "017cb50985de6328aad910c88745ed35751bb69c",
+            "0972bb124eccfdbfb042168f691716f1343623df",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+            "d88290f451ab79804759cf6637e33d5e51bd96e3",
+            "c7e66e6cec0dcb74a85735a24b429e24c68cca98"
+          ]
+        }
+      ],
+      "tokens_max": 745,
+      "truncation_details": [],
+      "token_count_method": "tokenizer.json with padding and truncation disabled; inference capped at 1024 tokens; no documents truncated"
+    },
+    {
+      "label": "qwen-q8-cpu",
+      "model": "Qwen/Qwen3-Embedding-0.6B-GGUF",
+      "revision": "370f27d7550e0def9b39c1f16d3fbaa13aa67728",
+      "file": "Qwen3-Embedding-0.6B-Q8_0.gguf",
+      "runtime": "llama.cpp build 10809 5266f24da",
+      "provider": "cpu",
+      "threads": 4,
+      "batch_size": 8,
+      "slots": 8,
+      "pooling": "last",
+      "prefix": "Instruct: Given a question about a Git repository's history, retrieve the code changes that answer the question.\nQuery:",
+      "dimensions": 1024,
+      "artifact_bytes": 639150592,
+      "corpus_sha256": "190f64c5e38719221c6e0b84809ead5e1041a9e6ca1b004c0b264185cc5ab491",
+      "documents": 401,
+      "tokens_mean": 140.73067331670822,
+      "tokens_max": 564,
+      "truncated_documents": 0,
+      "load_seconds": 19.378570332999516,
+      "first_query_ms": 303.3085410024796,
+      "warm_query_p50_ms": 49.67677050080965,
+      "warm_query_p95_ms": 60.637468750428525,
+      "corpus_seconds": 260.5791374170003,
+      "docs_per_second": 1.5388799117800693,
+      "repeat128_docs_per_second": [
+        1.8706428510374753,
+        1.8230964269305332
+      ],
+      "quality": {
+        "semantic_messages": {
+          "top1": 6,
+          "top5": 10,
+          "top10": 10,
+          "mrr": 0.627,
+          "questions": 12
+        },
+        "semantic_message_diff": {
+          "top1": 7,
+          "top5": 10,
+          "top10": 12,
+          "mrr": 0.6764,
+          "questions": 12
+        },
+        "hybrid": {
+          "top1": 3,
+          "top5": 11,
+          "top10": 12,
+          "mrr": 0.4875,
+          "questions": 12
+        },
+        "lexical": {
+          "top1": 2,
+          "top5": 7,
+          "top10": 11,
+          "mrr": 0.3162,
+          "questions": 12
+        }
+      },
+      "details": [
+        {
+          "query": "When did search stop considering the description below a commit's first line?",
+          "gold": "2cbe5d33d81f05d154744b0c101db73b1d51f63d",
+          "ranks": {
+            "semantic_messages": 2,
+            "semantic_message_diff": 6,
+            "hybrid": 5,
+            "lexical": 5
+          },
+          "semantic_top5": [
+            "7c08368328a0a2bd8561bbb5331f6db698209bb2",
+            "0972bb124eccfdbfb042168f691716f1343623df",
+            "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+            "017cb50985de6328aad910c88745ed35751bb69c",
+            "12efdfc32d1eb5646b3179eea2986723e2893d8d"
+          ],
+          "hybrid_top5": [
+            "7c08368328a0a2bd8561bbb5331f6db698209bb2",
+            "017cb50985de6328aad910c88745ed35751bb69c",
+            "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+            "0972bb124eccfdbfb042168f691716f1343623df",
+            "2cbe5d33d81f05d154744b0c101db73b1d51f63d"
+          ]
+        },
+        {
+          "query": "Which change restored searching the body of a commit while keeping result rows short?",
+          "gold": "7c08368328a0a2bd8561bbb5331f6db698209bb2",
+          "ranks": {
+            "semantic_messages": 1,
+            "semantic_message_diff": 1,
+            "hybrid": 2,
+            "lexical": 8
+          },
+          "semantic_top5": [
+            "7c08368328a0a2bd8561bbb5331f6db698209bb2",
+            "2cbe5d33d81f05d154744b0c101db73b1d51f63d",
+            "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+            "0972bb124eccfdbfb042168f691716f1343623df",
+            "12efdfc32d1eb5646b3179eea2986723e2893d8d"
+          ],
+          "hybrid_top5": [
+            "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+            "7c08368328a0a2bd8561bbb5331f6db698209bb2",
+            "2cbe5d33d81f05d154744b0c101db73b1d51f63d",
+            "017cb50985de6328aad910c88745ed35751bb69c",
+            "3d30fd08dcabf1af0d3b88afb0d64f43e1c80674"
+          ]
+        },
+        {
+          "query": "Find the change that removed explicit GPU selection when loading the sentence model.",
+          "gold": "d88290f451ab79804759cf6637e33d5e51bd96e3",
+          "ranks": {
+            "semantic_messages": 3,
+            "semantic_message_diff": 3,
+            "hybrid": 5,
+            "lexical": 8
+          },
+          "semantic_top5": [
+            "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+            "b6e5f708027297b76bf4c4b660a74a44cfae40b2",
+            "d88290f451ab79804759cf6637e33d5e51bd96e3",
+            "c265859a4609b4326065ad1114a2c78d8b571940",
+            "18d7ffb27c8263949c8cd86fd1e36a32ee622d42"
+          ],
+          "hybrid_top5": [
+            "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+            "b6e5f708027297b76bf4c4b660a74a44cfae40b2",
+            "18d7ffb27c8263949c8cd86fd1e36a32ee622d42",
+            "01faefd136435585bfa3b587bd8afac9a1a2f8fd",
+            "d88290f451ab79804759cf6637e33d5e51bd96e3"
+          ]
+        },
+        {
+          "query": "Find where loading the model started explicitly choosing CUDA again when a GPU was available.",
+          "gold": "b6e5f708027297b76bf4c4b660a74a44cfae40b2",
+          "ranks": {
+            "semantic_messages": 1,
+            "semantic_message_diff": 1,
+            "hybrid": 2,
+            "lexical": 3
+          },
+          "semantic_top5": [
+            "b6e5f708027297b76bf4c4b660a74a44cfae40b2",
+            "d88290f451ab79804759cf6637e33d5e51bd96e3",
+            "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+            "c265859a4609b4326065ad1114a2c78d8b571940",
+            "52dea88a9548ee7ed6c91a2cb337f2ea33478c60"
+          ],
+          "hybrid_top5": [
+            "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+            "b6e5f708027297b76bf4c4b660a74a44cfae40b2",
+            "d88290f451ab79804759cf6637e33d5e51bd96e3",
+            "6b4ae69847ed03d84f7b3115658f20645b73227a",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c"
+          ]
+        },
+        {
+          "query": "Where did ranking start using a dot product on unit-length vectors instead of calculating cosine similarity directly?",
+          "gold": "669120d18c1738247c678b6fcb5126c5f97791a2",
+          "ranks": {
+            "semantic_messages": 1,
+            "semantic_message_diff": 1,
+            "hybrid": 1,
+            "lexical": 1
+          },
+          "semantic_top5": [
+            "669120d18c1738247c678b6fcb5126c5f97791a2",
+            "a4092841e6f51389b50fff839664c5ddd1d845f1",
+            "3d30fd08dcabf1af0d3b88afb0d64f43e1c80674",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+            "017cb50985de6328aad910c88745ed35751bb69c"
+          ],
+          "hybrid_top5": [
+            "669120d18c1738247c678b6fcb5126c5f97791a2",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+            "a4092841e6f51389b50fff839664c5ddd1d845f1",
+            "3d30fd08dcabf1af0d3b88afb0d64f43e1c80674",
+            "017cb50985de6328aad910c88745ed35751bb69c"
+          ]
+        },
+        {
+          "query": "Which change fixed the malformed query-string separator used to request later pages of GitHub commits?",
+          "gold": "7e5498635ce2c22b3bbdfd32d716d2c62af9a9a0",
+          "ranks": {
+            "semantic_messages": 12,
+            "semantic_message_diff": 4,
+            "hybrid": 5,
+            "lexical": 6
+          },
+          "semantic_top5": [
+            "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+            "2cbe5d33d81f05d154744b0c101db73b1d51f63d",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+            "7e5498635ce2c22b3bbdfd32d716d2c62af9a9a0",
+            "0972bb124eccfdbfb042168f691716f1343623df"
+          ],
+          "hybrid_top5": [
+            "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+            "2cbe5d33d81f05d154744b0c101db73b1d51f63d",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+            "a4092841e6f51389b50fff839664c5ddd1d845f1",
+            "7e5498635ce2c22b3bbdfd32d716d2c62af9a9a0"
+          ]
+        },
+        {
+          "query": "When was model creation pulled out of the ranking function so callers could pass in an already-loaded model?",
+          "gold": "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+          "ranks": {
+            "semantic_messages": 42,
+            "semantic_message_diff": 5,
+            "hybrid": 1,
+            "lexical": 1
+          },
+          "semantic_top5": [
+            "caed7cfc99e04bcf4410558b19453866d5f7cfdd",
+            "af71e0f0a269155c16a87c941deeaf5be9b4f382",
+            "6b4ae69847ed03d84f7b3115658f20645b73227a",
+            "3d30fd08dcabf1af0d3b88afb0d64f43e1c80674",
+            "72cd11b4ac1a755b3a705a6fd446980eaf61648f"
+          ],
+          "hybrid_top5": [
+            "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+            "af71e0f0a269155c16a87c941deeaf5be9b4f382",
+            "6b4ae69847ed03d84f7b3115658f20645b73227a",
+            "caed7cfc99e04bcf4410558b19453866d5f7cfdd",
+            "c7579b50edbab8cbcb4321aab20df37deab6956f"
+          ]
+        },
+        {
+          "query": "Which fix restored relative imports for sibling modules after bare imports had been introduced?",
+          "gold": "41fe13046baad8b4d5a526189eba9e3c1367037b",
+          "ranks": {
+            "semantic_messages": 1,
+            "semantic_message_diff": 1,
+            "hybrid": 6,
+            "lexical": null
+          },
+          "semantic_top5": [
+            "41fe13046baad8b4d5a526189eba9e3c1367037b",
+            "f13cb4dd8f2353071ab6c5ea7ffc9d0b7a183544",
+            "c265859a4609b4326065ad1114a2c78d8b571940",
+            "22eb87fce284c10038ce223b589eedc520577b92",
+            "3f2b22c9c6b1918642fab04f5ae4123ec7f83f39"
+          ],
+          "hybrid_top5": [
+            "a4092841e6f51389b50fff839664c5ddd1d845f1",
+            "0972bb124eccfdbfb042168f691716f1343623df",
+            "12efdfc32d1eb5646b3179eea2986723e2893d8d",
+            "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+            "03109a103e521535440cbcf8ff41c5999170ab97"
+          ]
+        },
+        {
+          "query": "When did the short -v option stop printing the version and start showing longer result descriptions?",
+          "gold": "1c3ebff5bb4bf4fa9272cc469d7e5f4560e4309e",
+          "ranks": {
+            "semantic_messages": 4,
+            "semantic_message_diff": 6,
+            "hybrid": 4,
+            "lexical": 3
+          },
+          "semantic_top5": [
+            "7c08368328a0a2bd8561bbb5331f6db698209bb2",
+            "0972bb124eccfdbfb042168f691716f1343623df",
+            "12efdfc32d1eb5646b3179eea2986723e2893d8d",
+            "fa5e5ec2a005171bf050e833c245c315adebe4c2",
+            "2e410f45bad8a33cffa6b9ea0bf145006c580894"
+          ],
+          "hybrid_top5": [
+            "7c08368328a0a2bd8561bbb5331f6db698209bb2",
+            "fa5e5ec2a005171bf050e833c245c315adebe4c2",
+            "0972bb124eccfdbfb042168f691716f1343623df",
+            "1c3ebff5bb4bf4fa9272cc469d7e5f4560e4309e",
+            "12efdfc32d1eb5646b3179eea2986723e2893d8d"
+          ]
+        },
+        {
+          "query": "Where was a forbidden response from GitHub turned into an error telling the user to wait before trying again?",
+          "gold": "b2a35a2838f410bf3a521239ca0b2cc011b8b83f",
+          "ranks": {
+            "semantic_messages": 3,
+            "semantic_message_diff": 1,
+            "hybrid": 2,
+            "lexical": 5
+          },
+          "semantic_top5": [
+            "b2a35a2838f410bf3a521239ca0b2cc011b8b83f",
+            "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+            "41fe13046baad8b4d5a526189eba9e3c1367037b",
+            "a4092841e6f51389b50fff839664c5ddd1d845f1",
+            "12efdfc32d1eb5646b3179eea2986723e2893d8d"
+          ],
+          "hybrid_top5": [
+            "41fe13046baad8b4d5a526189eba9e3c1367037b",
+            "b2a35a2838f410bf3a521239ca0b2cc011b8b83f",
+            "e78e2a808111fe6e5a5a365fe139c1c8ce21aec2",
+            "7e5498635ce2c22b3bbdfd32d716d2c62af9a9a0",
+            "a4092841e6f51389b50fff839664c5ddd1d845f1"
+          ]
+        },
+        {
+          "query": "Which change made a returned commit identifier open its GitHub page from the terminal?",
+          "gold": "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+          "ranks": {
+            "semantic_messages": 1,
+            "semantic_message_diff": 1,
+            "hybrid": 3,
+            "lexical": 9
+          },
+          "semantic_top5": [
+            "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+            "18d7ffb27c8263949c8cd86fd1e36a32ee622d42",
+            "e78e2a808111fe6e5a5a365fe139c1c8ce21aec2",
+            "a4092841e6f51389b50fff839664c5ddd1d845f1",
+            "12efdfc32d1eb5646b3179eea2986723e2893d8d"
+          ],
+          "hybrid_top5": [
+            "e78e2a808111fe6e5a5a365fe139c1c8ce21aec2",
+            "18d7ffb27c8263949c8cd86fd1e36a32ee622d42",
+            "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+            "2cbe5d33d81f05d154744b0c101db73b1d51f63d",
+            "7e5498635ce2c22b3bbdfd32d716d2c62af9a9a0"
+          ]
+        },
+        {
+          "query": "When did the command line start scanning only a hundred previous revisions by default instead of a thousand?",
+          "gold": "0972bb124eccfdbfb042168f691716f1343623df",
+          "ranks": {
+            "semantic_messages": 1,
+            "semantic_message_diff": 1,
+            "hybrid": 1,
+            "lexical": 5
+          },
+          "semantic_top5": [
+            "0972bb124eccfdbfb042168f691716f1343623df",
+            "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+            "a4092841e6f51389b50fff839664c5ddd1d845f1",
+            "12efdfc32d1eb5646b3179eea2986723e2893d8d",
+            "e78e2a808111fe6e5a5a365fe139c1c8ce21aec2"
+          ],
+          "hybrid_top5": [
+            "0972bb124eccfdbfb042168f691716f1343623df",
+            "017cb50985de6328aad910c88745ed35751bb69c",
+            "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+            "e78e2a808111fe6e5a5a365fe139c1c8ce21aec2",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c"
+          ]
+        }
+      ],
+      "startup_command": [
+        "llama-server",
+        "--model",
+        "${HOME}/.cache/huggingface/hub/models--Qwen--Qwen3-Embedding-0.6B-GGUF/snapshots/370f27d7550e0def9b39c1f16d3fbaa13aa67728/Qwen3-Embedding-0.6B-Q8_0.gguf",
+        "--embedding",
+        "--pooling",
+        "last",
+        "--embd-normalize",
+        "2",
+        "--threads",
+        "4",
+        "--threads-batch",
+        "4",
+        "--parallel",
+        "8",
+        "--ctx-size",
+        "8192",
+        "--batch-size",
+        "4096",
+        "--ubatch-size",
+        "4096",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "55809",
+        "--offline",
+        "--no-webui",
+        "--no-cache-prompt",
+        "--no-warmup",
+        "--device",
+        "none",
+        "--gpu-layers",
+        "0",
+        "--no-op-offload"
+      ],
+      "server_peak_rss_mib": 3660.046875,
+      "driver_peak_rss_mib": 52.0625
+    },
+    {
+      "label": "qwen-q8-metal",
+      "model": "Qwen/Qwen3-Embedding-0.6B-GGUF",
+      "revision": "370f27d7550e0def9b39c1f16d3fbaa13aa67728",
+      "file": "Qwen3-Embedding-0.6B-Q8_0.gguf",
+      "runtime": "llama.cpp build 10809 5266f24da",
+      "provider": "metal",
+      "threads": 4,
+      "batch_size": 8,
+      "slots": 8,
+      "pooling": "last",
+      "prefix": "Instruct: Given a question about a Git repository's history, retrieve the code changes that answer the question.\nQuery:",
+      "dimensions": 1024,
+      "artifact_bytes": 639150592,
+      "corpus_sha256": "190f64c5e38719221c6e0b84809ead5e1041a9e6ca1b004c0b264185cc5ab491",
+      "documents": 401,
+      "tokens_mean": 140.73067331670822,
+      "tokens_max": 564,
+      "truncated_documents": 0,
+      "load_seconds": 1.2934030840006017,
+      "first_query_ms": 202.19370799895842,
+      "warm_query_p50_ms": 34.91799999937939,
+      "warm_query_p95_ms": 41.358416498951556,
+      "corpus_seconds": 74.20683958399968,
+      "docs_per_second": 5.403814557364099,
+      "repeat128_docs_per_second": [
+        6.766093410632304,
+        6.9634780425201335
+      ],
+      "quality": {
+        "semantic_messages": {
+          "top1": 6,
+          "top5": 10,
+          "top10": 10,
+          "mrr": 0.627,
+          "questions": 12
+        },
+        "semantic_message_diff": {
+          "top1": 7,
+          "top5": 10,
+          "top10": 12,
+          "mrr": 0.6722,
+          "questions": 12
+        },
+        "hybrid": {
+          "top1": 3,
+          "top5": 11,
+          "top10": 12,
+          "mrr": 0.4875,
+          "questions": 12
+        },
+        "lexical": {
+          "top1": 2,
+          "top5": 7,
+          "top10": 11,
+          "mrr": 0.3162,
+          "questions": 12
+        }
+      },
+      "details": [
+        {
+          "query": "When did search stop considering the description below a commit's first line?",
+          "gold": "2cbe5d33d81f05d154744b0c101db73b1d51f63d",
+          "ranks": {
+            "semantic_messages": 2,
+            "semantic_message_diff": 6,
+            "hybrid": 5,
+            "lexical": 5
+          },
+          "semantic_top5": [
+            "7c08368328a0a2bd8561bbb5331f6db698209bb2",
+            "0972bb124eccfdbfb042168f691716f1343623df",
+            "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+            "017cb50985de6328aad910c88745ed35751bb69c",
+            "12efdfc32d1eb5646b3179eea2986723e2893d8d"
+          ],
+          "hybrid_top5": [
+            "7c08368328a0a2bd8561bbb5331f6db698209bb2",
+            "017cb50985de6328aad910c88745ed35751bb69c",
+            "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+            "0972bb124eccfdbfb042168f691716f1343623df",
+            "2cbe5d33d81f05d154744b0c101db73b1d51f63d"
+          ]
+        },
+        {
+          "query": "Which change restored searching the body of a commit while keeping result rows short?",
+          "gold": "7c08368328a0a2bd8561bbb5331f6db698209bb2",
+          "ranks": {
+            "semantic_messages": 1,
+            "semantic_message_diff": 1,
+            "hybrid": 2,
+            "lexical": 8
+          },
+          "semantic_top5": [
+            "7c08368328a0a2bd8561bbb5331f6db698209bb2",
+            "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+            "2cbe5d33d81f05d154744b0c101db73b1d51f63d",
+            "0972bb124eccfdbfb042168f691716f1343623df",
+            "12efdfc32d1eb5646b3179eea2986723e2893d8d"
+          ],
+          "hybrid_top5": [
+            "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+            "7c08368328a0a2bd8561bbb5331f6db698209bb2",
+            "2cbe5d33d81f05d154744b0c101db73b1d51f63d",
+            "017cb50985de6328aad910c88745ed35751bb69c",
+            "3d30fd08dcabf1af0d3b88afb0d64f43e1c80674"
+          ]
+        },
+        {
+          "query": "Find the change that removed explicit GPU selection when loading the sentence model.",
+          "gold": "d88290f451ab79804759cf6637e33d5e51bd96e3",
+          "ranks": {
+            "semantic_messages": 3,
+            "semantic_message_diff": 3,
+            "hybrid": 5,
+            "lexical": 8
+          },
+          "semantic_top5": [
+            "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+            "b6e5f708027297b76bf4c4b660a74a44cfae40b2",
+            "d88290f451ab79804759cf6637e33d5e51bd96e3",
+            "c265859a4609b4326065ad1114a2c78d8b571940",
+            "01faefd136435585bfa3b587bd8afac9a1a2f8fd"
+          ],
+          "hybrid_top5": [
+            "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+            "b6e5f708027297b76bf4c4b660a74a44cfae40b2",
+            "18d7ffb27c8263949c8cd86fd1e36a32ee622d42",
+            "01faefd136435585bfa3b587bd8afac9a1a2f8fd",
+            "d88290f451ab79804759cf6637e33d5e51bd96e3"
+          ]
+        },
+        {
+          "query": "Find where loading the model started explicitly choosing CUDA again when a GPU was available.",
+          "gold": "b6e5f708027297b76bf4c4b660a74a44cfae40b2",
+          "ranks": {
+            "semantic_messages": 1,
+            "semantic_message_diff": 1,
+            "hybrid": 2,
+            "lexical": 3
+          },
+          "semantic_top5": [
+            "b6e5f708027297b76bf4c4b660a74a44cfae40b2",
+            "d88290f451ab79804759cf6637e33d5e51bd96e3",
+            "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+            "c265859a4609b4326065ad1114a2c78d8b571940",
+            "6b4ae69847ed03d84f7b3115658f20645b73227a"
+          ],
+          "hybrid_top5": [
+            "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+            "b6e5f708027297b76bf4c4b660a74a44cfae40b2",
+            "d88290f451ab79804759cf6637e33d5e51bd96e3",
+            "6b4ae69847ed03d84f7b3115658f20645b73227a",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c"
+          ]
+        },
+        {
+          "query": "Where did ranking start using a dot product on unit-length vectors instead of calculating cosine similarity directly?",
+          "gold": "669120d18c1738247c678b6fcb5126c5f97791a2",
+          "ranks": {
+            "semantic_messages": 1,
+            "semantic_message_diff": 1,
+            "hybrid": 1,
+            "lexical": 1
+          },
+          "semantic_top5": [
+            "669120d18c1738247c678b6fcb5126c5f97791a2",
+            "a4092841e6f51389b50fff839664c5ddd1d845f1",
+            "3d30fd08dcabf1af0d3b88afb0d64f43e1c80674",
+            "017cb50985de6328aad910c88745ed35751bb69c",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c"
+          ],
+          "hybrid_top5": [
+            "669120d18c1738247c678b6fcb5126c5f97791a2",
+            "a4092841e6f51389b50fff839664c5ddd1d845f1",
+            "3d30fd08dcabf1af0d3b88afb0d64f43e1c80674",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+            "017cb50985de6328aad910c88745ed35751bb69c"
+          ]
+        },
+        {
+          "query": "Which change fixed the malformed query-string separator used to request later pages of GitHub commits?",
+          "gold": "7e5498635ce2c22b3bbdfd32d716d2c62af9a9a0",
+          "ranks": {
+            "semantic_messages": 12,
+            "semantic_message_diff": 5,
+            "hybrid": 5,
+            "lexical": 6
+          },
+          "semantic_top5": [
+            "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+            "2cbe5d33d81f05d154744b0c101db73b1d51f63d",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+            "0972bb124eccfdbfb042168f691716f1343623df",
+            "7e5498635ce2c22b3bbdfd32d716d2c62af9a9a0"
+          ],
+          "hybrid_top5": [
+            "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+            "2cbe5d33d81f05d154744b0c101db73b1d51f63d",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+            "a4092841e6f51389b50fff839664c5ddd1d845f1",
+            "7e5498635ce2c22b3bbdfd32d716d2c62af9a9a0"
+          ]
+        },
+        {
+          "query": "When was model creation pulled out of the ranking function so callers could pass in an already-loaded model?",
+          "gold": "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+          "ranks": {
+            "semantic_messages": 41,
+            "semantic_message_diff": 5,
+            "hybrid": 1,
+            "lexical": 1
+          },
+          "semantic_top5": [
+            "caed7cfc99e04bcf4410558b19453866d5f7cfdd",
+            "af71e0f0a269155c16a87c941deeaf5be9b4f382",
+            "6b4ae69847ed03d84f7b3115658f20645b73227a",
+            "3d30fd08dcabf1af0d3b88afb0d64f43e1c80674",
+            "72cd11b4ac1a755b3a705a6fd446980eaf61648f"
+          ],
+          "hybrid_top5": [
+            "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+            "af71e0f0a269155c16a87c941deeaf5be9b4f382",
+            "b6e5f708027297b76bf4c4b660a74a44cfae40b2",
+            "6b4ae69847ed03d84f7b3115658f20645b73227a",
+            "caed7cfc99e04bcf4410558b19453866d5f7cfdd"
+          ]
+        },
+        {
+          "query": "Which fix restored relative imports for sibling modules after bare imports had been introduced?",
+          "gold": "41fe13046baad8b4d5a526189eba9e3c1367037b",
+          "ranks": {
+            "semantic_messages": 1,
+            "semantic_message_diff": 1,
+            "hybrid": 6,
+            "lexical": null
+          },
+          "semantic_top5": [
+            "41fe13046baad8b4d5a526189eba9e3c1367037b",
+            "f13cb4dd8f2353071ab6c5ea7ffc9d0b7a183544",
+            "c265859a4609b4326065ad1114a2c78d8b571940",
+            "ac1cc195720605f3998b20689c099d99a06c6363",
+            "3f2b22c9c6b1918642fab04f5ae4123ec7f83f39"
+          ],
+          "hybrid_top5": [
+            "a4092841e6f51389b50fff839664c5ddd1d845f1",
+            "0972bb124eccfdbfb042168f691716f1343623df",
+            "12efdfc32d1eb5646b3179eea2986723e2893d8d",
+            "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+            "03109a103e521535440cbcf8ff41c5999170ab97"
+          ]
+        },
+        {
+          "query": "When did the short -v option stop printing the version and start showing longer result descriptions?",
+          "gold": "1c3ebff5bb4bf4fa9272cc469d7e5f4560e4309e",
+          "ranks": {
+            "semantic_messages": 4,
+            "semantic_message_diff": 6,
+            "hybrid": 4,
+            "lexical": 3
+          },
+          "semantic_top5": [
+            "7c08368328a0a2bd8561bbb5331f6db698209bb2",
+            "0972bb124eccfdbfb042168f691716f1343623df",
+            "12efdfc32d1eb5646b3179eea2986723e2893d8d",
+            "fa5e5ec2a005171bf050e833c245c315adebe4c2",
+            "2e410f45bad8a33cffa6b9ea0bf145006c580894"
+          ],
+          "hybrid_top5": [
+            "7c08368328a0a2bd8561bbb5331f6db698209bb2",
+            "fa5e5ec2a005171bf050e833c245c315adebe4c2",
+            "0972bb124eccfdbfb042168f691716f1343623df",
+            "1c3ebff5bb4bf4fa9272cc469d7e5f4560e4309e",
+            "12efdfc32d1eb5646b3179eea2986723e2893d8d"
+          ]
+        },
+        {
+          "query": "Where was a forbidden response from GitHub turned into an error telling the user to wait before trying again?",
+          "gold": "b2a35a2838f410bf3a521239ca0b2cc011b8b83f",
+          "ranks": {
+            "semantic_messages": 3,
+            "semantic_message_diff": 1,
+            "hybrid": 2,
+            "lexical": 5
+          },
+          "semantic_top5": [
+            "b2a35a2838f410bf3a521239ca0b2cc011b8b83f",
+            "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+            "41fe13046baad8b4d5a526189eba9e3c1367037b",
+            "a4092841e6f51389b50fff839664c5ddd1d845f1",
+            "12efdfc32d1eb5646b3179eea2986723e2893d8d"
+          ],
+          "hybrid_top5": [
+            "41fe13046baad8b4d5a526189eba9e3c1367037b",
+            "b2a35a2838f410bf3a521239ca0b2cc011b8b83f",
+            "e78e2a808111fe6e5a5a365fe139c1c8ce21aec2",
+            "7e5498635ce2c22b3bbdfd32d716d2c62af9a9a0",
+            "a4092841e6f51389b50fff839664c5ddd1d845f1"
+          ]
+        },
+        {
+          "query": "Which change made a returned commit identifier open its GitHub page from the terminal?",
+          "gold": "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+          "ranks": {
+            "semantic_messages": 1,
+            "semantic_message_diff": 1,
+            "hybrid": 3,
+            "lexical": 9
+          },
+          "semantic_top5": [
+            "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+            "18d7ffb27c8263949c8cd86fd1e36a32ee622d42",
+            "e78e2a808111fe6e5a5a365fe139c1c8ce21aec2",
+            "a4092841e6f51389b50fff839664c5ddd1d845f1",
+            "12efdfc32d1eb5646b3179eea2986723e2893d8d"
+          ],
+          "hybrid_top5": [
+            "e78e2a808111fe6e5a5a365fe139c1c8ce21aec2",
+            "18d7ffb27c8263949c8cd86fd1e36a32ee622d42",
+            "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+            "2cbe5d33d81f05d154744b0c101db73b1d51f63d",
+            "7e5498635ce2c22b3bbdfd32d716d2c62af9a9a0"
+          ]
+        },
+        {
+          "query": "When did the command line start scanning only a hundred previous revisions by default instead of a thousand?",
+          "gold": "0972bb124eccfdbfb042168f691716f1343623df",
+          "ranks": {
+            "semantic_messages": 1,
+            "semantic_message_diff": 1,
+            "hybrid": 1,
+            "lexical": 5
+          },
+          "semantic_top5": [
+            "0972bb124eccfdbfb042168f691716f1343623df",
+            "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+            "a4092841e6f51389b50fff839664c5ddd1d845f1",
+            "12efdfc32d1eb5646b3179eea2986723e2893d8d",
+            "e78e2a808111fe6e5a5a365fe139c1c8ce21aec2"
+          ],
+          "hybrid_top5": [
+            "0972bb124eccfdbfb042168f691716f1343623df",
+            "017cb50985de6328aad910c88745ed35751bb69c",
+            "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+            "e78e2a808111fe6e5a5a365fe139c1c8ce21aec2",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c"
+          ]
+        }
+      ],
+      "startup_command": [
+        "llama-server",
+        "--model",
+        "${HOME}/.cache/huggingface/hub/models--Qwen--Qwen3-Embedding-0.6B-GGUF/snapshots/370f27d7550e0def9b39c1f16d3fbaa13aa67728/Qwen3-Embedding-0.6B-Q8_0.gguf",
+        "--embedding",
+        "--pooling",
+        "last",
+        "--embd-normalize",
+        "2",
+        "--threads",
+        "4",
+        "--threads-batch",
+        "4",
+        "--parallel",
+        "8",
+        "--ctx-size",
+        "8192",
+        "--batch-size",
+        "4096",
+        "--ubatch-size",
+        "4096",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "56512",
+        "--offline",
+        "--no-webui",
+        "--no-cache-prompt",
+        "--no-warmup",
+        "--gpu-layers",
+        "all"
+      ],
+      "server_peak_rss_mib": 5361.421875,
+      "driver_peak_rss_mib": 47.515625
+    },
+    {
+      "label": "embeddinggemma-q8-metal",
+      "model": "ggml-org/embeddinggemma-300M-GGUF",
+      "revision": "0f741b5a6585bd53aeb15cd1372c56f2a0f65e12",
+      "file": "embeddinggemma-300M-Q8_0.gguf",
+      "runtime": "llama.cpp build 10809 5266f24da",
+      "provider": "metal",
+      "threads": 4,
+      "batch_size": 8,
+      "slots": 8,
+      "pooling": "mean",
+      "prefix": "task: search result | query: ",
+      "document_prefix": "title: none | text: ",
+      "dimensions": 768,
+      "artifact_bytes": 333590944,
+      "corpus_sha256": "190f64c5e38719221c6e0b84809ead5e1041a9e6ca1b004c0b264185cc5ab491",
+      "documents": 401,
+      "tokens_mean": 161.32917705735662,
+      "tokens_max": 640,
+      "truncated_documents": 0,
+      "load_seconds": 0.7801166659992305,
+      "first_query_ms": 333.78320799965877,
+      "warm_query_p50_ms": 12.65110399981495,
+      "warm_query_p95_ms": 22.192270749656018,
+      "corpus_seconds": 11.35723125000004,
+      "docs_per_second": 35.30790129856681,
+      "repeat128_docs_per_second": [
+        47.07246646273773,
+        47.645133826107944
+      ],
+      "quality": {
+        "semantic_messages": {
+          "top1": 5,
+          "top5": 7,
+          "top10": 11,
+          "mrr": 0.5415,
+          "questions": 12
+        },
+        "semantic_message_diff": {
+          "top1": 6,
+          "top5": 10,
+          "top10": 12,
+          "mrr": 0.6508,
+          "questions": 12
+        },
+        "hybrid": {
+          "top1": 3,
+          "top5": 11,
+          "top10": 12,
+          "mrr": 0.4938,
+          "questions": 12
+        },
+        "lexical": {
+          "top1": 2,
+          "top5": 7,
+          "top10": 11,
+          "mrr": 0.3162,
+          "questions": 12
+        }
+      },
+      "details": [
+        {
+          "query": "When did search stop considering the description below a commit's first line?",
+          "gold": "2cbe5d33d81f05d154744b0c101db73b1d51f63d",
+          "ranks": {
+            "semantic_messages": 2,
+            "semantic_message_diff": 7,
+            "hybrid": 5,
+            "lexical": 5
+          },
+          "semantic_top5": [
+            "7c08368328a0a2bd8561bbb5331f6db698209bb2",
+            "0972bb124eccfdbfb042168f691716f1343623df",
+            "983eccfb60c2d8d7d3184894eeeb1f1290a5efee",
+            "dd2f73053c0cbd8b0392cdb6ea74dd42221135e4",
+            "017cb50985de6328aad910c88745ed35751bb69c"
+          ],
+          "hybrid_top5": [
+            "7c08368328a0a2bd8561bbb5331f6db698209bb2",
+            "017cb50985de6328aad910c88745ed35751bb69c",
+            "0972bb124eccfdbfb042168f691716f1343623df",
+            "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+            "2cbe5d33d81f05d154744b0c101db73b1d51f63d"
+          ]
+        },
+        {
+          "query": "Which change restored searching the body of a commit while keeping result rows short?",
+          "gold": "7c08368328a0a2bd8561bbb5331f6db698209bb2",
+          "ranks": {
+            "semantic_messages": 1,
+            "semantic_message_diff": 1,
+            "hybrid": 3,
+            "lexical": 8
+          },
+          "semantic_top5": [
+            "7c08368328a0a2bd8561bbb5331f6db698209bb2",
+            "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+            "0972bb124eccfdbfb042168f691716f1343623df",
+            "2cbe5d33d81f05d154744b0c101db73b1d51f63d",
+            "669120d18c1738247c678b6fcb5126c5f97791a2"
+          ],
+          "hybrid_top5": [
+            "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+            "3d30fd08dcabf1af0d3b88afb0d64f43e1c80674",
+            "7c08368328a0a2bd8561bbb5331f6db698209bb2",
+            "2cbe5d33d81f05d154744b0c101db73b1d51f63d",
+            "a4092841e6f51389b50fff839664c5ddd1d845f1"
+          ]
+        },
+        {
+          "query": "Find the change that removed explicit GPU selection when loading the sentence model.",
+          "gold": "d88290f451ab79804759cf6637e33d5e51bd96e3",
+          "ranks": {
+            "semantic_messages": 8,
+            "semantic_message_diff": 3,
+            "hybrid": 4,
+            "lexical": 8
+          },
+          "semantic_top5": [
+            "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+            "b6e5f708027297b76bf4c4b660a74a44cfae40b2",
+            "d88290f451ab79804759cf6637e33d5e51bd96e3",
+            "e78e2a808111fe6e5a5a365fe139c1c8ce21aec2",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c"
+          ],
+          "hybrid_top5": [
+            "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+            "b6e5f708027297b76bf4c4b660a74a44cfae40b2",
+            "18d7ffb27c8263949c8cd86fd1e36a32ee622d42",
+            "d88290f451ab79804759cf6637e33d5e51bd96e3",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c"
+          ]
+        },
+        {
+          "query": "Find where loading the model started explicitly choosing CUDA again when a GPU was available.",
+          "gold": "b6e5f708027297b76bf4c4b660a74a44cfae40b2",
+          "ranks": {
+            "semantic_messages": 1,
+            "semantic_message_diff": 1,
+            "hybrid": 2,
+            "lexical": 3
+          },
+          "semantic_top5": [
+            "b6e5f708027297b76bf4c4b660a74a44cfae40b2",
+            "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+            "01faefd136435585bfa3b587bd8afac9a1a2f8fd",
+            "6b4ae69847ed03d84f7b3115658f20645b73227a",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c"
+          ],
+          "hybrid_top5": [
+            "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+            "b6e5f708027297b76bf4c4b660a74a44cfae40b2",
+            "d88290f451ab79804759cf6637e33d5e51bd96e3",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+            "01faefd136435585bfa3b587bd8afac9a1a2f8fd"
+          ]
+        },
+        {
+          "query": "Where did ranking start using a dot product on unit-length vectors instead of calculating cosine similarity directly?",
+          "gold": "669120d18c1738247c678b6fcb5126c5f97791a2",
+          "ranks": {
+            "semantic_messages": 1,
+            "semantic_message_diff": 1,
+            "hybrid": 1,
+            "lexical": 1
+          },
+          "semantic_top5": [
+            "669120d18c1738247c678b6fcb5126c5f97791a2",
+            "a4092841e6f51389b50fff839664c5ddd1d845f1",
+            "3d30fd08dcabf1af0d3b88afb0d64f43e1c80674",
+            "017cb50985de6328aad910c88745ed35751bb69c",
+            "c7579b50edbab8cbcb4321aab20df37deab6956f"
+          ],
+          "hybrid_top5": [
+            "669120d18c1738247c678b6fcb5126c5f97791a2",
+            "a4092841e6f51389b50fff839664c5ddd1d845f1",
+            "3d30fd08dcabf1af0d3b88afb0d64f43e1c80674",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+            "017cb50985de6328aad910c88745ed35751bb69c"
+          ]
+        },
+        {
+          "query": "Which change fixed the malformed query-string separator used to request later pages of GitHub commits?",
+          "gold": "7e5498635ce2c22b3bbdfd32d716d2c62af9a9a0",
+          "ranks": {
+            "semantic_messages": 10,
+            "semantic_message_diff": 3,
+            "hybrid": 2,
+            "lexical": 6
+          },
+          "semantic_top5": [
+            "e78e2a808111fe6e5a5a365fe139c1c8ce21aec2",
+            "2cbe5d33d81f05d154744b0c101db73b1d51f63d",
+            "7e5498635ce2c22b3bbdfd32d716d2c62af9a9a0",
+            "7c08368328a0a2bd8561bbb5331f6db698209bb2",
+            "72cd11b4ac1a755b3a705a6fd446980eaf61648f"
+          ],
+          "hybrid_top5": [
+            "2cbe5d33d81f05d154744b0c101db73b1d51f63d",
+            "7e5498635ce2c22b3bbdfd32d716d2c62af9a9a0",
+            "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+            "e78e2a808111fe6e5a5a365fe139c1c8ce21aec2",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c"
+          ]
+        },
+        {
+          "query": "When was model creation pulled out of the ranking function so callers could pass in an already-loaded model?",
+          "gold": "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+          "ranks": {
+            "semantic_messages": 43,
+            "semantic_message_diff": 3,
+            "hybrid": 1,
+            "lexical": 1
+          },
+          "semantic_top5": [
+            "6b4ae69847ed03d84f7b3115658f20645b73227a",
+            "01faefd136435585bfa3b587bd8afac9a1a2f8fd",
+            "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+            "a4092841e6f51389b50fff839664c5ddd1d845f1",
+            "af71e0f0a269155c16a87c941deeaf5be9b4f382"
+          ],
+          "hybrid_top5": [
+            "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+            "6b4ae69847ed03d84f7b3115658f20645b73227a",
+            "af71e0f0a269155c16a87c941deeaf5be9b4f382",
+            "b6e5f708027297b76bf4c4b660a74a44cfae40b2",
+            "e78e2a808111fe6e5a5a365fe139c1c8ce21aec2"
+          ]
+        },
+        {
+          "query": "Which fix restored relative imports for sibling modules after bare imports had been introduced?",
+          "gold": "41fe13046baad8b4d5a526189eba9e3c1367037b",
+          "ranks": {
+            "semantic_messages": 1,
+            "semantic_message_diff": 1,
+            "hybrid": 7,
+            "lexical": null
+          },
+          "semantic_top5": [
+            "41fe13046baad8b4d5a526189eba9e3c1367037b",
+            "d88290f451ab79804759cf6637e33d5e51bd96e3",
+            "b6e5f708027297b76bf4c4b660a74a44cfae40b2",
+            "fa5e5ec2a005171bf050e833c245c315adebe4c2",
+            "72cd11b4ac1a755b3a705a6fd446980eaf61648f"
+          ],
+          "hybrid_top5": [
+            "03109a103e521535440cbcf8ff41c5999170ab97",
+            "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+            "0972bb124eccfdbfb042168f691716f1343623df",
+            "a4092841e6f51389b50fff839664c5ddd1d845f1",
+            "12efdfc32d1eb5646b3179eea2986723e2893d8d"
+          ]
+        },
+        {
+          "query": "When did the short -v option stop printing the version and start showing longer result descriptions?",
+          "gold": "1c3ebff5bb4bf4fa9272cc469d7e5f4560e4309e",
+          "ranks": {
+            "semantic_messages": 8,
+            "semantic_message_diff": 6,
+            "hybrid": 4,
+            "lexical": 3
+          },
+          "semantic_top5": [
+            "0972bb124eccfdbfb042168f691716f1343623df",
+            "fa5e5ec2a005171bf050e833c245c315adebe4c2",
+            "7c08368328a0a2bd8561bbb5331f6db698209bb2",
+            "01faefd136435585bfa3b587bd8afac9a1a2f8fd",
+            "12efdfc32d1eb5646b3179eea2986723e2893d8d"
+          ],
+          "hybrid_top5": [
+            "fa5e5ec2a005171bf050e833c245c315adebe4c2",
+            "0972bb124eccfdbfb042168f691716f1343623df",
+            "7c08368328a0a2bd8561bbb5331f6db698209bb2",
+            "1c3ebff5bb4bf4fa9272cc469d7e5f4560e4309e",
+            "3d30fd08dcabf1af0d3b88afb0d64f43e1c80674"
+          ]
+        },
+        {
+          "query": "Where was a forbidden response from GitHub turned into an error telling the user to wait before trying again?",
+          "gold": "b2a35a2838f410bf3a521239ca0b2cc011b8b83f",
+          "ranks": {
+            "semantic_messages": 8,
+            "semantic_message_diff": 1,
+            "hybrid": 1,
+            "lexical": 5
+          },
+          "semantic_top5": [
+            "b2a35a2838f410bf3a521239ca0b2cc011b8b83f",
+            "7e5498635ce2c22b3bbdfd32d716d2c62af9a9a0",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+            "d88290f451ab79804759cf6637e33d5e51bd96e3",
+            "017cb50985de6328aad910c88745ed35751bb69c"
+          ],
+          "hybrid_top5": [
+            "b2a35a2838f410bf3a521239ca0b2cc011b8b83f",
+            "7e5498635ce2c22b3bbdfd32d716d2c62af9a9a0",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+            "017cb50985de6328aad910c88745ed35751bb69c",
+            "2cbe5d33d81f05d154744b0c101db73b1d51f63d"
+          ]
+        },
+        {
+          "query": "Which change made a returned commit identifier open its GitHub page from the terminal?",
+          "gold": "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+          "ranks": {
+            "semantic_messages": 2,
+            "semantic_message_diff": 2,
+            "hybrid": 4,
+            "lexical": 9
+          },
+          "semantic_top5": [
+            "18d7ffb27c8263949c8cd86fd1e36a32ee622d42",
+            "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+            "7c08368328a0a2bd8561bbb5331f6db698209bb2",
+            "2cbe5d33d81f05d154744b0c101db73b1d51f63d",
+            "e78e2a808111fe6e5a5a365fe139c1c8ce21aec2"
+          ],
+          "hybrid_top5": [
+            "18d7ffb27c8263949c8cd86fd1e36a32ee622d42",
+            "2cbe5d33d81f05d154744b0c101db73b1d51f63d",
+            "e78e2a808111fe6e5a5a365fe139c1c8ce21aec2",
+            "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+            "7e5498635ce2c22b3bbdfd32d716d2c62af9a9a0"
+          ]
+        },
+        {
+          "query": "When did the command line start scanning only a hundred previous revisions by default instead of a thousand?",
+          "gold": "0972bb124eccfdbfb042168f691716f1343623df",
+          "ranks": {
+            "semantic_messages": 1,
+            "semantic_message_diff": 1,
+            "hybrid": 2,
+            "lexical": 5
+          },
+          "semantic_top5": [
+            "0972bb124eccfdbfb042168f691716f1343623df",
+            "fa5e5ec2a005171bf050e833c245c315adebe4c2",
+            "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+            "7c08368328a0a2bd8561bbb5331f6db698209bb2",
+            "017cb50985de6328aad910c88745ed35751bb69c"
+          ],
+          "hybrid_top5": [
+            "017cb50985de6328aad910c88745ed35751bb69c",
+            "0972bb124eccfdbfb042168f691716f1343623df",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+            "e78e2a808111fe6e5a5a365fe139c1c8ce21aec2",
+            "7c08368328a0a2bd8561bbb5331f6db698209bb2"
+          ]
+        }
+      ],
+      "startup_command": [
+        "llama-server",
+        "--model",
+        "${HOME}/.cache/huggingface/hub/models--ggml-org--embeddinggemma-300M-GGUF/snapshots/0f741b5a6585bd53aeb15cd1372c56f2a0f65e12/embeddinggemma-300M-Q8_0.gguf",
+        "--embedding",
+        "--pooling",
+        "mean",
+        "--embd-normalize",
+        "2",
+        "--threads",
+        "4",
+        "--threads-batch",
+        "4",
+        "--parallel",
+        "8",
+        "--ctx-size",
+        "8192",
+        "--batch-size",
+        "4096",
+        "--ubatch-size",
+        "4096",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "57443",
+        "--offline",
+        "--no-webui",
+        "--no-cache-prompt",
+        "--no-warmup",
+        "--gpu-layers",
+        "all"
+      ],
+      "code_query_profile": {
+        "prefix": "task: code retrieval | query: ",
+        "quality": {
+          "semantic_messages": {
+            "top1": 4,
+            "top5": 9,
+            "top10": 10,
+            "mrr": 0.5324,
+            "questions": 12
+          },
+          "semantic_message_diff": {
+            "top1": 7,
+            "top5": 10,
+            "top10": 12,
+            "mrr": 0.7153,
+            "questions": 12
+          },
+          "hybrid": {
+            "top1": 4,
+            "top5": 11,
+            "top10": 12,
+            "mrr": 0.5375,
+            "questions": 12
+          },
+          "lexical": {
+            "top1": 2,
+            "top5": 7,
+            "top10": 11,
+            "mrr": 0.3162,
+            "questions": 12
+          }
+        },
+        "details": [
+          {
+            "query": "When did search stop considering the description below a commit's first line?",
+            "gold": "2cbe5d33d81f05d154744b0c101db73b1d51f63d",
+            "ranks": {
+              "semantic_messages": 4,
+              "semantic_message_diff": 6,
+              "hybrid": 6,
+              "lexical": 5
+            },
+            "semantic_top5": [
+              "0972bb124eccfdbfb042168f691716f1343623df",
+              "7c08368328a0a2bd8561bbb5331f6db698209bb2",
+              "017cb50985de6328aad910c88745ed35751bb69c",
+              "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+              "3d30fd08dcabf1af0d3b88afb0d64f43e1c80674"
+            ],
+            "hybrid_top5": [
+              "7c08368328a0a2bd8561bbb5331f6db698209bb2",
+              "017cb50985de6328aad910c88745ed35751bb69c",
+              "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+              "0972bb124eccfdbfb042168f691716f1343623df",
+              "01faefd136435585bfa3b587bd8afac9a1a2f8fd"
+            ]
+          },
+          {
+            "query": "Which change restored searching the body of a commit while keeping result rows short?",
+            "gold": "7c08368328a0a2bd8561bbb5331f6db698209bb2",
+            "ranks": {
+              "semantic_messages": 2,
+              "semantic_message_diff": 4,
+              "hybrid": 5,
+              "lexical": 8
+            },
+            "semantic_top5": [
+              "2cbe5d33d81f05d154744b0c101db73b1d51f63d",
+              "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+              "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+              "7c08368328a0a2bd8561bbb5331f6db698209bb2",
+              "3d30fd08dcabf1af0d3b88afb0d64f43e1c80674"
+            ],
+            "hybrid_top5": [
+              "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+              "3d30fd08dcabf1af0d3b88afb0d64f43e1c80674",
+              "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+              "2cbe5d33d81f05d154744b0c101db73b1d51f63d",
+              "7c08368328a0a2bd8561bbb5331f6db698209bb2"
+            ]
+          },
+          {
+            "query": "Find the change that removed explicit GPU selection when loading the sentence model.",
+            "gold": "d88290f451ab79804759cf6637e33d5e51bd96e3",
+            "ranks": {
+              "semantic_messages": 10,
+              "semantic_message_diff": 2,
+              "hybrid": 3,
+              "lexical": 8
+            },
+            "semantic_top5": [
+              "b6e5f708027297b76bf4c4b660a74a44cfae40b2",
+              "d88290f451ab79804759cf6637e33d5e51bd96e3",
+              "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+              "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+              "3f2b22c9c6b1918642fab04f5ae4123ec7f83f39"
+            ],
+            "hybrid_top5": [
+              "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+              "b6e5f708027297b76bf4c4b660a74a44cfae40b2",
+              "d88290f451ab79804759cf6637e33d5e51bd96e3",
+              "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+              "3f2b22c9c6b1918642fab04f5ae4123ec7f83f39"
+            ]
+          },
+          {
+            "query": "Find where loading the model started explicitly choosing CUDA again when a GPU was available.",
+            "gold": "b6e5f708027297b76bf4c4b660a74a44cfae40b2",
+            "ranks": {
+              "semantic_messages": 1,
+              "semantic_message_diff": 1,
+              "hybrid": 2,
+              "lexical": 3
+            },
+            "semantic_top5": [
+              "b6e5f708027297b76bf4c4b660a74a44cfae40b2",
+              "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+              "d88290f451ab79804759cf6637e33d5e51bd96e3",
+              "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+              "f13cb4dd8f2353071ab6c5ea7ffc9d0b7a183544"
+            ],
+            "hybrid_top5": [
+              "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+              "b6e5f708027297b76bf4c4b660a74a44cfae40b2",
+              "d88290f451ab79804759cf6637e33d5e51bd96e3",
+              "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+              "01faefd136435585bfa3b587bd8afac9a1a2f8fd"
+            ]
+          },
+          {
+            "query": "Where did ranking start using a dot product on unit-length vectors instead of calculating cosine similarity directly?",
+            "gold": "669120d18c1738247c678b6fcb5126c5f97791a2",
+            "ranks": {
+              "semantic_messages": 1,
+              "semantic_message_diff": 1,
+              "hybrid": 1,
+              "lexical": 1
+            },
+            "semantic_top5": [
+              "669120d18c1738247c678b6fcb5126c5f97791a2",
+              "a4092841e6f51389b50fff839664c5ddd1d845f1",
+              "3d30fd08dcabf1af0d3b88afb0d64f43e1c80674",
+              "017cb50985de6328aad910c88745ed35751bb69c",
+              "6b4ae69847ed03d84f7b3115658f20645b73227a"
+            ],
+            "hybrid_top5": [
+              "669120d18c1738247c678b6fcb5126c5f97791a2",
+              "a4092841e6f51389b50fff839664c5ddd1d845f1",
+              "3d30fd08dcabf1af0d3b88afb0d64f43e1c80674",
+              "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+              "017cb50985de6328aad910c88745ed35751bb69c"
+            ]
+          },
+          {
+            "query": "Which change fixed the malformed query-string separator used to request later pages of GitHub commits?",
+            "gold": "7e5498635ce2c22b3bbdfd32d716d2c62af9a9a0",
+            "ranks": {
+              "semantic_messages": 1,
+              "semantic_message_diff": 1,
+              "hybrid": 2,
+              "lexical": 6
+            },
+            "semantic_top5": [
+              "7e5498635ce2c22b3bbdfd32d716d2c62af9a9a0",
+              "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+              "2cbe5d33d81f05d154744b0c101db73b1d51f63d",
+              "e78e2a808111fe6e5a5a365fe139c1c8ce21aec2",
+              "41fe13046baad8b4d5a526189eba9e3c1367037b"
+            ],
+            "hybrid_top5": [
+              "2cbe5d33d81f05d154744b0c101db73b1d51f63d",
+              "7e5498635ce2c22b3bbdfd32d716d2c62af9a9a0",
+              "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+              "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+              "c7e66e6cec0dcb74a85735a24b429e24c68cca98"
+            ]
+          },
+          {
+            "query": "When was model creation pulled out of the ranking function so callers could pass in an already-loaded model?",
+            "gold": "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+            "ranks": {
+              "semantic_messages": 66,
+              "semantic_message_diff": 2,
+              "hybrid": 1,
+              "lexical": 1
+            },
+            "semantic_top5": [
+              "6b4ae69847ed03d84f7b3115658f20645b73227a",
+              "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+              "01faefd136435585bfa3b587bd8afac9a1a2f8fd",
+              "af71e0f0a269155c16a87c941deeaf5be9b4f382",
+              "b6e5f708027297b76bf4c4b660a74a44cfae40b2"
+            ],
+            "hybrid_top5": [
+              "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+              "b6e5f708027297b76bf4c4b660a74a44cfae40b2",
+              "6b4ae69847ed03d84f7b3115658f20645b73227a",
+              "2cbe5d33d81f05d154744b0c101db73b1d51f63d",
+              "af71e0f0a269155c16a87c941deeaf5be9b4f382"
+            ]
+          },
+          {
+            "query": "Which fix restored relative imports for sibling modules after bare imports had been introduced?",
+            "gold": "41fe13046baad8b4d5a526189eba9e3c1367037b",
+            "ranks": {
+              "semantic_messages": 1,
+              "semantic_message_diff": 1,
+              "hybrid": 4,
+              "lexical": null
+            },
+            "semantic_top5": [
+              "41fe13046baad8b4d5a526189eba9e3c1367037b",
+              "fa5e5ec2a005171bf050e833c245c315adebe4c2",
+              "d88290f451ab79804759cf6637e33d5e51bd96e3",
+              "2cbe5d33d81f05d154744b0c101db73b1d51f63d",
+              "b6e5f708027297b76bf4c4b660a74a44cfae40b2"
+            ],
+            "hybrid_top5": [
+              "01faefd136435585bfa3b587bd8afac9a1a2f8fd",
+              "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+              "03109a103e521535440cbcf8ff41c5999170ab97",
+              "41fe13046baad8b4d5a526189eba9e3c1367037b",
+              "a4092841e6f51389b50fff839664c5ddd1d845f1"
+            ]
+          },
+          {
+            "query": "When did the short -v option stop printing the version and start showing longer result descriptions?",
+            "gold": "1c3ebff5bb4bf4fa9272cc469d7e5f4560e4309e",
+            "ranks": {
+              "semantic_messages": 43,
+              "semantic_message_diff": 6,
+              "hybrid": 4,
+              "lexical": 3
+            },
+            "semantic_top5": [
+              "fa5e5ec2a005171bf050e833c245c315adebe4c2",
+              "0972bb124eccfdbfb042168f691716f1343623df",
+              "22eb87fce284c10038ce223b589eedc520577b92",
+              "7c08368328a0a2bd8561bbb5331f6db698209bb2",
+              "01faefd136435585bfa3b587bd8afac9a1a2f8fd"
+            ],
+            "hybrid_top5": [
+              "fa5e5ec2a005171bf050e833c245c315adebe4c2",
+              "0972bb124eccfdbfb042168f691716f1343623df",
+              "7c08368328a0a2bd8561bbb5331f6db698209bb2",
+              "1c3ebff5bb4bf4fa9272cc469d7e5f4560e4309e",
+              "3d30fd08dcabf1af0d3b88afb0d64f43e1c80674"
+            ]
+          },
+          {
+            "query": "Where was a forbidden response from GitHub turned into an error telling the user to wait before trying again?",
+            "gold": "b2a35a2838f410bf3a521239ca0b2cc011b8b83f",
+            "ranks": {
+              "semantic_messages": 2,
+              "semantic_message_diff": 1,
+              "hybrid": 1,
+              "lexical": 5
+            },
+            "semantic_top5": [
+              "b2a35a2838f410bf3a521239ca0b2cc011b8b83f",
+              "7e5498635ce2c22b3bbdfd32d716d2c62af9a9a0",
+              "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+              "2cbe5d33d81f05d154744b0c101db73b1d51f63d",
+              "e0dcd6ba47e3ed647c81499d4b202d60394e93ec"
+            ],
+            "hybrid_top5": [
+              "b2a35a2838f410bf3a521239ca0b2cc011b8b83f",
+              "7e5498635ce2c22b3bbdfd32d716d2c62af9a9a0",
+              "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+              "e78e2a808111fe6e5a5a365fe139c1c8ce21aec2",
+              "41fe13046baad8b4d5a526189eba9e3c1367037b"
+            ]
+          },
+          {
+            "query": "Which change made a returned commit identifier open its GitHub page from the terminal?",
+            "gold": "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+            "ranks": {
+              "semantic_messages": 2,
+              "semantic_message_diff": 1,
+              "hybrid": 4,
+              "lexical": 9
+            },
+            "semantic_top5": [
+              "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+              "3d30fd08dcabf1af0d3b88afb0d64f43e1c80674",
+              "0972bb124eccfdbfb042168f691716f1343623df",
+              "2cbe5d33d81f05d154744b0c101db73b1d51f63d",
+              "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c"
+            ],
+            "hybrid_top5": [
+              "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+              "2cbe5d33d81f05d154744b0c101db73b1d51f63d",
+              "01faefd136435585bfa3b587bd8afac9a1a2f8fd",
+              "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+              "7e5498635ce2c22b3bbdfd32d716d2c62af9a9a0"
+            ]
+          },
+          {
+            "query": "When did the command line start scanning only a hundred previous revisions by default instead of a thousand?",
+            "gold": "0972bb124eccfdbfb042168f691716f1343623df",
+            "ranks": {
+              "semantic_messages": 2,
+              "semantic_message_diff": 1,
+              "hybrid": 1,
+              "lexical": 5
+            },
+            "semantic_top5": [
+              "0972bb124eccfdbfb042168f691716f1343623df",
+              "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+              "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+              "e78e2a808111fe6e5a5a365fe139c1c8ce21aec2",
+              "fa5e5ec2a005171bf050e833c245c315adebe4c2"
+            ],
+            "hybrid_top5": [
+              "0972bb124eccfdbfb042168f691716f1343623df",
+              "017cb50985de6328aad910c88745ed35751bb69c",
+              "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+              "e78e2a808111fe6e5a5a365fe139c1c8ce21aec2",
+              "72cd11b4ac1a755b3a705a6fd446980eaf61648f"
+            ]
+          }
+        ]
+      },
+      "server_peak_rss_mib": 2761.4375,
+      "driver_peak_rss_mib": 50.171875
+    },
+    {
+      "label": "embeddinggemma-q8-cpu",
+      "model": "ggml-org/embeddinggemma-300M-GGUF",
+      "revision": "0f741b5a6585bd53aeb15cd1372c56f2a0f65e12",
+      "file": "embeddinggemma-300M-Q8_0.gguf",
+      "runtime": "llama.cpp build 10809 5266f24da",
+      "provider": "cpu",
+      "threads": 4,
+      "batch_size": 8,
+      "slots": 8,
+      "pooling": "mean",
+      "prefix": "task: search result | query: ",
+      "document_prefix": "title: none | text: ",
+      "dimensions": 768,
+      "artifact_bytes": 333590944,
+      "corpus_sha256": "190f64c5e38719221c6e0b84809ead5e1041a9e6ca1b004c0b264185cc5ab491",
+      "documents": 401,
+      "tokens_mean": 161.32917705735662,
+      "tokens_max": 640,
+      "truncated_documents": 0,
+      "load_seconds": 1.0329777920014749,
+      "first_query_ms": 26.600790999509627,
+      "warm_query_p50_ms": 13.53987449874694,
+      "warm_query_p95_ms": 15.759468497890339,
+      "corpus_seconds": 59.87875283299945,
+      "docs_per_second": 6.696866267712361,
+      "repeat128_docs_per_second": [
+        9.02191819477341,
+        8.9034435712996
+      ],
+      "quality": {
+        "semantic_messages": {
+          "top1": 5,
+          "top5": 7,
+          "top10": 11,
+          "mrr": 0.5431,
+          "questions": 12
+        },
+        "semantic_message_diff": {
+          "top1": 6,
+          "top5": 10,
+          "top10": 12,
+          "mrr": 0.6508,
+          "questions": 12
+        },
+        "hybrid": {
+          "top1": 3,
+          "top5": 11,
+          "top10": 12,
+          "mrr": 0.4924,
+          "questions": 12
+        },
+        "lexical": {
+          "top1": 2,
+          "top5": 7,
+          "top10": 11,
+          "mrr": 0.3162,
+          "questions": 12
+        }
+      },
+      "details": [
+        {
+          "query": "When did search stop considering the description below a commit's first line?",
+          "gold": "2cbe5d33d81f05d154744b0c101db73b1d51f63d",
+          "ranks": {
+            "semantic_messages": 2,
+            "semantic_message_diff": 7,
+            "hybrid": 5,
+            "lexical": 5
+          },
+          "semantic_top5": [
+            "7c08368328a0a2bd8561bbb5331f6db698209bb2",
+            "0972bb124eccfdbfb042168f691716f1343623df",
+            "dd2f73053c0cbd8b0392cdb6ea74dd42221135e4",
+            "983eccfb60c2d8d7d3184894eeeb1f1290a5efee",
+            "017cb50985de6328aad910c88745ed35751bb69c"
+          ],
+          "hybrid_top5": [
+            "7c08368328a0a2bd8561bbb5331f6db698209bb2",
+            "017cb50985de6328aad910c88745ed35751bb69c",
+            "0972bb124eccfdbfb042168f691716f1343623df",
+            "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+            "2cbe5d33d81f05d154744b0c101db73b1d51f63d"
+          ]
+        },
+        {
+          "query": "Which change restored searching the body of a commit while keeping result rows short?",
+          "gold": "7c08368328a0a2bd8561bbb5331f6db698209bb2",
+          "ranks": {
+            "semantic_messages": 1,
+            "semantic_message_diff": 1,
+            "hybrid": 3,
+            "lexical": 8
+          },
+          "semantic_top5": [
+            "7c08368328a0a2bd8561bbb5331f6db698209bb2",
+            "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+            "0972bb124eccfdbfb042168f691716f1343623df",
+            "2cbe5d33d81f05d154744b0c101db73b1d51f63d",
+            "669120d18c1738247c678b6fcb5126c5f97791a2"
+          ],
+          "hybrid_top5": [
+            "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+            "3d30fd08dcabf1af0d3b88afb0d64f43e1c80674",
+            "7c08368328a0a2bd8561bbb5331f6db698209bb2",
+            "2cbe5d33d81f05d154744b0c101db73b1d51f63d",
+            "a4092841e6f51389b50fff839664c5ddd1d845f1"
+          ]
+        },
+        {
+          "query": "Find the change that removed explicit GPU selection when loading the sentence model.",
+          "gold": "d88290f451ab79804759cf6637e33d5e51bd96e3",
+          "ranks": {
+            "semantic_messages": 7,
+            "semantic_message_diff": 3,
+            "hybrid": 4,
+            "lexical": 8
+          },
+          "semantic_top5": [
+            "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+            "b6e5f708027297b76bf4c4b660a74a44cfae40b2",
+            "d88290f451ab79804759cf6637e33d5e51bd96e3",
+            "e78e2a808111fe6e5a5a365fe139c1c8ce21aec2",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c"
+          ],
+          "hybrid_top5": [
+            "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+            "b6e5f708027297b76bf4c4b660a74a44cfae40b2",
+            "18d7ffb27c8263949c8cd86fd1e36a32ee622d42",
+            "d88290f451ab79804759cf6637e33d5e51bd96e3",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c"
+          ]
+        },
+        {
+          "query": "Find where loading the model started explicitly choosing CUDA again when a GPU was available.",
+          "gold": "b6e5f708027297b76bf4c4b660a74a44cfae40b2",
+          "ranks": {
+            "semantic_messages": 1,
+            "semantic_message_diff": 1,
+            "hybrid": 2,
+            "lexical": 3
+          },
+          "semantic_top5": [
+            "b6e5f708027297b76bf4c4b660a74a44cfae40b2",
+            "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+            "01faefd136435585bfa3b587bd8afac9a1a2f8fd",
+            "6b4ae69847ed03d84f7b3115658f20645b73227a",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c"
+          ],
+          "hybrid_top5": [
+            "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+            "b6e5f708027297b76bf4c4b660a74a44cfae40b2",
+            "d88290f451ab79804759cf6637e33d5e51bd96e3",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+            "01faefd136435585bfa3b587bd8afac9a1a2f8fd"
+          ]
+        },
+        {
+          "query": "Where did ranking start using a dot product on unit-length vectors instead of calculating cosine similarity directly?",
+          "gold": "669120d18c1738247c678b6fcb5126c5f97791a2",
+          "ranks": {
+            "semantic_messages": 1,
+            "semantic_message_diff": 1,
+            "hybrid": 1,
+            "lexical": 1
+          },
+          "semantic_top5": [
+            "669120d18c1738247c678b6fcb5126c5f97791a2",
+            "a4092841e6f51389b50fff839664c5ddd1d845f1",
+            "3d30fd08dcabf1af0d3b88afb0d64f43e1c80674",
+            "017cb50985de6328aad910c88745ed35751bb69c",
+            "c7579b50edbab8cbcb4321aab20df37deab6956f"
+          ],
+          "hybrid_top5": [
+            "669120d18c1738247c678b6fcb5126c5f97791a2",
+            "a4092841e6f51389b50fff839664c5ddd1d845f1",
+            "3d30fd08dcabf1af0d3b88afb0d64f43e1c80674",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+            "017cb50985de6328aad910c88745ed35751bb69c"
+          ]
+        },
+        {
+          "query": "Which change fixed the malformed query-string separator used to request later pages of GitHub commits?",
+          "gold": "7e5498635ce2c22b3bbdfd32d716d2c62af9a9a0",
+          "ranks": {
+            "semantic_messages": 10,
+            "semantic_message_diff": 3,
+            "hybrid": 2,
+            "lexical": 6
+          },
+          "semantic_top5": [
+            "e78e2a808111fe6e5a5a365fe139c1c8ce21aec2",
+            "2cbe5d33d81f05d154744b0c101db73b1d51f63d",
+            "7e5498635ce2c22b3bbdfd32d716d2c62af9a9a0",
+            "7c08368328a0a2bd8561bbb5331f6db698209bb2",
+            "72cd11b4ac1a755b3a705a6fd446980eaf61648f"
+          ],
+          "hybrid_top5": [
+            "2cbe5d33d81f05d154744b0c101db73b1d51f63d",
+            "7e5498635ce2c22b3bbdfd32d716d2c62af9a9a0",
+            "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+            "e78e2a808111fe6e5a5a365fe139c1c8ce21aec2",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c"
+          ]
+        },
+        {
+          "query": "When was model creation pulled out of the ranking function so callers could pass in an already-loaded model?",
+          "gold": "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+          "ranks": {
+            "semantic_messages": 42,
+            "semantic_message_diff": 3,
+            "hybrid": 1,
+            "lexical": 1
+          },
+          "semantic_top5": [
+            "6b4ae69847ed03d84f7b3115658f20645b73227a",
+            "01faefd136435585bfa3b587bd8afac9a1a2f8fd",
+            "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+            "af71e0f0a269155c16a87c941deeaf5be9b4f382",
+            "a4092841e6f51389b50fff839664c5ddd1d845f1"
+          ],
+          "hybrid_top5": [
+            "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+            "6b4ae69847ed03d84f7b3115658f20645b73227a",
+            "af71e0f0a269155c16a87c941deeaf5be9b4f382",
+            "b6e5f708027297b76bf4c4b660a74a44cfae40b2",
+            "e78e2a808111fe6e5a5a365fe139c1c8ce21aec2"
+          ]
+        },
+        {
+          "query": "Which fix restored relative imports for sibling modules after bare imports had been introduced?",
+          "gold": "41fe13046baad8b4d5a526189eba9e3c1367037b",
+          "ranks": {
+            "semantic_messages": 1,
+            "semantic_message_diff": 1,
+            "hybrid": 8,
+            "lexical": null
+          },
+          "semantic_top5": [
+            "41fe13046baad8b4d5a526189eba9e3c1367037b",
+            "b6e5f708027297b76bf4c4b660a74a44cfae40b2",
+            "d88290f451ab79804759cf6637e33d5e51bd96e3",
+            "fa5e5ec2a005171bf050e833c245c315adebe4c2",
+            "72cd11b4ac1a755b3a705a6fd446980eaf61648f"
+          ],
+          "hybrid_top5": [
+            "03109a103e521535440cbcf8ff41c5999170ab97",
+            "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+            "0972bb124eccfdbfb042168f691716f1343623df",
+            "a4092841e6f51389b50fff839664c5ddd1d845f1",
+            "12efdfc32d1eb5646b3179eea2986723e2893d8d"
+          ]
+        },
+        {
+          "query": "When did the short -v option stop printing the version and start showing longer result descriptions?",
+          "gold": "1c3ebff5bb4bf4fa9272cc469d7e5f4560e4309e",
+          "ranks": {
+            "semantic_messages": 8,
+            "semantic_message_diff": 6,
+            "hybrid": 4,
+            "lexical": 3
+          },
+          "semantic_top5": [
+            "0972bb124eccfdbfb042168f691716f1343623df",
+            "7c08368328a0a2bd8561bbb5331f6db698209bb2",
+            "fa5e5ec2a005171bf050e833c245c315adebe4c2",
+            "01faefd136435585bfa3b587bd8afac9a1a2f8fd",
+            "12efdfc32d1eb5646b3179eea2986723e2893d8d"
+          ],
+          "hybrid_top5": [
+            "fa5e5ec2a005171bf050e833c245c315adebe4c2",
+            "7c08368328a0a2bd8561bbb5331f6db698209bb2",
+            "0972bb124eccfdbfb042168f691716f1343623df",
+            "1c3ebff5bb4bf4fa9272cc469d7e5f4560e4309e",
+            "c7e66e6cec0dcb74a85735a24b429e24c68cca98"
+          ]
+        },
+        {
+          "query": "Where was a forbidden response from GitHub turned into an error telling the user to wait before trying again?",
+          "gold": "b2a35a2838f410bf3a521239ca0b2cc011b8b83f",
+          "ranks": {
+            "semantic_messages": 8,
+            "semantic_message_diff": 1,
+            "hybrid": 1,
+            "lexical": 5
+          },
+          "semantic_top5": [
+            "b2a35a2838f410bf3a521239ca0b2cc011b8b83f",
+            "7e5498635ce2c22b3bbdfd32d716d2c62af9a9a0",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+            "d88290f451ab79804759cf6637e33d5e51bd96e3",
+            "017cb50985de6328aad910c88745ed35751bb69c"
+          ],
+          "hybrid_top5": [
+            "b2a35a2838f410bf3a521239ca0b2cc011b8b83f",
+            "7e5498635ce2c22b3bbdfd32d716d2c62af9a9a0",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+            "017cb50985de6328aad910c88745ed35751bb69c",
+            "2cbe5d33d81f05d154744b0c101db73b1d51f63d"
+          ]
+        },
+        {
+          "query": "Which change made a returned commit identifier open its GitHub page from the terminal?",
+          "gold": "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+          "ranks": {
+            "semantic_messages": 2,
+            "semantic_message_diff": 2,
+            "hybrid": 4,
+            "lexical": 9
+          },
+          "semantic_top5": [
+            "18d7ffb27c8263949c8cd86fd1e36a32ee622d42",
+            "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+            "7c08368328a0a2bd8561bbb5331f6db698209bb2",
+            "2cbe5d33d81f05d154744b0c101db73b1d51f63d",
+            "e78e2a808111fe6e5a5a365fe139c1c8ce21aec2"
+          ],
+          "hybrid_top5": [
+            "18d7ffb27c8263949c8cd86fd1e36a32ee622d42",
+            "2cbe5d33d81f05d154744b0c101db73b1d51f63d",
+            "e78e2a808111fe6e5a5a365fe139c1c8ce21aec2",
+            "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+            "7e5498635ce2c22b3bbdfd32d716d2c62af9a9a0"
+          ]
+        },
+        {
+          "query": "When did the command line start scanning only a hundred previous revisions by default instead of a thousand?",
+          "gold": "0972bb124eccfdbfb042168f691716f1343623df",
+          "ranks": {
+            "semantic_messages": 1,
+            "semantic_message_diff": 1,
+            "hybrid": 2,
+            "lexical": 5
+          },
+          "semantic_top5": [
+            "0972bb124eccfdbfb042168f691716f1343623df",
+            "fa5e5ec2a005171bf050e833c245c315adebe4c2",
+            "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+            "7c08368328a0a2bd8561bbb5331f6db698209bb2",
+            "017cb50985de6328aad910c88745ed35751bb69c"
+          ],
+          "hybrid_top5": [
+            "017cb50985de6328aad910c88745ed35751bb69c",
+            "0972bb124eccfdbfb042168f691716f1343623df",
+            "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+            "e78e2a808111fe6e5a5a365fe139c1c8ce21aec2",
+            "7c08368328a0a2bd8561bbb5331f6db698209bb2"
+          ]
+        }
+      ],
+      "startup_command": [
+        "llama-server",
+        "--model",
+        "${HOME}/.cache/huggingface/hub/models--ggml-org--embeddinggemma-300M-GGUF/snapshots/0f741b5a6585bd53aeb15cd1372c56f2a0f65e12/embeddinggemma-300M-Q8_0.gguf",
+        "--embedding",
+        "--pooling",
+        "mean",
+        "--embd-normalize",
+        "2",
+        "--threads",
+        "4",
+        "--threads-batch",
+        "4",
+        "--parallel",
+        "8",
+        "--ctx-size",
+        "8192",
+        "--batch-size",
+        "4096",
+        "--ubatch-size",
+        "4096",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "58606",
+        "--offline",
+        "--no-webui",
+        "--no-cache-prompt",
+        "--no-warmup",
+        "--device",
+        "none",
+        "--gpu-layers",
+        "0",
+        "--no-op-offload"
+      ],
+      "code_query_profile": {
+        "prefix": "task: code retrieval | query: ",
+        "quality": {
+          "semantic_messages": {
+            "top1": 4,
+            "top5": 9,
+            "top10": 9,
+            "mrr": 0.531,
+            "questions": 12
+          },
+          "semantic_message_diff": {
+            "top1": 7,
+            "top5": 10,
+            "top10": 12,
+            "mrr": 0.7091,
+            "questions": 12
+          },
+          "hybrid": {
+            "top1": 4,
+            "top5": 11,
+            "top10": 12,
+            "mrr": 0.5375,
+            "questions": 12
+          },
+          "lexical": {
+            "top1": 2,
+            "top5": 7,
+            "top10": 11,
+            "mrr": 0.3162,
+            "questions": 12
+          }
+        },
+        "details": [
+          {
+            "query": "When did search stop considering the description below a commit's first line?",
+            "gold": "2cbe5d33d81f05d154744b0c101db73b1d51f63d",
+            "ranks": {
+              "semantic_messages": 4,
+              "semantic_message_diff": 6,
+              "hybrid": 6,
+              "lexical": 5
+            },
+            "semantic_top5": [
+              "0972bb124eccfdbfb042168f691716f1343623df",
+              "7c08368328a0a2bd8561bbb5331f6db698209bb2",
+              "017cb50985de6328aad910c88745ed35751bb69c",
+              "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+              "3d30fd08dcabf1af0d3b88afb0d64f43e1c80674"
+            ],
+            "hybrid_top5": [
+              "7c08368328a0a2bd8561bbb5331f6db698209bb2",
+              "017cb50985de6328aad910c88745ed35751bb69c",
+              "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+              "0972bb124eccfdbfb042168f691716f1343623df",
+              "01faefd136435585bfa3b587bd8afac9a1a2f8fd"
+            ]
+          },
+          {
+            "query": "Which change restored searching the body of a commit while keeping result rows short?",
+            "gold": "7c08368328a0a2bd8561bbb5331f6db698209bb2",
+            "ranks": {
+              "semantic_messages": 2,
+              "semantic_message_diff": 5,
+              "hybrid": 5,
+              "lexical": 8
+            },
+            "semantic_top5": [
+              "2cbe5d33d81f05d154744b0c101db73b1d51f63d",
+              "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+              "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+              "3d30fd08dcabf1af0d3b88afb0d64f43e1c80674",
+              "7c08368328a0a2bd8561bbb5331f6db698209bb2"
+            ],
+            "hybrid_top5": [
+              "3d30fd08dcabf1af0d3b88afb0d64f43e1c80674",
+              "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+              "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+              "2cbe5d33d81f05d154744b0c101db73b1d51f63d",
+              "7c08368328a0a2bd8561bbb5331f6db698209bb2"
+            ]
+          },
+          {
+            "query": "Find the change that removed explicit GPU selection when loading the sentence model.",
+            "gold": "d88290f451ab79804759cf6637e33d5e51bd96e3",
+            "ranks": {
+              "semantic_messages": 12,
+              "semantic_message_diff": 2,
+              "hybrid": 3,
+              "lexical": 8
+            },
+            "semantic_top5": [
+              "b6e5f708027297b76bf4c4b660a74a44cfae40b2",
+              "d88290f451ab79804759cf6637e33d5e51bd96e3",
+              "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+              "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+              "3f2b22c9c6b1918642fab04f5ae4123ec7f83f39"
+            ],
+            "hybrid_top5": [
+              "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+              "b6e5f708027297b76bf4c4b660a74a44cfae40b2",
+              "d88290f451ab79804759cf6637e33d5e51bd96e3",
+              "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+              "3f2b22c9c6b1918642fab04f5ae4123ec7f83f39"
+            ]
+          },
+          {
+            "query": "Find where loading the model started explicitly choosing CUDA again when a GPU was available.",
+            "gold": "b6e5f708027297b76bf4c4b660a74a44cfae40b2",
+            "ranks": {
+              "semantic_messages": 1,
+              "semantic_message_diff": 1,
+              "hybrid": 2,
+              "lexical": 3
+            },
+            "semantic_top5": [
+              "b6e5f708027297b76bf4c4b660a74a44cfae40b2",
+              "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+              "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+              "d88290f451ab79804759cf6637e33d5e51bd96e3",
+              "3f2b22c9c6b1918642fab04f5ae4123ec7f83f39"
+            ],
+            "hybrid_top5": [
+              "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+              "b6e5f708027297b76bf4c4b660a74a44cfae40b2",
+              "d88290f451ab79804759cf6637e33d5e51bd96e3",
+              "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+              "01faefd136435585bfa3b587bd8afac9a1a2f8fd"
+            ]
+          },
+          {
+            "query": "Where did ranking start using a dot product on unit-length vectors instead of calculating cosine similarity directly?",
+            "gold": "669120d18c1738247c678b6fcb5126c5f97791a2",
+            "ranks": {
+              "semantic_messages": 1,
+              "semantic_message_diff": 1,
+              "hybrid": 1,
+              "lexical": 1
+            },
+            "semantic_top5": [
+              "669120d18c1738247c678b6fcb5126c5f97791a2",
+              "a4092841e6f51389b50fff839664c5ddd1d845f1",
+              "3d30fd08dcabf1af0d3b88afb0d64f43e1c80674",
+              "017cb50985de6328aad910c88745ed35751bb69c",
+              "b6e5f708027297b76bf4c4b660a74a44cfae40b2"
+            ],
+            "hybrid_top5": [
+              "669120d18c1738247c678b6fcb5126c5f97791a2",
+              "a4092841e6f51389b50fff839664c5ddd1d845f1",
+              "3d30fd08dcabf1af0d3b88afb0d64f43e1c80674",
+              "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+              "017cb50985de6328aad910c88745ed35751bb69c"
+            ]
+          },
+          {
+            "query": "Which change fixed the malformed query-string separator used to request later pages of GitHub commits?",
+            "gold": "7e5498635ce2c22b3bbdfd32d716d2c62af9a9a0",
+            "ranks": {
+              "semantic_messages": 1,
+              "semantic_message_diff": 1,
+              "hybrid": 2,
+              "lexical": 6
+            },
+            "semantic_top5": [
+              "7e5498635ce2c22b3bbdfd32d716d2c62af9a9a0",
+              "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+              "2cbe5d33d81f05d154744b0c101db73b1d51f63d",
+              "e78e2a808111fe6e5a5a365fe139c1c8ce21aec2",
+              "41fe13046baad8b4d5a526189eba9e3c1367037b"
+            ],
+            "hybrid_top5": [
+              "2cbe5d33d81f05d154744b0c101db73b1d51f63d",
+              "7e5498635ce2c22b3bbdfd32d716d2c62af9a9a0",
+              "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+              "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+              "c7e66e6cec0dcb74a85735a24b429e24c68cca98"
+            ]
+          },
+          {
+            "query": "When was model creation pulled out of the ranking function so callers could pass in an already-loaded model?",
+            "gold": "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+            "ranks": {
+              "semantic_messages": 65,
+              "semantic_message_diff": 2,
+              "hybrid": 1,
+              "lexical": 1
+            },
+            "semantic_top5": [
+              "6b4ae69847ed03d84f7b3115658f20645b73227a",
+              "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+              "01faefd136435585bfa3b587bd8afac9a1a2f8fd",
+              "af71e0f0a269155c16a87c941deeaf5be9b4f382",
+              "b6e5f708027297b76bf4c4b660a74a44cfae40b2"
+            ],
+            "hybrid_top5": [
+              "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+              "b6e5f708027297b76bf4c4b660a74a44cfae40b2",
+              "6b4ae69847ed03d84f7b3115658f20645b73227a",
+              "2cbe5d33d81f05d154744b0c101db73b1d51f63d",
+              "af71e0f0a269155c16a87c941deeaf5be9b4f382"
+            ]
+          },
+          {
+            "query": "Which fix restored relative imports for sibling modules after bare imports had been introduced?",
+            "gold": "41fe13046baad8b4d5a526189eba9e3c1367037b",
+            "ranks": {
+              "semantic_messages": 1,
+              "semantic_message_diff": 1,
+              "hybrid": 4,
+              "lexical": null
+            },
+            "semantic_top5": [
+              "41fe13046baad8b4d5a526189eba9e3c1367037b",
+              "fa5e5ec2a005171bf050e833c245c315adebe4c2",
+              "d88290f451ab79804759cf6637e33d5e51bd96e3",
+              "b6e5f708027297b76bf4c4b660a74a44cfae40b2",
+              "2cbe5d33d81f05d154744b0c101db73b1d51f63d"
+            ],
+            "hybrid_top5": [
+              "01faefd136435585bfa3b587bd8afac9a1a2f8fd",
+              "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+              "03109a103e521535440cbcf8ff41c5999170ab97",
+              "41fe13046baad8b4d5a526189eba9e3c1367037b",
+              "a4092841e6f51389b50fff839664c5ddd1d845f1"
+            ]
+          },
+          {
+            "query": "When did the short -v option stop printing the version and start showing longer result descriptions?",
+            "gold": "1c3ebff5bb4bf4fa9272cc469d7e5f4560e4309e",
+            "ranks": {
+              "semantic_messages": 43,
+              "semantic_message_diff": 7,
+              "hybrid": 4,
+              "lexical": 3
+            },
+            "semantic_top5": [
+              "fa5e5ec2a005171bf050e833c245c315adebe4c2",
+              "0972bb124eccfdbfb042168f691716f1343623df",
+              "22eb87fce284c10038ce223b589eedc520577b92",
+              "7c08368328a0a2bd8561bbb5331f6db698209bb2",
+              "01faefd136435585bfa3b587bd8afac9a1a2f8fd"
+            ],
+            "hybrid_top5": [
+              "fa5e5ec2a005171bf050e833c245c315adebe4c2",
+              "0972bb124eccfdbfb042168f691716f1343623df",
+              "7c08368328a0a2bd8561bbb5331f6db698209bb2",
+              "1c3ebff5bb4bf4fa9272cc469d7e5f4560e4309e",
+              "3d30fd08dcabf1af0d3b88afb0d64f43e1c80674"
+            ]
+          },
+          {
+            "query": "Where was a forbidden response from GitHub turned into an error telling the user to wait before trying again?",
+            "gold": "b2a35a2838f410bf3a521239ca0b2cc011b8b83f",
+            "ranks": {
+              "semantic_messages": 2,
+              "semantic_message_diff": 1,
+              "hybrid": 1,
+              "lexical": 5
+            },
+            "semantic_top5": [
+              "b2a35a2838f410bf3a521239ca0b2cc011b8b83f",
+              "7e5498635ce2c22b3bbdfd32d716d2c62af9a9a0",
+              "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+              "2cbe5d33d81f05d154744b0c101db73b1d51f63d",
+              "e0dcd6ba47e3ed647c81499d4b202d60394e93ec"
+            ],
+            "hybrid_top5": [
+              "b2a35a2838f410bf3a521239ca0b2cc011b8b83f",
+              "7e5498635ce2c22b3bbdfd32d716d2c62af9a9a0",
+              "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+              "e78e2a808111fe6e5a5a365fe139c1c8ce21aec2",
+              "41fe13046baad8b4d5a526189eba9e3c1367037b"
+            ]
+          },
+          {
+            "query": "Which change made a returned commit identifier open its GitHub page from the terminal?",
+            "gold": "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+            "ranks": {
+              "semantic_messages": 2,
+              "semantic_message_diff": 1,
+              "hybrid": 4,
+              "lexical": 9
+            },
+            "semantic_top5": [
+              "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+              "3d30fd08dcabf1af0d3b88afb0d64f43e1c80674",
+              "0972bb124eccfdbfb042168f691716f1343623df",
+              "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+              "2cbe5d33d81f05d154744b0c101db73b1d51f63d"
+            ],
+            "hybrid_top5": [
+              "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+              "01faefd136435585bfa3b587bd8afac9a1a2f8fd",
+              "2cbe5d33d81f05d154744b0c101db73b1d51f63d",
+              "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+              "7e5498635ce2c22b3bbdfd32d716d2c62af9a9a0"
+            ]
+          },
+          {
+            "query": "When did the command line start scanning only a hundred previous revisions by default instead of a thousand?",
+            "gold": "0972bb124eccfdbfb042168f691716f1343623df",
+            "ranks": {
+              "semantic_messages": 2,
+              "semantic_message_diff": 1,
+              "hybrid": 1,
+              "lexical": 5
+            },
+            "semantic_top5": [
+              "0972bb124eccfdbfb042168f691716f1343623df",
+              "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+              "e78e2a808111fe6e5a5a365fe139c1c8ce21aec2",
+              "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+              "fa5e5ec2a005171bf050e833c245c315adebe4c2"
+            ],
+            "hybrid_top5": [
+              "0972bb124eccfdbfb042168f691716f1343623df",
+              "017cb50985de6328aad910c88745ed35751bb69c",
+              "e78e2a808111fe6e5a5a365fe139c1c8ce21aec2",
+              "5b418ec30dae031029e27eb5a8a2e2f992e0ec4c",
+              "72cd11b4ac1a755b3a705a6fd446980eaf61648f"
+            ]
+          }
+        ]
+      },
+      "server_peak_rss_mib": 2865.15625,
+      "driver_peak_rss_mib": 45.921875
+    }
+  ],
+  "validation": {
+    "vectors": {
+      "bge-small-f32": {
+        "documents": {
+          "shape": [
+            401,
+            384
+          ],
+          "max_norm_error": 1.1920928955078125e-07
+        },
+        "queries": {
+          "shape": [
+            12,
+            384
+          ],
+          "max_norm_error": 1.1920928955078125e-07
+        }
+      },
+      "jina-code-f32": {
+        "documents": {
+          "shape": [
+            401,
+            768
+          ],
+          "max_norm_error": 1.1920928955078125e-07
+        },
+        "queries": {
+          "shape": [
+            12,
+            768
+          ],
+          "max_norm_error": 5.960464477539063e-08
+        }
+      },
+      "jina-code-int8": {
+        "documents": {
+          "shape": [
+            401,
+            768
+          ],
+          "max_norm_error": 1.1920928955078125e-07
+        },
+        "queries": {
+          "shape": [
+            12,
+            768
+          ],
+          "max_norm_error": 5.960464477539063e-08
+        }
+      },
+      "minilm-f32": {
+        "documents": {
+          "shape": [
+            401,
+            384
+          ],
+          "max_norm_error": 1.1920928955078125e-07
+        },
+        "queries": {
+          "shape": [
+            12,
+            384
+          ],
+          "max_norm_error": 5.960464477539063e-08
+        }
+      },
+      "minilm-int8": {
+        "documents": {
+          "shape": [
+            401,
+            384
+          ],
+          "max_norm_error": 1.1920928955078125e-07
+        },
+        "queries": {
+          "shape": [
+            12,
+            384
+          ],
+          "max_norm_error": 5.960464477539063e-08
+        }
+      },
+      "qwen-q8-cpu": {
+        "documents": {
+          "shape": [
+            401,
+            1024
+          ],
+          "max_norm_error": 1.1920928955078125e-07
+        },
+        "queries": {
+          "shape": [
+            12,
+            1024
+          ],
+          "max_norm_error": 1.1920928955078125e-07
+        }
+      },
+      "qwen-q8-metal": {
+        "documents": {
+          "shape": [
+            401,
+            1024
+          ],
+          "max_norm_error": 1.1920928955078125e-07
+        },
+        "queries": {
+          "shape": [
+            12,
+            1024
+          ],
+          "max_norm_error": 0.0
+        }
+      },
+      "jina-code-int8-1024": {
+        "documents": {
+          "shape": [
+            401,
+            768
+          ],
+          "max_norm_error": 1.1920928955078125e-07
+        },
+        "queries": {
+          "shape": [
+            12,
+            768
+          ],
+          "max_norm_error": 5.960464477539063e-08
+        }
+      },
+      "embeddinggemma-q8-metal": {
+        "documents": {
+          "shape": [
+            401,
+            768
+          ],
+          "max_norm_error": 1.1920928955078125e-07
+        },
+        "queries": {
+          "shape": [
+            12,
+            768
+          ],
+          "max_norm_error": 1.1920928955078125e-07
+        },
+        "code_queries": {
+          "shape": [
+            12,
+            768
+          ],
+          "max_norm_error": 0.0
+        }
+      },
+      "embeddinggemma-q8-cpu": {
+        "documents": {
+          "shape": [
+            401,
+            768
+          ],
+          "max_norm_error": 1.1920928955078125e-07
+        },
+        "queries": {
+          "shape": [
+            12,
+            768
+          ],
+          "max_norm_error": 0.0
+        },
+        "code_queries": {
+          "shape": [
+            12,
+            768
+          ],
+          "max_norm_error": 0.0
+        }
+      }
+    },
+    "agreement": {
+      "minilm-f32 vs minilm-int8": {
+        "documents": {
+          "mean_cosine": 0.98951655626297,
+          "minimum_cosine": 0.9693185091018677
+        },
+        "queries": {
+          "mean_cosine": 0.9941274523735046,
+          "minimum_cosine": 0.9925255179405212
+        }
+      },
+      "jina-code-f32 vs jina-code-int8": {
+        "documents": {
+          "mean_cosine": 0.9855465292930603,
+          "minimum_cosine": 0.9618536233901978
+        },
+        "queries": {
+          "mean_cosine": 0.9896284937858582,
+          "minimum_cosine": 0.9858023524284363
+        }
+      },
+      "qwen-q8-cpu vs qwen-q8-metal": {
+        "documents": {
+          "mean_cosine": 0.9996511340141296,
+          "minimum_cosine": 0.9993416666984558
+        },
+        "queries": {
+          "mean_cosine": 0.9996115565299988,
+          "minimum_cosine": 0.9995142817497253
+        }
+      },
+      "embeddinggemma-q8-cpu vs embeddinggemma-q8-metal": {
+        "documents": {
+          "mean_cosine": 0.999763548374176,
+          "minimum_cosine": 0.9996106028556824
+        },
+        "queries": {
+          "mean_cosine": 0.9998053908348083,
+          "minimum_cosine": 0.9997431039810181
+        },
+        "code_queries": {
+          "mean_cosine": 0.9997958540916443,
+          "minimum_cosine": 0.9997503757476807
+        }
+      }
+    },
+    "embeddinggemma_gguf": {
+      "architecture": "gemma-embedding",
+      "dimensions": 768,
+      "dense_layers": [
+        [
+          768,
+          3072
+        ],
+        [
+          3072,
+          768
+        ]
+      ],
+      "pooling": "mean",
+      "revision": "0f741b5a6585bd53aeb15cd1372c56f2a0f65e12"
+    }
+  },
+  "queries": [
+    {
+      "query": "When did search stop considering the description below a commit's first line?",
+      "gold": "2cbe5d33d81f05d154744b0c101db73b1d51f63d",
+      "path": "nalcos/get_commits.py"
+    },
+    {
+      "query": "Which change restored searching the body of a commit while keeping result rows short?",
+      "gold": "7c08368328a0a2bd8561bbb5331f6db698209bb2",
+      "path": "nalcos/get_commits.py"
+    },
+    {
+      "query": "Find the change that removed explicit GPU selection when loading the sentence model.",
+      "gold": "d88290f451ab79804759cf6637e33d5e51bd96e3",
+      "path": "nalcos/get_similar_commits.py"
+    },
+    {
+      "query": "Find where loading the model started explicitly choosing CUDA again when a GPU was available.",
+      "gold": "b6e5f708027297b76bf4c4b660a74a44cfae40b2",
+      "path": "nalcos/get_similar_commits.py"
+    },
+    {
+      "query": "Where did ranking start using a dot product on unit-length vectors instead of calculating cosine similarity directly?",
+      "gold": "669120d18c1738247c678b6fcb5126c5f97791a2",
+      "path": "nalcos/get_similar_commits.py"
+    },
+    {
+      "query": "Which change fixed the malformed query-string separator used to request later pages of GitHub commits?",
+      "gold": "7e5498635ce2c22b3bbdfd32d716d2c62af9a9a0",
+      "path": "nalcos/get_commits.py"
+    },
+    {
+      "query": "When was model creation pulled out of the ranking function so callers could pass in an already-loaded model?",
+      "gold": "72cd11b4ac1a755b3a705a6fd446980eaf61648f",
+      "path": "nalcos/get_similar_commits.py"
+    },
+    {
+      "query": "Which fix restored relative imports for sibling modules after bare imports had been introduced?",
+      "gold": "41fe13046baad8b4d5a526189eba9e3c1367037b",
+      "path": "nalcos/nalcos.py"
+    },
+    {
+      "query": "When did the short -v option stop printing the version and start showing longer result descriptions?",
+      "gold": "1c3ebff5bb4bf4fa9272cc469d7e5f4560e4309e",
+      "path": "nalcos/nalcos.py"
+    },
+    {
+      "query": "Where was a forbidden response from GitHub turned into an error telling the user to wait before trying again?",
+      "gold": "b2a35a2838f410bf3a521239ca0b2cc011b8b83f",
+      "path": "nalcos/utils.py"
+    },
+    {
+      "query": "Which change made a returned commit identifier open its GitHub page from the terminal?",
+      "gold": "c7e66e6cec0dcb74a85735a24b429e24c68cca98",
+      "path": "nalcos/nalcos.py"
+    },
+    {
+      "query": "When did the command line start scanning only a hundred previous revisions by default instead of a thousand?",
+      "gold": "0972bb124eccfdbfb042168f691716f1343623df",
+      "path": "nalcos/nalcos.py"
+    }
+  ],
+  "status": "complete exploratory pilot; ten runtime/context configurations of five model families",
+  "benchmark_sources": {
+    "MiniLM": "https://huggingface.co/sentence-transformers/multi-qa-MiniLM-L6-cos-v1",
+    "BGE": "https://huggingface.co/BAAI/bge-small-en-v1.5",
+    "Jina": "https://huggingface.co/jinaai/jina-embeddings-v2-base-code",
+    "Qwen": "https://huggingface.co/Qwen/Qwen3-Embedding-0.6B-GGUF",
+    "EmbeddingGemma": "https://huggingface.co/ggml-org/embeddinggemma-300M-GGUF",
+    "EmbeddingGemma_prompt_contract": "https://ai.google.dev/gemma/docs/embeddinggemma/model_card"
+  },
+  "reproduction": {
+    "harness": "harness.json",
+    "corpus": "corpus.json",
+    "per_configuration_results": "<label>.json",
+    "vectors": "<label>.npz",
+    "onnx_command": "HF_HUB_OFFLINE=1 uv run --offline --no-project --python python3 --with onnxruntime --with tokenizers --with huggingface_hub --with numpy python - <config-json> < <onnx-script>",
+    "gguf_command": "python3 - <cpu-or-metal> < <gguf-script>",
+    "note": "Scripts stored in harness.json are exact Python benchmark sources; model weights must already be available at recorded HF revisions. Original ONNX token-count metadata issue is corrected in result artifacts, as described in caveats."
+  },
+  "candidate_count": 10
+}

@@ -1,0 +1,6 @@
+# Optional local outputs. Pin model identities in JSON; reuse the HF cache.
+output/
+*.npz
+*.gguf
+*.safetensors
+*.log
