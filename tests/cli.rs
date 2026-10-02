@@ -757,13 +757,47 @@ fn default_hybrid_reports_lexical_fallback_but_semantic_fails_without_a_model() 
 }
 
 #[test]
-fn status_and_sync_dry_run_do_not_create_an_index_or_model_cache() {
+fn setup_defaults_are_explicit_and_dry_runs_do_not_create_files() {
     let repository = Repository::new();
     repository.write("readme.txt", "unindexed repository\n");
     repository.commit("Initial commit", "2024-01-01T12:00:00Z");
     assert_eq!(repository.json(&["status"])["command"], "status");
     assert!(!repository.data.exists(), "status is read-only");
-    assert_eq!(repository.json(&["sync", "--dry-run"])["command"], "sync");
+    let sync = repository.json(&["sync", "--dry-run"]);
+    assert_eq!(sync["command"], "sync");
+    assert!(sync["model"].is_null());
+    let output = repository.run(&["init", "--dry-run"]);
+    let init = parse_json(&output);
+    if init["error"]["code"] == "unsupported_cpu" && !cfg!(target_arch = "aarch64") {
+        #[cfg(target_arch = "x86_64")]
+        assert!(!std::is_x86_feature_detected!("avx2"));
+        assert_eq!(output.status.code(), Some(1));
+        assert!(!repository.data.exists());
+        assert!(!repository.hf_home.exists());
+        return;
+    }
+    assert_success(&output);
+    assert_eq!(
+        init["model"],
+        "sentence-transformers/multi-qa-MiniLM-L6-cos-v1"
+    );
+    assert_eq!(init["model_profile"]["device"], "cpu");
+    assert_eq!(
+        init["model_profile"]["revision"],
+        "b207367332321f8e44f96e224ef15bc607f4dbf0"
+    );
+    #[cfg(target_arch = "aarch64")]
+    assert_eq!(
+        init["model_profile"]["artifact"],
+        "onnx/model_qint8_arm64.onnx"
+    );
+    #[cfg(target_arch = "x86_64")]
+    assert_eq!(
+        init["model_profile"]["artifact"],
+        "onnx/model_quint8_avx2.onnx"
+    );
+    let explicit = repository.json(&["init", "--model", "minilm", "--dry-run"]);
+    assert_eq!(explicit["model_profile"]["artifact"], "onnx/model.onnx");
     assert!(
         !repository.data.exists(),
         "dry-run must not create an index"
@@ -772,6 +806,10 @@ fn status_and_sync_dry_run_do_not_create_an_index_or_model_cache() {
         !repository.hf_home.exists(),
         "dry-run must not download models"
     );
+    let offline = repository.run(&["init"]);
+    assert_eq!(offline.status.code(), Some(1));
+    assert_eq!(parse_json(&offline)["error"]["code"], "model_not_cached");
+    assert_eq!(repository.json(&["status"])["readiness"], "uninitialized");
 }
 
 #[test]
@@ -780,7 +818,6 @@ fn invalid_model_selection_leaves_a_fresh_index_uninitialized() {
     repository.write("readme.txt", "unindexed repository\n");
     repository.commit("Initial commit", "2024-01-01T12:00:00Z");
     for (args, expected_code, exit_code) in [
-        (vec!["init"], "model_required", 1),
         (vec!["init", "--model", "unknown/model"], "unknown_model", 1),
         (
             vec!["sync", "--model", "profile:missing"],
@@ -1011,7 +1048,7 @@ fn provider_model_changes_reembed_retained_history_but_query_prefix_changes_do_n
     assert_eq!(found["mode_used"], "semantic");
 
     provider.clear_requests();
-    let unchanged = repository.provider_json(&["sync"]);
+    let unchanged = repository.provider_json(&["init"]);
     assert_eq!(unchanged["active_generation"]["id"], first_generation);
     assert_eq!(
         unchanged["active_generation"]["revision"],
@@ -1019,8 +1056,15 @@ fn provider_model_changes_reembed_retained_history_but_query_prefix_changes_do_n
     );
     assert_eq!(unchanged["documents_embedded"], 0);
     assert!(
-        provider.requests().is_empty(),
-        "unchanged sync must not infer"
+        provider
+            .requests()
+            .iter()
+            .all(|request| request.model == "mock-v1"
+                && request
+                    .inputs
+                    .iter()
+                    .all(|input| !input.contains("fixture-"))),
+        "repeated init may probe the selected model but must not reembed unchanged documents"
     );
 
     let invalid_device = repository.run_provider(&["sync", "--device", "cpu"]);
@@ -1248,7 +1292,7 @@ fn failed_provider_migration_preserves_active_generation_resumes_and_detects_ali
         Some("profile:A"),
     );
     let cobalt = repository.populate_provider_history();
-    let initialized = repository.provider_json(&["init", "--model", "profile:A"]);
+    let initialized = repository.provider_json(&["init"]);
     let first_generation = initialized["active_generation"]["id"].clone();
     let full_document_count = initialized["embedding_coverage"]["total"]
         .as_u64()
@@ -1296,7 +1340,7 @@ fn failed_provider_migration_preserves_active_generation_resumes_and_detects_ali
 
     provider.recover();
     provider.clear_requests();
-    let resumed = repository.provider_json(&["sync"]);
+    let resumed = repository.provider_json(&["init"]);
     let remaining = resumed["documents_embedded"]
         .as_u64()
         .expect("resumed document count");

@@ -1,0 +1,219 @@
+{
+  "schema_version": 1,
+  "archive": "nalcos-benchmarks-2026-10-02.tar.gz",
+  "bytes": 130106,
+  "sha256": "4e0fdb3746cb66fe0bce61fab3d6ae383d5289a4adecfeacfc87d37ee814fe33",
+  "files": [
+    {
+      "path": "benchmarks/matched/2026-10-02/artifacts.json",
+      "bytes": 6246,
+      "sha256": "410aaafeee7d23efcf2763485af37e7b82657fec3aa86fda97adb62c4f676718"
+    },
+    {
+      "path": "benchmarks/matched/2026-10-02/harness.json",
+      "bytes": 24304,
+      "sha256": "ab13aac3c079de4b6453033dd1d0a31645e1937ba40b26c55dd1401b6ef84c11"
+    },
+    {
+      "path": "benchmarks/matched/2026-10-02/jina-original-f32-cpu-parity.json",
+      "bytes": 2622,
+      "sha256": "afcada0656871287f0bc7713e77cf3e121f790e2869f3ee192cddaf6042ad104"
+    },
+    {
+      "path": "benchmarks/matched/2026-10-02/jina-original-f32.conversion.json",
+      "bytes": 1238,
+      "sha256": "d64a2263af0bb2ad7cb945ca3f2834709ce1a17142c25a3309ed75904f9e9453"
+    },
+    {
+      "path": "benchmarks/matched/2026-10-02/minilm-original-f32-cpu-matched.json",
+      "bytes": 2212,
+      "sha256": "1f3fc8a6207914201cdb245c572f608e5fc28632d81a4f4e0bd96db6ecd139f3"
+    },
+    {
+      "path": "benchmarks/matched/2026-10-02/minilm-original-f32-cpu-parity.json",
+      "bytes": 2617,
+      "sha256": "87d8eccdc34859a3601d4dbfb47fd9420e162d0ffe22a86b288141bbbbcb207f"
+    },
+    {
+      "path": "benchmarks/matched/2026-10-02/minilm-original-f32-metal-matched.json",
+      "bytes": 2171,
+      "sha256": "f1e74826639ed4b3248f8c415caf2260d8d8e8c45c8b648b0bf348fdf2009bf2"
+    },
+    {
+      "path": "benchmarks/matched/2026-10-02/minilm-original-f32-metal-parity.json",
+      "bytes": 2569,
+      "sha256": "7ac34b0a957dc2fded3aa2721737936c26b837d4aec5cc9bc44a52092e435a5c"
+    },
+    {
+      "path": "benchmarks/matched/2026-10-02/minilm-original-f32.conversion.json",
+      "bytes": 1249,
+      "sha256": "7611f8d889323082a3f4ba0a14f2153b83310f0121b562e82724311ab4c19045"
+    },
+    {
+      "path": "benchmarks/matched/2026-10-02/minilm-original-onnx-cpu-matched.json",
+      "bytes": 1444,
+      "sha256": "31a895304fc39d13ba635ff7f5e241216466b3a94d0ad1c1af92aaece040fede"
+    },
+    {
+      "path": "benchmarks/matched/2026-10-02/native-auto-calibration.json",
+      "bytes": 2883,
+      "sha256": "ea627d8394f75793f7ebeee287989b1ba4d1d48a841e3ba0c1a06977f14de840"
+    },
+    {
+      "path": "benchmarks/matched/2026-10-02/native-gguf-diagnostic.json",
+      "bytes": 3381,
+      "sha256": "6f5f793ee401bc183a495920778d451cb0b59018b805fdf93c8b4b2e6a71b3b1"
+    },
+    {
+      "path": "benchmarks/matched/2026-10-02/summary.json",
+      "bytes": 28606,
+      "sha256": "efe2d3a010d2190b1455d1b10fd93062b7ea0c28372eae09e8a4a41d0a000c1d"
+    },
+    {
+      "path": "benchmarks/pilot/2026-10-02/artifacts.json",
+      "bytes": 6022,
+      "sha256": "10e456a2faa0ae13890bac7a8a0e03a66cef58bdd3f8c85b06b21aae4a989a44"
+    },
+    {
+      "path": "benchmarks/pilot/2026-10-02/candidates.json",
+      "bytes": 6191,
+      "sha256": "469aea41354fe5e61821ce4d0bca61c2ca6bfafa189f7adcc573643241efd9bf"
+    },
+    {
+      "path": "benchmarks/pilot/2026-10-02/corpus.json",
+      "bytes": 248464,
+      "sha256": "190f64c5e38719221c6e0b84809ead5e1041a9e6ca1b004c0b264185cc5ab491"
+    },
+    {
+      "path": "benchmarks/pilot/2026-10-02/harness.json",
+      "bytes": 33957,
+      "sha256": "cc4e43dc0eb1e811125aed998f751fd2ea61cf2aae05dbfa25fd9ca58ba18091"
+    },
+    {
+      "path": "benchmarks/pilot/2026-10-02/qualification.json",
+      "bytes": 17270,
+      "sha256": "7d81eac7d74b057bac97110a9efe7c3e3f9f21e47e004eef49837151894de54c"
+    },
+    {
+      "path": "benchmarks/pilot/2026-10-02/queries.jsonl",
+      "bytes": 5550,
+      "sha256": "a5945895dcf7f66e890ed23bcea104762c3cca8e1408302f2d26bb197ffecc5c"
+    },
+    {
+      "path": "benchmarks/pilot/2026-10-02/results.json",
+      "bytes": 186622,
+      "sha256": "5e32211256d28f798e4c3ee130dcd545f1aad1e73bbaf656f68d2b7f72cfcc10"
+    },
+    {
+      "path": "benchmarks/scale/2026-10-02/agent-workflow-status.json",
+      "bytes": 1585,
+      "sha256": "8bc16aaf8d7bf7ecc85b8facbefdad448dadc8c8a0dbcda234be7831cedf390e"
+    },
+    {
+      "path": "benchmarks/scale/2026-10-02/canonical-repair-smoke.json",
+      "bytes": 657,
+      "sha256": "68361220d2fd6b3319717dec073651b6a20c805fbbbe466f60f6b44051a87513"
+    },
+    {
+      "path": "benchmarks/scale/2026-10-02/commitmux-workflow-status.json",
+      "bytes": 1591,
+      "sha256": "7965e7250e2552c0100d25dab0bef65e24dba3297769019d4144b9d6cd618fa3"
+    },
+    {
+      "path": "benchmarks/scale/2026-10-02/lexical-baseline.json",
+      "bytes": 6175,
+      "sha256": "22a7423b5201d99740807c63bb410a0f011e1f5a932c8ee995e9fcb08d106c39"
+    },
+    {
+      "path": "benchmarks/scale/2026-10-02/lexical-optimized.json",
+      "bytes": 2590,
+      "sha256": "91c431d982295001aaa7aa340b2d89cabff6857d7c6b4e142b083b93340e374e"
+    },
+    {
+      "path": "benchmarks/scale/2026-10-02/lexical-sql-comparison.json",
+      "bytes": 4678,
+      "sha256": "e8f5bbba9d4d7dfac6c61fbb0e5b319e2717dc05321eb27cc2ed87af71dd842a"
+    },
+    {
+      "path": "benchmarks/scale/2026-10-02/nalcos-native-matrix.json",
+      "bytes": 5763,
+      "sha256": "29c3ef5453353a0104c5a9ade94ddd901ba16edc21e710246f0e11735140f677"
+    },
+    {
+      "path": "benchmarks/scale/2026-10-02/native-full-corpus-lifecycle.json",
+      "bytes": 6799,
+      "sha256": "9458c95d0c291261d7a93798f0e01f1ced41a0eb68c183b4e855c9f1709dc853"
+    },
+    {
+      "path": "benchmarks/scale/2026-10-02/nft-int8-hybrid-diagnostics.json",
+      "bytes": 10644,
+      "sha256": "df04e7d867a939fe62f1a09ffba4cb0991910acd39934ec7d9306172fb613354"
+    },
+    {
+      "path": "benchmarks/scale/2026-10-02/nft-int8-lexical-diagnostics.json",
+      "bytes": 10652,
+      "sha256": "238db2df99b2e7cf46984b7d23cec2b7cc0066e7b2e159fc634366042ff50df5"
+    },
+    {
+      "path": "benchmarks/scale/2026-10-02/nft-int8-semantic-diagnostics.json",
+      "bytes": 10415,
+      "sha256": "9a129e3a128a8186d4765848bc2a7112c70f938226b24f5ef027130baed247e9"
+    },
+    {
+      "path": "benchmarks/scale/2026-10-02/nft-native-int8-matrix.json",
+      "bytes": 10104,
+      "sha256": "91adad5d12f4fa5edb8863bf279794ba467a9eac989cc3edccc3066e6d1f43ac"
+    },
+    {
+      "path": "benchmarks/scale-results/2026-10-02-lexical-100k.json",
+      "bytes": 6176,
+      "sha256": "b0a40762c0de62dded7f1d3ccf8fd1c62adedd4f42de8f35174579c734ad81df"
+    },
+    {
+      "path": "benchmarks/scale-results/2026-10-02-semantic-100k.json",
+      "bytes": 58996,
+      "sha256": "38b2e6185094e1dcbc6d217619698f3cad08ffa07e26a1536aa3be321cb1fab2"
+    },
+    {
+      "path": "benchmarks/scale-results/2026-10-02-semantic-sql-diagnostics.json",
+      "bytes": 39098,
+      "sha256": "3c49cfb88e5f808977828471bf68cb320a63bac9cba3c5c5a3364f3387b0dbe8"
+    },
+    {
+      "path": "benchmarks/vector-engine-prototype/Cargo.lock",
+      "bytes": 14170,
+      "sha256": "ec32800315ac8bd6e3551e4ffc97faf5955e877141c0eaf22f688525da7ba6bc"
+    },
+    {
+      "path": "benchmarks/vector-engine-prototype/Cargo.toml",
+      "bytes": 219,
+      "sha256": "9951da192749bde041cb014839b4c34c22df49d31bbb35b7bfc8e73288739a2e"
+    },
+    {
+      "path": "benchmarks/vector-engine-prototype/README.md",
+      "bytes": 4775,
+      "sha256": "26bc08d5b943602f762f5edf1d8919e5611c11caccd5f43e84ee3c9750ea787c"
+    },
+    {
+      "path": "benchmarks/vector-engine-prototype/evaluate.py",
+      "bytes": 3129,
+      "sha256": "6d88b49759bfe95727f5f8ba58959368573fa49b38417fb7ac43e7cf6d8a8a73"
+    },
+    {
+      "path": "benchmarks/vector-engine-prototype/results.json",
+      "bytes": 7592,
+      "sha256": "930dab502d9c6f5a7c978141fa378f1b4925a8230a7b35972257cd7b553997a8"
+    },
+    {
+      "path": "benchmarks/vector-engine-prototype/src/main.rs",
+      "bytes": 8100,
+      "sha256": "5b2da86e6871eb9f74fd8bbbd80ddca03aab4d021ff88b55f22283487807cd03"
+    },
+    {
+      "path": "docs/benchmarks.md",
+      "bytes": 37975,
+      "sha256": "bafb56478ea916c966eba9af0ff19bea968bf416b192d9acafac24521111d0a4"
+    }
+  ],
+  "url": "https://github.com/thepushkarp/nalcos/releases/download/v2.0.0-alpha.1/nalcos-benchmarks-2026-10-02.tar.gz"
+}

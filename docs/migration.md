@@ -25,7 +25,7 @@ nalcos --repo /path/to/repo status
 
 Search creates the derived local index as needed. Automatic updates are bounded and may leave history partially indexed; use `--freshness wait` for an explicit indexing wait. Use `--freshness cached` to leave the index unchanged while querying.
 
-Select an embedding model explicitly when enabling semantic search. The alpha has no benchmark-qualified default. `init --model` and `sync --model` select a model; a configuration profile can supply the same selection. See [configuration](configuration.md) for supported model formats and complete examples.
+Run `nalcos init` to enable semantic search with the alpha default, MiniLM INT8 on CPU. Existing active and staging model choices remain unchanged. `init --model` and `sync --model` select a different model; a configuration profile can supply the same selection. The default is a product choice while broader model qualification remains pending. See [configuration](configuration.md) for supported model formats and complete examples.
 
 ## Models and stored data
 

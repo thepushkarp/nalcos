@@ -516,7 +516,8 @@ def main():
     parser.add_argument(
         "--corpus",
         type=Path,
-        default=Path(__file__).parent / "pilot/2026-10-02/corpus.json",
+        required=True,
+        help="Fixed corpus JSON; the archived pilot includes benchmarks/pilot/2026-10-02/corpus.json",
     )
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--label", required=True)

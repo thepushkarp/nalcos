@@ -320,7 +320,9 @@ pub fn ensure_cpu_runtime(options: ResolveOptions, execution: &Execution) -> Res
         let mut buffer = [0u8; 65_536];
         loop {
             execution.check()?;
-            let count = response.read(&mut buffer)?;
+            let count = response.read(&mut buffer);
+            execution.check()?;
+            let count = count?;
             if count == 0 {
                 break;
             }

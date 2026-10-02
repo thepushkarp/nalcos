@@ -1,10 +1,12 @@
 # Select this file with: nalcos --config examples/config.toml ...
 version = 1
 
-# This is an explicit example recipe, not a benchmark-qualified default.
+# Fresh init uses minilm-int8 on CPU without configuration.
+# This named profile demonstrates explicit FP32 settings.
 # Uncomment to select it on initial setup; changing this value requests a switch.
 # An unchanged default does not override a persisted CLI --model choice.
-# default_model = "profile:minilm"
+# default_model = "minilm-int8"
+# Or select the custom profile below with: default_model = "profile:minilm"
 
 # NALCOS_DATA_DIR overrides this optional index-storage location.
 # data_dir = "/path/to/nalcos-data"

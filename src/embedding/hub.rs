@@ -29,7 +29,7 @@ pub fn resolve(
     } else {
         return Err(AppError::new(
             "model_required",
-            "No embedding model is selected; use init --model <Hugging Face model id or preset> or configure an explicit profile. No default model has passed qualification",
+            "No embedding model was supplied to the resolver; run nalcos init or select an explicit model profile",
         ));
     };
     selected.validate()?;
@@ -345,7 +345,9 @@ fn resolve_file(
         let mut buffer = [0u8; 65_536];
         loop {
             execution.check()?;
-            let read = response.read(&mut buffer).map_err(|e| {
+            let read = response.read(&mut buffer);
+            execution.check()?;
+            let read = read.map_err(|e| {
                 AppError::new(
                     "model_download_failed",
                     format!("Cannot read model artifact: {e}"),
@@ -478,7 +480,9 @@ pub(crate) fn request_timeout(execution: &Execution) -> Duration {
 pub(crate) fn client(execution: &Execution) -> Result<Client> {
     execution.check()?;
     Client::builder()
-        .timeout(request_timeout(execution))
+        // Artifact bodies can take minutes on slow connections. Only the user's
+        // remaining command budget limits their duration; connection setup is bounded.
+        .timeout(execution.remaining())
         .connect_timeout(Duration::from_secs(15))
         .user_agent(concat!("nalcos/", env!("CARGO_PKG_VERSION")))
         .build()
@@ -547,4 +551,54 @@ pub(crate) fn atomic_write(path: &Path, bytes: &[u8]) -> Result<()> {
     file.sync_all()?;
     fs::rename(temporary, path)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::net::TcpListener;
+    use std::sync::{Arc, atomic::AtomicBool};
+
+    #[test]
+    fn artifact_body_uses_the_remaining_command_budget() {
+        for timeout in [None, Some(Duration::from_millis(100))] {
+            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+            let address = listener.local_addr().unwrap();
+            let server = std::thread::spawn(move || {
+                let (mut stream, _) = listener.accept().unwrap();
+                let mut request = [0; 1];
+                stream.read_exact(&mut request).unwrap();
+                stream
+                    .write_all(
+                        b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\na",
+                    )
+                    .unwrap();
+                std::thread::sleep(Duration::from_millis(250));
+                // A deadline may close the client before the last byte is sent.
+                if let Err(error) = stream.write_all(b"b") {
+                    assert!(matches!(
+                        error.kind(),
+                        std::io::ErrorKind::BrokenPipe | std::io::ErrorKind::ConnectionReset
+                    ));
+                }
+            });
+            let execution = Execution::new(timeout, Arc::new(AtomicBool::new(false)));
+            let mut response = client(&execution)
+                .unwrap()
+                .get(format!("http://{address}"))
+                .send()
+                .unwrap();
+            let mut body = Vec::new();
+            let result = response.read_to_end(&mut body);
+            if timeout.is_some() {
+                assert!(result.is_err());
+                assert_eq!(execution.check().unwrap_err().code, "timeout");
+            } else {
+                result.unwrap();
+                assert_eq!(body, b"ab");
+                execution.check().unwrap();
+            }
+            server.join().unwrap();
+        }
+    }
 }

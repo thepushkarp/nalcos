@@ -2,7 +2,7 @@ use super::*;
 use std::collections::BTreeMap;
 
 #[test]
-fn init_requires_an_explicit_model() {
+fn resolver_requires_a_selected_model() {
     let result = resolve(
         &ModelRequest::default(),
         ResolveOptions::default(),
@@ -217,6 +217,9 @@ fn cached_smoke(model: &str, device: Device) {
         "Set NALCOS_RUN_MODEL_TESTS=1 only when the exact cached model/runtime prerequisites are available"
     );
     let execution = Execution::unlimited();
+    // Dynamic INT8 activation scales depend on other padded inputs in the batch.
+    // This smoke bound records that sensitivity; it is not a retrieval-quality gate.
+    let cross_batch_minimum = if model == "minilm-int8" { 0.99 } else { 0.9999 };
     let model = resolve(
         &ModelRequest {
             model: Some(model.into()),
@@ -258,6 +261,20 @@ fn cached_smoke(model: &str, device: Device) {
     assert_eq!(vectors.len(), 2);
     assert_eq!(vectors[0].len(), model.profile.dimensions);
     assert_eq!(encoder.info().selected_device, device);
+    let repeated = encoder
+        .encode(&texts, InputKind::Document, &execution)
+        .unwrap();
+    for (first, second) in vectors.iter().zip(&repeated) {
+        let cosine: f64 = first
+            .iter()
+            .zip(second)
+            .map(|(a, b)| f64::from(*a) * f64::from(*b))
+            .sum();
+        assert!(
+            cosine > 0.9999,
+            "Identical-batch inference drifted: {cosine}"
+        );
+    }
     for (sequence, text) in texts.iter().enumerate() {
         let again = encoder
             .encode(std::slice::from_ref(text), InputKind::Document, &execution)
@@ -268,9 +285,10 @@ fn cached_smoke(model: &str, device: Device) {
             .map(|(a, b)| f64::from(*a) * f64::from(*b))
             .sum();
         assert!(
-            cosine > 0.9999,
+            cosine > cross_batch_minimum,
             "Sequence {sequence} repeated/batched output drifted: {cosine}"
         );
+        eprintln!("Sequence {sequence} cross-batch cosine: {cosine}");
     }
     let chunks = encoder
         .chunk_documents(
@@ -296,6 +314,12 @@ fn cached_smoke(model: &str, device: Device) {
 #[ignore = "requires explicitly provisioned cached MiniLM and ONNX Runtime; never downloads"]
 fn cached_minilm_cpu_smoke() {
     cached_smoke("minilm", Device::Cpu);
+}
+
+#[test]
+#[ignore = "requires explicitly provisioned cached MiniLM INT8 and ONNX Runtime; never downloads"]
+fn cached_minilm_int8_cpu_smoke() {
+    cached_smoke("minilm-int8", Device::Cpu);
 }
 
 #[test]

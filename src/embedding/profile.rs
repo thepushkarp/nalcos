@@ -251,7 +251,7 @@ pub struct ResolvedModel {
     pub files: BTreeMap<String, ResolvedFile>,
 }
 
-/// Explicit candidates, not quality-qualified defaults. Artifacts and revisions are pinned.
+/// Built-in profiles with pinned artifacts and revisions.
 fn known_profiles() -> Vec<ModelProfile> {
     vec![
         local_profile(
@@ -345,6 +345,14 @@ fn local_profile(
 }
 
 pub fn profile(id: &str) -> Result<ModelProfile> {
+    if id == "minilm-int8" {
+        let mut selected = profile("minilm")?;
+        // Architecture-specific quantizations are distinct embedding contracts.
+        // The selected artifact is persisted so moving an index never switches weights.
+        selected.artifact = minilm_int8_artifact()?.into();
+        selected.device = Device::Cpu;
+        return Ok(selected);
+    }
     let canonical = match id {
         "minilm" => "sentence-transformers/multi-qa-MiniLM-L6-cos-v1",
         "jina-code" | "jina" => "jinaai/jina-embeddings-v2-base-code",
@@ -356,4 +364,23 @@ pub fn profile(id: &str) -> Result<ModelProfile> {
     known_profiles().into_iter().find(|p| p.id == canonical).ok_or_else(|| {
         AppError::new("unknown_model", format!("No embedding contract is registered for '{id}'; provide a custom profile with backend, artifact, dimensions, tokenizer, pooling and prefixes"))
     })
+}
+
+fn minilm_int8_artifact() -> Result<&'static str> {
+    #[cfg(target_arch = "aarch64")]
+    {
+        Ok("onnx/model_qint8_arm64.onnx")
+    }
+    #[cfg(not(target_arch = "aarch64"))]
+    {
+        #[cfg(target_arch = "x86_64")]
+        if std::is_x86_feature_detected!("avx2") {
+            return Ok("onnx/model_quint8_avx2.onnx");
+        }
+        Err(AppError::new(
+            "unsupported_cpu",
+            "The MiniLM INT8 preset requires ARM64 or an x86_64 CPU with AVX2",
+        )
+        .action("Use nalcos init --model minilm for the portable FP32 artifact, or configure a compatible profile"))
+    }
 }

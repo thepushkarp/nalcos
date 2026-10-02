@@ -594,15 +594,23 @@ fn sync(
         .map(Store::staging_generation)
         .transpose()?
         .flatten();
+    let mut selection_args = model_args.clone();
+    // Only explicit initialization chooses a built-in default. Search and a fresh
+    // sync can build lexical coverage without downloading an embedding model.
+    if initialization
+        && active.is_none()
+        && staging.is_none()
+        && selection_args.model.is_none()
+        && config.default_model.is_none()
+    {
+        selection_args.model = Some("minilm-int8".into());
+    }
     let (profile, selector, requested_profile) = selected_profile(
-        model_args,
+        &selection_args,
         config,
         staging.as_ref().or(active.as_ref()),
         apply_config,
     )?;
-    if initialization && profile.is_none() {
-        return Err(AppError::new("model_required", "No default embedding model has passed release qualification").action("Run nalcos init --model HF_ID, configure a named profile, or use search --mode lexical"));
-    }
     if dry_run {
         let source_refresh_required = opened_store
             .as_ref()
@@ -629,7 +637,7 @@ fn sync(
             .is_some_and(|s| s.chunk_overlap_tokens != config.index.chunk_overlap_tokens);
         let old_profile = old_snapshot.map(|s| s.resolved.profile);
         return Ok(
-            json!({"schema_version":1,"command":if initialization {"init"} else {"sync"},"dry_run":true,"repository":repository_view(repo),"scope":scope_view(&scope)?,"commits_pending":missing,"source_refresh_required":source_refresh_required,"model":profile.as_ref().map(|p| &p.id),"model_resolution_required":profile.is_some(),"full_reembedding":model_args.reembed || overlap_changed || !same_document_profile(&profile, &old_profile),"downloads":"Only missing model/runtime assets would be downloaded; no network requests performed","writes_performed":false,"warnings":warnings}),
+            json!({"schema_version":1,"command":if initialization {"init"} else {"sync"},"dry_run":true,"repository":repository_view(repo),"scope":scope_view(&scope)?,"commits_pending":missing,"source_refresh_required":source_refresh_required,"model":profile.as_ref().map(|p| &p.id),"model_profile":profile,"model_resolution_required":profile.is_some(),"full_reembedding":model_args.reembed || overlap_changed || !same_document_profile(&profile, &old_profile),"downloads":"Only missing model/runtime assets would be downloaded; no network requests performed","writes_performed":false,"warnings":warnings}),
         );
     }
     // Readers use WAL snapshots while this writer resolves and prepares its encoder.
@@ -1271,7 +1279,7 @@ fn semantic_unavailable() -> AppError {
         "semantic_unavailable",
         "No active embedding generation is available",
     )
-    .action("Run nalcos init --model HF_ID or use --mode lexical")
+    .action("Run nalcos init to install MiniLM INT8, select --model HF_ID, or use --mode lexical")
 }
 
 fn repository_changed() -> AppError {

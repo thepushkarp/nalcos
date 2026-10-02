@@ -16,8 +16,18 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--repo", type=Path, default=Path.cwd())
     parser.add_argument("--llama-server", default="llama-server")
+    parser.add_argument(
+        "--archive",
+        type=Path,
+        required=True,
+        help="Extracted benchmark archive root containing benchmarks/pilot/2026-10-02",
+    )
     args = parser.parse_args()
-    archive = Path(__file__).parent / "pilot/2026-10-02"
+    archive = args.archive / "benchmarks/pilot/2026-10-02"
+    if not all((archive / name).is_file() for name in ("harness.json", "corpus.json")):
+        parser.error(
+            f"Missing pilot harness.json or corpus.json in {archive}; extract the benchmark archive first"
+        )
     harness = json.loads((archive / "harness.json").read_text())
     args.output.mkdir(parents=True, exist_ok=True)
     for name, source in harness.items():

@@ -28,7 +28,7 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub enum Command {
-    /// Install an explicit model and build an initial index.
+    /// Install MiniLM INT8 on CPU (or the selected model) and build an initial index.
     Init(InitArgs),
     /// Reconcile history, resume indexing, or explicitly change embedding models.
     Sync(SyncArgs),
@@ -54,7 +54,10 @@ pub struct ScopeArgs {
 
 #[derive(Debug, Clone, Default, Args)]
 pub struct ModelArgs {
-    #[arg(long, help = "Hugging Face model ID or profile:NAME")]
+    #[arg(
+        long,
+        help = "Hugging Face model ID, preset (e.g. minilm-int8), or profile:NAME"
+    )]
     pub model: Option<String>,
     #[arg(long, help = "Resolve an explicit model revision during setup")]
     pub revision: Option<String>,

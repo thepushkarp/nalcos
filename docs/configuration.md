@@ -1,6 +1,6 @@
 # Configuration
 
-NaLCoS has no selected embedding model by default. Lexical search can bootstrap an index without one. Select a known model or an explicit profile when running `init` or `sync`; these commands apply model changes and may download the required assets.
+Fresh `nalcos init` defaults to MiniLM INT8 on CPU. Lexical search and fresh plain `sync` can bootstrap an index without a model. `init` and explicit model changes may download required assets; search never installs a model implicitly. The alpha default prioritizes download size and CPU indexing speed; it is not a claim that the broader qualification gates have passed.
 
 ## Configuration and data locations
 
@@ -18,6 +18,7 @@ nalcos --config examples/config.toml init --model profile:minilm
 1. An explicit `--model`.
 2. A nonempty `default_model` whose value changed since the last applied setup.
 3. The persisted pending selection, if a replacement generation is being built; otherwise the active selection.
+4. For `init` only, the built-in `minilm-int8` CPU profile when no selection exists.
 
 A CLI model choice persists across later syncs. An unchanged configuration default cannot switch it back. Removing `default_model` also leaves the persisted selection in place. Edits to the selected named profile are applied by `init` or `sync`; `search` continues using the active generation until setup applies those edits.
 
@@ -35,15 +36,18 @@ Identical document content can reuse active-model vectors before obsolete associ
 
 ## Select a model
 
-The following recipes are registered explicitly. They are candidates for evaluation, not ranked recommendations or a qualified default:
+The following recipes are registered. `minilm-int8` is the alpha default; other recipes remain explicit choices:
 
 | Model ID | Alias | Backend and registered artifact |
 | --- | --- | --- |
+| `sentence-transformers/multi-qa-MiniLM-L6-cos-v1` | `minilm-int8` | ONNX CPU, `onnx/model_qint8_arm64.onnx` on ARM64 or `onnx/model_quint8_avx2.onnx` on AVX2 x86_64 |
 | `sentence-transformers/multi-qa-MiniLM-L6-cos-v1` | `minilm` | ONNX, `onnx/model.onnx` |
 | `jinaai/jina-embeddings-v2-base-code` | `jina-code`, `jina` | ONNX, `onnx/model.onnx` |
 | `BAAI/bge-small-en-v1.5` | `bge-small` | ONNX, `onnx/model.onnx` |
 | `ggml-org/embeddinggemma-300M-GGUF` | `embeddinggemma`, `gemma` | GGUF, `embeddinggemma-300M-Q8_0.gguf` |
 | `Qwen/Qwen3-Embedding-0.6B-GGUF` | `qwen3` | GGUF, `Qwen3-Embedding-0.6B-Q8_0.gguf` |
+
+The INT8 default pins revision `b207367332321f8e44f96e224ef15bc607f4dbf0`, 384 dimensions, mean pooling, and a 512-token input limit. Its platform-specific artifact is resolved during setup and persisted in the generation. Unsupported CPUs receive an actionable error rather than a silent precision change. The `minilm` alias and bare MiniLM HF ID retain the FP32 recipe.
 
 Each registered recipe pins a model revision and defines its dimensions, token limit, pooling, and query/document formatting. A bare HF ID must have a known recipe. Other repositories require a custom `[profiles.NAME]` section; NaLCoS cannot infer an arbitrary model's embedding contract from its repository name.
 
@@ -67,7 +71,7 @@ A model change builds a complete replacement embedding generation for retained i
 
 HF model artifacts use the shared Hugging Face cache: `HF_HUB_CACHE` takes precedence; otherwise the hub cache is derived from `HF_HOME`, normally `~/.cache/huggingface/hub`. Cached snapshots are reused across repositories. Model weights are not copied into each NaLCoS index.
 
-Explicit setup may download missing artifacts. Automatic search updates and `status` never download models or runtime libraries. HF credentials can be supplied through `HF_TOKEN` or the Hugging Face token cache; keep them out of the TOML file. See [HF cache documentation](https://huggingface.co/docs/huggingface_hub/en/guides/manage-cache) for shared-cache management.
+Explicit setup may download missing artifacts. Artifact downloads use the remaining `--timeout` budget, with no fixed total-transfer cap when that option is absent; connection setup has a 15-second timeout. Automatic search updates and `status` never download models or runtime libraries. HF credentials can be supplied through `HF_TOKEN` or the Hugging Face token cache; keep them out of the TOML file. See [HF cache documentation](https://huggingface.co/docs/huggingface_hub/en/guides/manage-cache) for shared-cache management.
 
 ## Index and retrieval settings
 
@@ -97,7 +101,7 @@ Exclusions and size limits affect coverage. Inspect reported omissions before in
 | `runtime.batch_size` | `8` | Indexing batch size; valid range `1..=1024`. Query embedding uses a batch size of one. |
 | `runtime.ort_library` | Unset | Optional path to an existing ONNX Runtime shared library. |
 
-Device selection uses the global `--device` option first, then a non-`auto` workload setting (`runtime.query_device` or `runtime.index_device`), then the selected profile's `device`. The profile defaults to `auto`. An explicit `--device auto` overrides even a strict profile device; use it with `init` to request automatic calibration. Search uses a matching cached calibration or falls back to CPU, as described below.
+Device selection uses the global `--device` option first, then a non-`auto` workload setting (`runtime.query_device` or `runtime.index_device`), then the selected profile's `device`. Custom profiles default to `auto`; the built-in `minilm-int8` profile selects `cpu`. An explicit `--device auto` overrides even a strict profile device; use it with `init` to request automatic calibration. Search uses a matching cached calibration or falls back to CPU, as described below.
 
 `sync` applies changed device, thread, batch, or runtime-library settings by probing both workloads and calibrating automatic device choices while preserving the generation and existing vectors; unchanged syncs skip those probes.
 

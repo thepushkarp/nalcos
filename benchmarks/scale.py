@@ -333,7 +333,7 @@ def main():
     parser.add_argument(
         "--output",
         type=Path,
-        default=Path("benchmarks/scale-results/lexical-100k.json"),
+        default=Path("benchmarks/output/lexical-100k.json"),
     )
     parser.add_argument("--commits", type=int, default=100000)
     parser.add_argument("--queries", type=int, default=20)

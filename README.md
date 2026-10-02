@@ -2,11 +2,17 @@
 
 Find past changes and investigate regression candidates in local Git history. NaLCoS searches commit messages and patch evidence, then returns the commits and changed code for you or your coding agent to inspect.
 
-**Version 2 is an alpha Rust CLI.** Install it from this checkout. Retrieval quality, indexing cost, and accelerator support are being evaluated; there is no benchmark-qualified default embedding model. See [benchmark methodology and results](docs/benchmarks.md).
+**Version 2 is an alpha Rust CLI.** Fresh `nalcos init` uses MiniLM INT8 on CPU. This is the alpha product default chosen for its small download and fast local indexing; broader retrieval and release qualification remain pending. See [benchmark methodology and results](docs/benchmarks.md).
 
 ## Install
 
-Build with Rust 1.88 or newer, Git 2.45 or newer, a C/C++ compiler, and CMake available:
+On Apple Silicon macOS, install the alpha from the [Homebrew tap](https://github.com/thepushkarp/homebrew-tap):
+
+```sh
+brew install thepushkarp/tap/nalcos
+```
+
+To build from source, use Rust 1.88 or newer, Git 2.45 or newer, a C/C++ compiler, and CMake:
 
 ```sh
 cargo install --path . --locked
@@ -30,12 +36,12 @@ nalcos --repo ../another-project search "add an authentication provider"
 
 The first search creates a local index and performs a bounded incremental update. `hybrid` search uses lexical retrieval when a semantic index is unavailable and reports that fallback. Automatic search updates have a two-second indexing budget and do not download models or runtime libraries. Results can therefore cover only part of the requested history until indexing finishes.
 
-Use `sync` for an explicit update, or `--freshness wait` when the query must wait for indexing. Select an embedding model explicitly through `init --model`, `sync --model`, or a configuration profile before requesting semantic indexing. Model selection and supported formats are described in [configuration](docs/configuration.md).
+Use `sync` for an explicit update, or `--freshness wait` when the query must wait for indexing. Run `nalcos init` to install the default embedding model and enable semantic indexing. Choose another model with `init --model`, `sync --model`, or a configuration profile. Model selection and supported formats are described in [configuration](docs/configuration.md).
 
-To try the registered MiniLM evaluation candidate explicitly:
+To initialize MiniLM INT8 on CPU and search semantically:
 
 ```sh
-nalcos init --model sentence-transformers/multi-qa-MiniLM-L6-cos-v1
+nalcos init
 nalcos search "stop retrying a request after cancellation" --mode semantic
 ```
 
@@ -67,7 +73,7 @@ Ranking identifies changes worth inspecting. Verify the behavior with the patch,
 
 | Command | Purpose |
 | --- | --- |
-| `init` | Select an embedding model and initialize its index. A model must be selected explicitly for a new semantic index. |
+| `init` | Select an embedding model and initialize its index. Fresh setup defaults to MiniLM INT8 on CPU; existing model selections persist. |
 | `sync` | Update the requested history scope and embeddings. Add `--watch` to keep updating in a foreground process. |
 | `search QUERY` | Retrieve ranked commit and patch evidence. |
 | `show COMMIT` | Read a commit's patch, or expand an exact result with `--evidence ID`. |
