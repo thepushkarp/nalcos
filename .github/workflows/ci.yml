@@ -44,6 +44,9 @@ jobs:
         run: cargo clippy --locked --no-default-features --all-targets -- -D warnings
       - name: Test CPU build
         run: cargo test --locked --no-default-features --all-targets
+      - name: Verify crates.io package
+        if: runner.os == 'Linux'
+        run: cargo publish --dry-run --locked
       - name: Inspect an uninitialized index without network access
         env:
           NALCOS_DATA_DIR: ${{ runner.temp }}/nalcos-cli-smoke

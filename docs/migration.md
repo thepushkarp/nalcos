@@ -1,6 +1,8 @@
 # Migrating from the Python CLI
 
-NaLCoS 2 is an alpha Rust application. Build this checkout with `cargo install --path . --locked`; the older `pip install nalcos` package uses the Python interface. If both are installed, check `command -v nalcos` and `nalcos --version` to confirm which executable your shell resolves.
+NaLCoS 2 is an alpha Rust application. The Python CLI is retired, and `pip install nalcos` installs the legacy Python interface. On Apple Silicon macOS, install the Rust CLI with `brew install thepushkarp/tap/nalcos`. Cargo installation and build prerequisites are in the [installation guide](../README.md#install).
+
+If both are installed, check `command -v nalcos` and `nalcos --version` to confirm which executable your shell resolves. After verifying the Rust installation, uninstall the Python package using the same tool and environment used to install it: `python -m pip uninstall nalcos` for pip, or `pipx uninstall nalcos` for pipx. This does not convert the Python index; the Rust CLI builds its own.
 
 ## Command mapping
 

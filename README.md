@@ -12,7 +12,13 @@ On Apple Silicon macOS, install the alpha from the [Homebrew tap](https://github
 brew install thepushkarp/tap/nalcos
 ```
 
-To build from source, use Rust 1.88 or newer, Git 2.45 or newer, a C/C++ compiler, and CMake:
+Install the Rust alpha from [crates.io](https://crates.io/crates/nalcos):
+
+```sh
+cargo install nalcos --version 2.0.0-alpha.2 --locked
+```
+
+Cargo installs require Rust 1.88 or newer, Git 2.45 or newer, a C/C++ compiler, and CMake. To build this checkout:
 
 ```sh
 cargo install --path . --locked
@@ -23,7 +29,7 @@ NaLCoS uses Git's `--no-lazy-fetch` on every invocation to prevent implicit obje
 
 The native embedding backends may need model assets and a compatible runtime library. Lexical search works without downloading a model. See [configuration](docs/configuration.md) for embedding profiles and runtime setup.
 
-Users of the Python release should read the [migration guide](docs/migration.md). The Rust CLI has a new command interface and index format.
+The Python CLI is retired and the [PyPI project is archived](https://pypi.org/project/nalcos/). Its existing releases contain the legacy Python application. Users of those releases should read the [migration guide](docs/migration.md). The Rust CLI has a new command interface and index format.
 
 ## Find a past change
 
@@ -154,6 +160,8 @@ NALCOS_RUN_MODEL_TESTS=1 cargo test --locked --lib \
 Native cached-model CPU and Metal smoke checks have passed on Apple Silicon; [native runtime validation](docs/native-runtime.md) records the exact evidence and unresolved reference-parity differences. See [CPU and Metal comparisons](docs/configuration.md#compare-cpu-and-metal) for explicit device probes and end-to-end timing. CUDA remains unqualified in this alpha; optional build features do not qualify CUDA or Vulkan releases. Model quality and product qualification remain pending, including the two-week dogfood evaluation.
 
 ## Contributing
+
+Maintainers: see the [release guide](docs/releasing.md) for crates.io publishing, Homebrew updates, and PyPI archival.
 
 Useful contributions include reproducible retrieval misses, Git-history edge cases, and measured indexing/runtime results. Include the command, effective configuration, scope, and relevant diagnostics; remove private repository content and credentials before sharing.
 

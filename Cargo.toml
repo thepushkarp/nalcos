@@ -6,6 +6,10 @@ rust-version = "1.88"
 description = "Local Git history search for people and coding agents"
 license = "MIT"
 repository = "https://github.com/thepushkarp/nalcos"
+readme = "README.md"
+keywords = ["git", "search", "cli", "history"]
+categories = ["command-line-utilities", "development-tools"]
+publish = ["crates-io"]
 include = [
     "/Cargo.toml", "/Cargo.lock", "/src/**", "/tests/**", "/examples/**",
     "/README.md", "/LICENSE", "/docs/**",
