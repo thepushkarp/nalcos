@@ -26,7 +26,7 @@ The first publication requires an API token; trusted publishing requires an exis
 
 Update the version in `Cargo.toml` and `Cargo.lock`, run the checks above, and create a matching `vVERSION` tag from the reviewed commit. Publishing a GitHub release for that tag runs `.github/workflows/release.yml`, including prereleases. The workflow checks out the tag, verifies its version, tests the source, verifies the packaged build, and publishes through trusted publishing.
 
-To retry a failed publication, manually run the workflow with the existing tag. A version already published to crates.io cannot be overwritten; inspect the registry before retrying. Do not move an existing release tag to different code.
+Manual workflow runs default to `dry_run: true`: they verify the source, packaged build, and trusted publishing authentication without uploading a version. To retry a failed publication, select its existing tag and disable `dry_run`. A version already published to crates.io cannot be overwritten; inspect the registry before retrying. Do not move an existing release tag to different code.
 
 ## Homebrew releases
 
