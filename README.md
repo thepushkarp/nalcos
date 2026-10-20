@@ -2,7 +2,7 @@
 
 Find past changes and investigate regression candidates in local Git history. NaLCoS searches commit messages and patch evidence, then returns the commits and changed code for you or your coding agent to inspect.
 
-**Version 2 is an alpha Rust CLI.** Fresh `nalcos init` uses MiniLM INT8 on CPU. This is the alpha product default chosen for its small download and fast local indexing; broader retrieval and release qualification remain pending. See [benchmark methodology and results](docs/benchmarks.md).
+**Version 2 is an alpha Rust CLI.** Fresh `nalcos init` uses MiniLM INT8 and measures compatible devices to select the fastest for each workload. This is the alpha product default chosen for its small download and fast local indexing; broader retrieval and release qualification remain pending. See [benchmark methodology and results](docs/benchmarks.md).
 
 ## Install
 
@@ -44,7 +44,7 @@ The first search creates a local index and performs a bounded incremental update
 
 Use `sync` for an explicit update, or `--freshness wait` when the query must wait for indexing. Run `nalcos init` to install the default embedding model and enable semantic indexing. Choose another model with `init --model`, `sync --model`, or a configuration profile. Model selection and supported formats are described in [configuration](docs/configuration.md).
 
-To initialize MiniLM INT8 on CPU and search semantically:
+To initialize MiniLM INT8 and search semantically:
 
 ```sh
 nalcos init
@@ -79,7 +79,7 @@ Ranking identifies changes worth inspecting. Verify the behavior with the patch,
 
 | Command | Purpose |
 | --- | --- |
-| `init` | Select an embedding model and initialize its index. Fresh setup defaults to MiniLM INT8 on CPU; existing model selections persist. |
+| `init` | Select an embedding model and initialize its index. Fresh setup defaults to MiniLM INT8 with automatic device selection; existing model selections persist. |
 | `sync` | Update the requested history scope and embeddings. Add `--watch` to keep updating in a foreground process. |
 | `search QUERY` | Retrieve ranked commit and patch evidence. |
 | `show COMMIT` | Read a commit's patch, or expand an exact result with `--evidence ID`. |

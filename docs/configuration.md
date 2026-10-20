@@ -1,6 +1,6 @@
 # Configuration
 
-Fresh `nalcos init` defaults to MiniLM INT8 on CPU. Lexical search and fresh plain `sync` can bootstrap an index without a model. `init` and explicit model changes may download required assets; search never installs a model implicitly. The alpha default prioritizes download size and CPU indexing speed; it is not a claim that the broader qualification gates have passed.
+Fresh `nalcos init` defaults to MiniLM INT8 with automatic device selection. Lexical search and fresh plain `sync` can bootstrap an index without a model. `init` and explicit model changes may download required assets; search never installs a model implicitly. The alpha model default prioritizes download size and indexing speed; it is not a claim that the broader qualification gates have passed.
 
 ## Configuration and data locations
 
@@ -18,7 +18,7 @@ nalcos --config examples/config.toml init --model profile:minilm
 1. An explicit `--model`.
 2. A nonempty `default_model` whose value changed since the last applied setup.
 3. The persisted pending selection, if a replacement generation is being built; otherwise the active selection.
-4. For `init` only, the built-in `minilm-int8` CPU profile when no selection exists.
+4. For `init` only, the built-in `minilm-int8` profile when no selection exists.
 
 A CLI model choice persists across later syncs. An unchanged configuration default cannot switch it back. Removing `default_model` also leaves the persisted selection in place. Edits to the selected named profile are applied by `init` or `sync`; `search` continues using the active generation until setup applies those edits.
 
@@ -40,7 +40,7 @@ The following recipes are registered. `minilm-int8` is the alpha default; other 
 
 | Model ID | Alias | Backend and registered artifact |
 | --- | --- | --- |
-| `sentence-transformers/multi-qa-MiniLM-L6-cos-v1` | `minilm-int8` | ONNX CPU, `onnx/model_qint8_arm64.onnx` on ARM64 or `onnx/model_quint8_avx2.onnx` on AVX2 x86_64 |
+| `sentence-transformers/multi-qa-MiniLM-L6-cos-v1` | `minilm-int8` | ONNX INT8, `onnx/model_qint8_arm64.onnx` on ARM64 or `onnx/model_quint8_avx2.onnx` on AVX2 x86_64 |
 | `sentence-transformers/multi-qa-MiniLM-L6-cos-v1` | `minilm` | ONNX, `onnx/model.onnx` |
 | `jinaai/jina-embeddings-v2-base-code` | `jina-code`, `jina` | ONNX, `onnx/model.onnx` |
 | `BAAI/bge-small-en-v1.5` | `bge-small` | ONNX, `onnx/model.onnx` |
@@ -103,11 +103,11 @@ Binary content does not consume the text-source budget. Blob inspection has a se
 | `runtime.batch_size` | `8` | Indexing batch size; valid range `1..=1024`. Query embedding uses a batch size of one. |
 | `runtime.ort_library` | Unset | Optional path to an existing ONNX Runtime shared library. |
 
-Device selection uses the global `--device` option first, then a non-`auto` workload setting (`runtime.query_device` or `runtime.index_device`), then the selected profile's `device`. Custom profiles default to `auto`; the built-in `minilm-int8` profile selects `cpu`. An explicit `--device auto` overrides even a strict profile device; use it with `init` to request automatic calibration. Search uses a matching cached calibration or falls back to CPU, as described below.
+Device selection uses the global `--device` option first, then a non-`auto` workload setting (`runtime.query_device` or `runtime.index_device`), then the selected profile's `device`. Built-in and custom profiles default to `auto`. An explicit `--device auto` overrides even a strict profile device; use it with `init` to request automatic calibration. Search uses a matching cached calibration or falls back to CPU, as described below.
 
 `sync` applies changed device, thread, batch, or runtime-library settings by probing both workloads and calibrating automatic device choices while preserving the generation and existing vectors; unchanged syncs skip those probes.
 
-Runtime device names are `auto`, `cpu`, `metal`, `cuda`, and `vulkan`; CUDA and Vulkan may include a zero-based device index, such as `cuda:1`. Backend support and device availability are checked at runtime. Inspect the reported effective backend/device instead of assuming the requested accelerator was used.
+Runtime device names are `auto`, `cpu`, `metal`, `coreml`, `cuda`, and `vulkan`; CUDA and Vulkan may include a zero-based device index, such as `cuda:1`. Automatic calibration probes the first device of each backend; select another GPU explicitly by index. Backend support and device availability are checked at runtime. Inspect the reported effective backend/device instead of assuming the requested accelerator was used.
 
 ONNX uses a dynamically loaded runtime library. Explicit setup can install the pinned ONNX Runtime `1.23.2` CPU package when needed; search does not install it implicitly. On macOS, libraries older than `1.23.2` are rejected before runtime initialization because they can abort during process shutdown. A configured `runtime.ort_library` takes precedence over `NALCOS_ORT_LIBRARY`, then `ORT_DYLIB_PATH`; otherwise NaLCoS checks bundled/managed libraries. `NALCOS_RUNTIME_CACHE` can relocate the managed runtime cache. GGUF uses the bundled llama.cpp backend. Native Metal support is built for Apple Silicon. Linux accelerator builds are optional:
 
@@ -123,7 +123,7 @@ The corresponding native SDK/toolchain is required. CUDA remains unqualified in 
 
 ### Compare CPU and Metal
 
-During `init`, an effective `auto` device measures the available devices against CPU using the same artifact. Query and indexing workloads have separate calibration because their batch sizes differ. Search reuses a matching calibration; without one, it selects CPU and reports why. ONNX `auto` uses CPU on macOS; Metal requires a compatible GGUF model.
+During `init`, an effective `auto` device detects devices supported by the model's runtime, checks their output against CPU using the same artifact, and selects the fastest eligible device. Query and indexing workloads have separate calibration because their batch sizes differ: query selection includes startup and one query, while indexing includes startup and 32 batches. Timings use three warm measurements after a warmup. Search reuses a matching calibration; without one, it selects CPU and reports why. ONNX can use CoreML on macOS when the installed runtime and model support it; Metal requires a compatible GGUF model. CoreML may schedule work across the CPU, GPU, and Neural Engine.
 
 After explicitly installing a GGUF candidate and building its index, inspect each device on Apple Silicon:
 

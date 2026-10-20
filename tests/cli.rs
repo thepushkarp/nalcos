@@ -791,7 +791,7 @@ fn setup_defaults_are_explicit_and_dry_runs_do_not_create_files() {
         init["model"],
         "sentence-transformers/multi-qa-MiniLM-L6-cos-v1"
     );
-    assert_eq!(init["model_profile"]["device"], "cpu");
+    assert_eq!(init["model_profile"]["device"], "auto");
     assert_eq!(
         init["model_profile"]["revision"],
         "b207367332321f8e44f96e224ef15bc607f4dbf0"

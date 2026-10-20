@@ -1,7 +1,7 @@
 # Select this file with: nalcos --config examples/config.toml ...
 version = 1
 
-# Fresh init uses minilm-int8 on CPU without configuration.
+# Fresh init uses minilm-int8 with automatic device selection.
 # This named profile demonstrates explicit FP32 settings.
 # Uncomment to select it on initial setup; changing this value requests a switch.
 # An unchanged default does not override a persisted CLI --model choice.

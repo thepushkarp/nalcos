@@ -59,8 +59,7 @@ pub struct Calibration {
 
 /// Version of the numerical and performance gates used to select automatic devices.
 /// Persist this with applied runtime settings so a stricter policy requires fresh setup.
-pub const CALIBRATION_POLICY: &str =
-    "calibration-policy-v2-parity9999-query3-doc3-10pct-32-batches";
+pub const CALIBRATION_POLICY: &str = "calibration-policy-v3-parity9999-fastest-median3-32-batches";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct CachedCalibration {
@@ -70,7 +69,12 @@ pub(crate) struct CachedCalibration {
 }
 
 fn calibration_path(model: &super::ResolvedModel, options: &RuntimeOptions) -> Result<PathBuf> {
-    let inventory = devices()?;
+    let inventory = available_devices(model.profile.backend, options)?;
+    let hardware = if model.profile.backend == super::Backend::Onnx {
+        devices()?
+    } else {
+        vec![]
+    };
     let library = if model.profile.backend == super::Backend::Onnx {
         let path = locate_ort_library(options.ort_library.as_deref())?;
         let metadata = fs::metadata(&path)?;
@@ -95,6 +99,7 @@ fn calibration_path(model: &super::ResolvedModel, options: &RuntimeOptions) -> R
         options.batch_size,
         options.device_index,
         inventory,
+        hardware,
         library,
         std::env::var("CUDA_VISIBLE_DEVICES").ok(),
     ))?;
@@ -163,6 +168,17 @@ pub struct DeviceInfo {
 /// Enumerates actual compiled GGML devices; loading and inference are separate capability probes.
 pub fn devices() -> Result<Vec<DeviceInfo>> {
     super::gguf::devices()
+}
+
+pub(crate) fn available_devices(
+    backend: super::Backend,
+    options: &RuntimeOptions,
+) -> Result<Vec<DeviceInfo>> {
+    match backend {
+        super::Backend::Onnx => super::onnx::devices(options),
+        super::Backend::Gguf => devices(),
+        _ => Ok(vec![]),
+    }
 }
 
 pub fn prepare_runtime(

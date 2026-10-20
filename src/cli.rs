@@ -19,7 +19,7 @@ pub struct Cli {
     #[arg(
         long,
         global = true,
-        help = "Inference device: auto, cpu, metal, cuda[:N], or vulkan[:N]"
+        help = "Inference device: auto, cpu, metal, coreml, cuda[:N], or vulkan[:N]"
     )]
     pub device: Option<String>,
     #[command(subcommand)]
@@ -28,7 +28,7 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub enum Command {
-    /// Install MiniLM INT8 on CPU (or the selected model) and build an initial index.
+    /// Install MiniLM INT8 (or the selected model), select its fastest device, and index history.
     Init(InitArgs),
     /// Reconcile history, resume indexing, or explicitly change embedding models.
     Sync(SyncArgs),

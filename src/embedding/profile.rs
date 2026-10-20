@@ -350,7 +350,6 @@ pub fn profile(id: &str) -> Result<ModelProfile> {
         // Architecture-specific quantizations are distinct embedding contracts.
         // The selected artifact is persisted so moving an index never switches weights.
         selected.artifact = minilm_int8_artifact()?.into();
-        selected.device = Device::Cpu;
         return Ok(selected);
     }
     let canonical = match id {

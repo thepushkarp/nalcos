@@ -1,7 +1,7 @@
 # Embedding and search benchmarks
 
-The alpha default is **MiniLM INT8 on CPU**, chosen for its 22 MiB weights and fast
-local indexing. This is a product choice for the alpha, not a claim that the model
+The alpha default is **MiniLM INT8 with automatic device selection**, chosen for its
+22 MiB weights and fast local indexing. This is a product choice for the alpha, not a claim that the model
 passed broader quality, licensing, portability, or product qualification gates.
 Profiles remain configurable; explicit setup downloads models into the shared
 Hugging Face cache. This repository does not distribute weights.

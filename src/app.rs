@@ -312,6 +312,11 @@ fn selected_profile(
     if let Some(artifact) = &args.variant {
         profile.artifact = artifact.clone();
     }
+    if apply_config && selector.as_deref() == Some("minilm-int8") {
+        // Built-in device policy is operational; persisted artifact overrides
+        // still define the document embedding contract.
+        profile.device = embedding::profile("minilm-int8")?.device;
+    }
     profile.validate()?;
     if apply_config && config.index.chunk_overlap_tokens >= profile.max_tokens {
         return Err(AppError::new(

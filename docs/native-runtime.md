@@ -1,8 +1,8 @@
 # Native runtime validation
 
-MiniLM INT8 on CPU is the alpha setup default. `release_qualification` remains `pending`. The checks below establish specific execution and numerical behavior; they do not establish retrieval quality or release performance.
+MiniLM INT8 with automatic device selection is the alpha setup default. `release_qualification` remains `pending`. The checks below establish specific execution and numerical behavior; they do not establish retrieval quality or release performance.
 
-The default ARM64 INT8 CPU smoke passes shape, finite normalization, token budget, and same-batch repeatability (cosine at least 0.9999). Dynamic activation quantization is sensitive to batch composition: the two batch-versus-singleton samples measured cosine 0.9943486 and 0.9927478. This diagnostic is separate from the stricter FP32/GGUF and automatic-device parity gates, which remain unchanged. Retrieval qualification is still pending.
+The default ARM64 INT8 CPU smoke passes shape, finite normalization, token budget, and same-batch repeatability (cosine at least 0.9999). Dynamic activation quantization is sensitive to batch composition: the two batch-versus-singleton samples measured cosine 0.9943486 and 0.9927478. This diagnostic is separate from the stricter FP32/GGUF and automatic-device parity gates. Retrieval qualification is still pending.
 
 The October 2, 2026 checks used an Apple M2 with 16 GB memory, the cached pinned artifacts listed in [configuration.md](configuration.md), `ort` 2.0.0-rc.10, and `llama-cpp-2` / `llama-cpp-sys-2` 0.1.158. Native Rust tests used the development build, four inference threads, and batch size eight. Linux CUDA/Vulkan and Intel Mac execution have not been exercised on this host.
 

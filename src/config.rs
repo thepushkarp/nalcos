@@ -237,10 +237,11 @@ pub fn parse_device(value: &str) -> Result<(Device, usize)> {
         "cpu" => Device::Cpu,
         "metal" => Device::Metal,
         "cuda" => Device::Cuda,
+        "coreml" => Device::CoreMl,
         "vulkan" => Device::Vulkan,
         _ => {
             return Err(AppError::invalid(format!(
-                "Unknown device {value}; use auto, cpu, metal, cuda[:N], or vulkan[:N]"
+                "Unknown device {value}; use auto, cpu, metal, coreml, cuda[:N], or vulkan[:N]"
             )));
         }
     };
