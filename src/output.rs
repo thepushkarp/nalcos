@@ -39,10 +39,22 @@ pub fn emit(value: &Value, json: bool) -> Result<()> {
                             {
                                 writeln!(out, "  {path}")?;
                             }
-                            writeln!(out, "  evidence: {}", item["id"].as_str().unwrap_or(""))?;
+                            let label = if item["metadata_only"] == true {
+                                " (file metadata only)"
+                            } else if item["role"] == "supporting_code" {
+                                " (supporting code)"
+                            } else {
+                                ""
+                            };
+                            writeln!(
+                                out,
+                                "  evidence: {}{label}",
+                                item["id"].as_str().unwrap_or("")
+                            )?;
                             for line in item["excerpt"].as_str().unwrap_or("").lines() {
                                 writeln!(out, "    {line}")?;
                             }
+                            write_patch_hint(&mut out, item, &value["repository"]["work_dir"])?;
                         }
                     }
                 }
@@ -50,7 +62,14 @@ pub fn emit(value: &Value, json: bool) -> Result<()> {
         }
         "show" => {
             if let Some(evidence) = value.get("evidence") {
+                if evidence["metadata_only"] == true {
+                    writeln!(
+                        out,
+                        "File metadata only; this evidence ID has no textual hunk."
+                    )?;
+                }
                 writeln!(out, "{}", evidence["excerpt"].as_str().unwrap_or(""))?;
+                write_patch_hint(&mut out, evidence, &value["repository"]["work_dir"])?;
             } else {
                 writeln!(
                     out,
@@ -128,6 +147,40 @@ pub fn emit(value: &Value, json: bool) -> Result<()> {
         }
     }
     Ok(())
+}
+
+fn write_patch_hint(out: &mut impl Write, evidence: &Value, repository: &Value) -> Result<()> {
+    if let Some(args) = evidence["patch_lookup"]["args"].as_array() {
+        let args: Vec<_> = args
+            .iter()
+            .filter_map(Value::as_str)
+            .map(shell_quote)
+            .collect();
+        let scope = if evidence["patch_lookup"]["file_scoped"] == false {
+            "Commit/parent patch"
+        } else {
+            "File patch"
+        };
+        writeln!(
+            out,
+            "  {scope}: nalcos --repo {} {}",
+            shell_quote(repository.as_str().unwrap_or(".")),
+            args.join(" ")
+        )?;
+    }
+    Ok(())
+}
+
+fn shell_quote(argument: &str) -> String {
+    if !argument.is_empty()
+        && argument
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || b"_./:=-".contains(&byte))
+    {
+        argument.to_owned()
+    } else {
+        format!("'{}'", argument.replace('\'', "'\\''"))
+    }
 }
 
 pub fn truncate_utf8(text: &str, limit: usize) -> (&str, bool) {

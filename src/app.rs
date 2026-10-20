@@ -8,8 +8,8 @@ use crate::{
     error::{AppError, Result},
     execution::Execution,
     git::{
-        DocumentRecord, EXTRACTION_VERSION, FilterOptions, IndexOptions, Repository, ScopeOptions,
-        ScopeSnapshot, ShowOptions,
+        DocumentKind, DocumentRecord, EXTRACTION_VERSION, FilterOptions, IndexOptions, Repository,
+        ScopeOptions, ScopeSnapshot, ShowOptions,
     },
     output::{self, truncate_utf8},
     store::{Candidate, CandidateFilter, Coverage, Generation, Store, VectorChunk},
@@ -1149,7 +1149,7 @@ fn search(
                 execution,
             )?);
         }
-        let ranked = loop {
+        let mut ranked = loop {
             execution.check()?;
             let lexical = if used != SearchMode::Semantic {
                 store.lexical_candidates(
@@ -1201,6 +1201,14 @@ fn search(
             }
             candidate_limit = candidate_limit.saturating_mul(2).min(eligible.len().max(1));
         };
+        let returned = ranked.len().min(args.limit as usize);
+        missing_sources.extend(add_supporting_hunks(
+            &mut ranked[..returned],
+            &store,
+            repo,
+            &candidate_filter,
+            execution,
+        )?);
         if !missing_sources.is_empty() {
             warnings.push(format!(
                 "Omitted {} evidence records whose Git source could not be verified",
@@ -1222,10 +1230,32 @@ fn search(
                 coverage.omissions
             ));
         }
-        let mut budget = args.max_bytes;
+        let ranked: Vec<_> = ranked.into_iter().take(args.limit as usize).collect();
+        let evidence_lengths: Vec<Vec<_>> = ranked
+            .iter()
+            .map(|hit| {
+                hit.evidence
+                    .iter()
+                    .take(2)
+                    .map(|candidate| {
+                        evidence_text(
+                            &candidate.document,
+                            candidate.byte_start,
+                            candidate.byte_end,
+                        )
+                        .map(str::len)
+                    })
+                    .collect::<Result<_>>()
+            })
+            .collect::<Result<_>>()?;
+        let result_lengths: Vec<_> = evidence_lengths
+            .iter()
+            .map(|lengths| lengths.iter().copied().fold(0, usize::saturating_add))
+            .collect();
+        let budgets = allocate_excerpt_budget(&result_lengths, args.max_bytes);
         let mut truncated = false;
         let mut results = Vec::new();
-        for hit in ranked.into_iter().take(args.limit as usize) {
+        for ((hit, lengths), budget) in ranked.into_iter().zip(evidence_lengths).zip(budgets) {
             let commit = store.get_commit(&hit.oid)?.ok_or_else(|| {
                 AppError::new(
                     "invalid_index",
@@ -1236,13 +1266,22 @@ fn search(
                 .evidence
                 .into_iter()
                 .take(2)
-                .map(|candidate| {
-                    evidence_view(
+                .zip(allocate_excerpt_budget(&lengths, budget))
+                .map(|(candidate, mut budget)| {
+                    let mut value = search_evidence_view(
                         &candidate.document,
-                        Some((candidate.byte_start, candidate.byte_end)),
+                        (candidate.byte_start, candidate.byte_end),
                         &mut budget,
                         &mut truncated,
-                    )
+                    )?;
+                    value["role"] = json!(if hit.supporting_evidence.as_ref()
+                        == Some(&candidate.document.id)
+                    {
+                        "supporting_code"
+                    } else {
+                        "match"
+                    });
+                    Ok(value)
                 })
                 .collect::<Result<_>>()?;
             let mut commit = serde_json::to_value(commit)?;
@@ -1294,6 +1333,59 @@ struct RankedHit {
     oid: String,
     score: f64,
     evidence: Vec<Candidate>,
+    supporting_evidence: Option<String>,
+}
+
+fn metadata_only(document: &DocumentRecord) -> bool {
+    document.kind == DocumentKind::Diff && document.old_lines == 0 && document.new_lines == 0
+}
+
+fn add_supporting_hunks(
+    hits: &mut [RankedHit],
+    store: &Store,
+    repo: &Repository,
+    filter: &CandidateFilter,
+    execution: &Execution,
+) -> Result<Vec<String>> {
+    let mut supporting = Vec::new();
+    for (position, hit) in hits.iter().enumerate() {
+        let Some(primary) = hit.evidence.first() else {
+            continue;
+        };
+        if !metadata_only(&primary.document)
+            || hit.evidence.iter().take(2).any(|candidate| {
+                candidate.document.kind == DocumentKind::Diff && !metadata_only(&candidate.document)
+            })
+        {
+            continue;
+        }
+        if let Some(document) = store.supporting_hunk(&primary.document, filter, execution)? {
+            supporting.push((position, document));
+        }
+    }
+    if supporting.is_empty() {
+        return Ok(Vec::new());
+    }
+    let documents: Vec<_> = supporting
+        .iter()
+        .map(|(_, document)| document.clone())
+        .collect();
+    let verification = repo.validate_documents(&documents, execution)?;
+    for (position, document) in supporting {
+        if verification.valid_ids.contains(&document.id) {
+            let hit = &mut hits[position];
+            hit.supporting_evidence = Some(document.id.clone());
+            hit.evidence.truncate(1);
+            let byte_end = document.text.len();
+            hit.evidence.push(Candidate {
+                document,
+                score: 0.0,
+                byte_start: 0,
+                byte_end,
+            });
+        }
+    }
+    Ok(verification.missing_ids)
 }
 
 fn rank_candidates(
@@ -1318,6 +1410,7 @@ fn rank_candidates(
                 oid,
                 score: 0.0,
                 evidence: vec![],
+                supporting_evidence: None,
             });
             hit.score += score;
             if !hit
@@ -1334,6 +1427,66 @@ fn rank_candidates(
     hits
 }
 
+/// Max-min allocation gives each result a share before a large source can use
+/// the remainder. Short results release their unused share to longer ones.
+fn allocate_excerpt_budget(lengths: &[usize], budget: usize) -> Vec<usize> {
+    let mut order: Vec<_> = (0..lengths.len()).collect();
+    order.sort_by_key(|&index| (lengths[index], index));
+    let mut allocations = vec![0; lengths.len()];
+    let mut remaining = budget;
+    for (position, index) in order.into_iter().enumerate() {
+        let allocation = lengths[index].min(remaining.div_ceil(lengths.len() - position));
+        allocations[index] = allocation;
+        remaining -= allocation;
+    }
+    allocations
+}
+
+fn search_evidence_view(
+    document: &DocumentRecord,
+    range: (usize, usize),
+    budget: &mut usize,
+    truncated: &mut bool,
+) -> Result<Value> {
+    let text = evidence_text(document, range.0, range.1)?;
+    let (start, end) = search_excerpt_range(
+        text,
+        *budget,
+        matches!(document.kind, crate::git::DocumentKind::Diff),
+    );
+    let mut value = evidence_view(
+        document,
+        Some((range.0 + start, range.0 + end)),
+        budget,
+        truncated,
+    )?;
+    if start > 0 || end < text.len() {
+        value["excerpt_truncated"] = json!(true);
+        *truncated = true;
+    }
+    Ok(value)
+}
+
+// Clipped hunk excerpts start at the patch rather than repeating file metadata.
+fn search_excerpt_range(text: &str, limit: usize, diff: bool) -> (usize, usize) {
+    let start = if text.len() > limit && diff {
+        text.find("\n@@ ").map_or(0, |offset| offset + 1)
+    } else {
+        0
+    };
+    let (excerpt, _) = truncate_utf8(&text[start..], limit);
+    (start, start + excerpt.len())
+}
+
+fn evidence_text(document: &DocumentRecord, start: usize, end: usize) -> Result<&str> {
+    document.text.get(start..end).ok_or_else(|| {
+        AppError::new(
+            "invalid_index",
+            format!("Invalid source range for evidence {}", document.id),
+        )
+    })
+}
+
 fn evidence_view(
     document: &DocumentRecord,
     range: Option<(usize, usize)>,
@@ -1341,12 +1494,7 @@ fn evidence_view(
     truncated: &mut bool,
 ) -> Result<Value> {
     let (start, end) = range.unwrap_or((0, document.text.len()));
-    let text = document.text.get(start..end).ok_or_else(|| {
-        AppError::new(
-            "invalid_index",
-            format!("Invalid source range for evidence {}", document.id),
-        )
-    })?;
+    let text = evidence_text(document, start, end)?;
     let (excerpt, clipped) = truncate_utf8(text, *budget);
     *budget = budget.saturating_sub(excerpt.len());
     *truncated |= clipped;
@@ -1358,6 +1506,38 @@ fn evidence_view(
     object.insert("excerpt_byte_end".into(), json!(start + excerpt.len()));
     object.insert("excerpt_truncated".into(), json!(clipped));
     object.insert("verified".into(), json!(true));
+    let metadata = metadata_only(document);
+    object.insert("metadata_only".into(), json!(metadata));
+    if metadata {
+        let mut args = vec![
+            "show".to_owned(),
+            document.commit_oid.clone(),
+            "--parent".to_owned(),
+            document.parent_index.to_string(),
+        ];
+        // Git's literal pathspec avoids interpreting names such as [draft].rs.
+        // Non-UTF-8 paths retain lossless coordinates; string-based CLI pathspecs
+        // can expand their commit/parent without a file restriction.
+        let paths = [document.old_path.as_ref(), document.new_path.as_ref()]
+            .into_iter()
+            .flatten()
+            .map(|path| path.bytes().map(|bytes| String::from_utf8(bytes).ok()))
+            .collect::<Result<Vec<_>>>()?;
+        let file_scoped = paths.iter().all(Option::is_some);
+        if file_scoped {
+            let mut seen = HashSet::new();
+            for path in paths.into_iter().flatten() {
+                if seen.insert(path.clone()) {
+                    args.extend(["--path".to_owned(), format!(":(literal){path}")]);
+                }
+            }
+        }
+        args.push("--full".to_owned());
+        object.insert(
+            "patch_lookup".into(),
+            json!({"args":args,"file_scoped":file_scoped}),
+        );
+    }
     Ok(value)
 }
 
@@ -1506,4 +1686,36 @@ fn status(
     Ok(
         json!({"schema_version":1,"command":"status","repository":repository_view(repo),"scope":scope_view(&scope)?,"readiness":readiness,"source_refresh_required":source_refresh_required,"index_path":path,"storage_bytes":if path.exists() {std::fs::metadata(path)?.len()} else {0},"counts":counts,"history_coverage":history,"embedding_coverage":embedding,"active_generation":generation_view(active.as_ref())?,"staging_generation":generation_view(staging.as_ref())?,"desired_profile":desired,"effective_config":config,"runtime":active.as_ref().map(snapshot).transpose()?.and_then(|s| s.runtime),"check":probe,"warnings":warnings,"release_qualification":"pending"}),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn excerpt_budget_shares_space_and_reclaims_short_results() {
+        assert_eq!(
+            allocate_excerpt_budget(&[30_000, 90, 30_000], 1_000),
+            [455, 90, 455]
+        );
+        assert_eq!(allocate_excerpt_budget(&[0, 20, 40], 100), [0, 20, 40]);
+        assert_eq!(allocate_excerpt_budget(&[10, 10], 0), [0, 0]);
+        assert_eq!(allocate_excerpt_budget(&[10, 10], 1), [1, 0]);
+        assert!(allocate_excerpt_budget(&[], 100).is_empty());
+    }
+
+    #[test]
+    fn clipped_hunk_excerpt_skips_metadata_and_preserves_unicode() {
+        let text = "metadata\n@@ -0,0 +1 @@\n+éé\n";
+        let expected = "@@ -0,0 +1 @@\n+é";
+        assert_eq!(
+            search_excerpt_range(text, expected.len() + 1, true),
+            ("metadata\n".len(), "metadata\n".len() + expected.len())
+        );
+        assert_eq!(search_excerpt_range(text, 0, false), (0, 0));
+        assert_eq!(
+            search_excerpt_range(text, text.len(), true),
+            (0, text.len())
+        );
+    }
 }

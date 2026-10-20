@@ -60,7 +60,7 @@ nalcos search "stop retrying a request after cancellation" \
 nalcos show COMMIT_SHA --path 'src/network/**'
 ```
 
-A search result points to evidence in a particular commit and parent comparison. Expand a returned evidence identifier with `nalcos show --evidence EVIDENCE_ID`.
+A search result points to evidence in a particular commit and parent comparison. Expand an exact evidence identifier with `nalcos show --evidence EVIDENCE_ID`. Metadata-only matches are labeled and include a file-patch command in human output or `patch_lookup.args` in JSON. A separately verified hunk from the same file may accompany them as `supporting_code`.
 
 ## Investigate a regression
 
@@ -128,7 +128,7 @@ nalcos --json show --evidence EVIDENCE_ID --max-bytes 16384
 
 The JSON envelope is versioned with `schema_version: 1`. It identifies the command, repository, resolved scope, requested and effective retrieval modes, history coverage, embedding coverage, active generation, runtime, results, warnings, and output truncation where applicable. Check coverage and warnings before treating an empty result as evidence that a change does not exist.
 
-`search` defaults to 10 results and accepts at most 100. Both `search` and `show` default to a 16 KiB evidence/patch budget; the JSON envelope and commit metadata add overhead. `show` defaults to parent 1 and three context lines; use `--parent`, `--context`, and `--path` to focus it, or `--full` to lift the response byte budget. Extraction safety limits still apply. Progress and diagnostics are separate from JSON stdout.
+`search` defaults to 10 results and accepts at most 100. Both `search` and `show` default to a 16 KiB evidence/patch budget; search shares that budget across results, and the JSON envelope and commit metadata add overhead. `show` defaults to parent 1 and three context lines; use `--parent`, `--context`, and `--path` to focus it, or `--full` to lift the response byte budget. Extraction safety limits still apply. Progress and diagnostics are separate from JSON stdout.
 
 The CLI is the agent interface in this release. There is no MCP server.
 

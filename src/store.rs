@@ -499,6 +499,46 @@ impl Store {
             .transpose()
     }
 
+    /// Supplement a file-prefix match with its first indexed textual hunk.
+    /// This is source context, not another retrieval score. Matching both sides
+    /// of the change prevents a rename or merge parent from borrowing other code.
+    pub fn supporting_hunk(
+        &self,
+        source: &DocumentRecord,
+        filter: &CandidateFilter,
+        execution: &Execution,
+    ) -> Result<Option<DocumentRecord>> {
+        self.with_execution(execution, || {
+            self.require_scope()?;
+            let (allowed, excluded) = filter_json(filter)?;
+            let mut statement = self.conn.prepare(
+                "SELECT d.record FROM documents d
+                 JOIN query_scope s ON s.oid=d.commit_oid
+                 WHERE d.commit_oid=?1
+                   AND (?2 IS NULL OR d.id IN (SELECT value FROM json_each(?2)))
+                   AND d.id NOT IN (SELECT value FROM json_each(?3))
+                   AND json_extract(d.record,'$.kind')='diff'
+                   AND (json_extract(d.record,'$.old_lines')>0 OR json_extract(d.record,'$.new_lines')>0)
+                 ORDER BY json_extract(d.record,'$.new_start'),json_extract(d.record,'$.old_start'),d.id",
+            )?;
+            let mut rows = statement.query(params![source.commit_oid, allowed, excluded])?;
+            while let Some(row) = rows.next()? {
+                execution.check()?;
+                let document: DocumentRecord = serde_json::from_str(&row.get::<_, String>(0)?)?;
+                if document.parent_index == source.parent_index
+                    && document.parent_oid == source.parent_oid
+                    && document.old_path == source.old_path
+                    && document.new_path == source.new_path
+                    && document.old_blob == source.old_blob
+                    && document.new_blob == source.new_blob
+                {
+                    return Ok(Some(document));
+                }
+            }
+            Ok(None)
+        })
+    }
+
     pub fn counts(&self) -> Result<StoreCounts> {
         Ok(StoreCounts {
             commits: self.count("SELECT COUNT(*) FROM commits")?,
@@ -1963,6 +2003,85 @@ mod tests {
                 .unwrap()
                 .len(),
             2
+        );
+    }
+
+    #[test]
+    fn supporting_hunk_keeps_source_parent_and_document_filters() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut store = Store::open(directory.path().join("index.db")).unwrap();
+        let (commit, mut prefix) = source("merge", "change file metadata");
+        prefix.kind = DocumentKind::Diff;
+        prefix.parent_index = 1;
+        prefix.parent_oid = Some("first-parent".into());
+        prefix.new_path = Some(crate::git::GitPath {
+            display: "code.rs".into(),
+            bytes_hex: "636f64652e7273".into(),
+        });
+        prefix.new_blob = Some("code-blob".into());
+        let mut hunk = prefix.clone();
+        hunk.id = "hunk".into();
+        hunk.new_start = 5;
+        hunk.new_lines = 1;
+        let mut other_parent = hunk.clone();
+        other_parent.id = "other-parent".into();
+        other_parent.parent_index = 2;
+        other_parent.parent_oid = Some("second-parent".into());
+        let mut other_file = hunk.clone();
+        other_file.id = "other-file".into();
+        other_file.new_path = None;
+        let mut other_blob = hunk.clone();
+        other_blob.id = "other-blob".into();
+        other_blob.new_blob = Some("different-blob".into());
+        store
+            .ingest(
+                &[commit],
+                &[
+                    prefix.clone(),
+                    other_parent,
+                    other_file,
+                    other_blob,
+                    hunk.clone(),
+                ],
+                &[],
+            )
+            .unwrap();
+        store.set_scope(&["merge".into()]).unwrap();
+        let execution = Execution::unlimited();
+        assert_eq!(
+            store
+                .supporting_hunk(&prefix, &CandidateFilter::default(), &execution)
+                .unwrap()
+                .unwrap()
+                .id,
+            hunk.id
+        );
+        let excluded = CandidateFilter {
+            excluded_documents: [hunk.id.clone()].into_iter().collect(),
+            ..CandidateFilter::default()
+        };
+        assert!(
+            store
+                .supporting_hunk(&prefix, &excluded, &execution)
+                .unwrap()
+                .is_none()
+        );
+        let allowed = CandidateFilter {
+            allowed_documents: Some([prefix.id.clone()].into_iter().collect()),
+            ..CandidateFilter::default()
+        };
+        assert!(
+            store
+                .supporting_hunk(&prefix, &allowed, &execution)
+                .unwrap()
+                .is_none()
+        );
+        store.set_scope(&["unrelated-branch".into()]).unwrap();
+        assert!(
+            store
+                .supporting_hunk(&prefix, &CandidateFilter::default(), &execution)
+                .unwrap()
+                .is_none()
         );
     }
 

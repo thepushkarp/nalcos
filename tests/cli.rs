@@ -492,6 +492,16 @@ fn read_provider_request(stream: &mut TcpStream) -> Value {
 }
 
 fn provider_vector(text: &str, model: &str, drift: bool) -> [f32; 4] {
+    if model == "mock-metadata" {
+        // Make file prefixes beat their hunks without depending on a real model.
+        return if text.starts_with("query: ")
+            || (text.contains("\n--- ") && !text.contains("\n@@ "))
+        {
+            [1.0, 0.0, 0.0, 0.0]
+        } else {
+            [0.0, 1.0, 0.0, 0.0]
+        };
+    }
     let axis = if text.contains("cobalt") {
         0
     } else if text.contains("amber") {
@@ -968,6 +978,47 @@ fn legacy_source_refresh_is_explicit_retryable_and_preserves_embeddings() {
     let unchanged = repository.provider_json(&["sync", "--ref", "main"]);
     assert_eq!(unchanged["commits_added"], 0);
     assert_eq!(unchanged["documents_embedded"], 0);
+}
+
+#[test]
+fn large_first_result_does_not_starve_later_evidence() {
+    let repository = Repository::new();
+    repository.write(
+        "large.txt",
+        &"budgetmarker café 世界 readable patch content\n".repeat(1_500),
+    );
+    let large = repository.commit("Add bulk data", "2024-01-01T12:00:00Z");
+    repository.write("short.txt", "budgetmarker short targeted fix\n");
+    let short = repository.commit("Adjust a small component", "2024-01-02T12:00:00Z");
+    let found = repository.json(&[
+        "search",
+        "budgetmarker",
+        "--mode",
+        "lexical",
+        "--freshness",
+        "wait",
+    ]);
+    assert_eq!(result_ids(&found), [large.as_str(), short.as_str()]);
+    assert_eq!(found["output_truncated"], true);
+    let mut excerpt_bytes = 0;
+    for result in found["results"].as_array().unwrap() {
+        for evidence in result["evidence"].as_array().unwrap() {
+            let excerpt = evidence["excerpt"].as_str().unwrap();
+            assert!(excerpt.contains("budgetmarker"));
+            excerpt_bytes += excerpt.len();
+            let source = repository.json(&[
+                "show",
+                "--evidence",
+                evidence["id"].as_str().unwrap(),
+                "--full",
+            ]);
+            let source = source["evidence"]["excerpt"].as_str().unwrap();
+            let start = evidence["excerpt_byte_start"].as_u64().unwrap() as usize;
+            let end = evidence["excerpt_byte_end"].as_u64().unwrap() as usize;
+            assert_eq!(source.get(start..end), Some(excerpt));
+        }
+    }
+    assert!(excerpt_bytes <= 16_384);
 }
 
 #[test]
@@ -1453,6 +1504,100 @@ fn explicit_model_selection_cancels_staging_and_forced_reembedding_resumes_its_o
     ]);
     assert_eq!(result_ids(&verified), [cobalt.as_str()]);
     assert_eq!(verified["active_generation"]["id"], staging_generation);
+}
+
+#[test]
+fn semantic_metadata_match_retains_its_identity_and_adds_same_file_code() {
+    let repository = Repository::new();
+    let provider = MockProvider::new();
+    repository.configure_provider(&provider, "mock-metadata", "query: ");
+    let selected_path = "src/[draft]'retry.rs";
+    repository.write(selected_path, "pub fn retry_limit() -> u32 { 3 }\n");
+    let parent = repository.commit("fixture-base", "2024-01-01T12:00:00Z");
+    repository.write(selected_path, "pub fn retry_limit() -> u32 { 5 }\n");
+    repository.write("unrelated.rs", "pub const UNRELATED: bool = true;\n");
+    fs::create_dir_all(repository.path.join("assets")).unwrap();
+    fs::write(repository.path.join("assets/blob.bin"), [0, 1, 0, 2]).unwrap();
+    let commit = repository.commit("fixture-update retry policy", "2024-01-02T12:00:00Z");
+    repository.provider_json(&["init", "--model", "profile:mock"]);
+
+    let selected = repository.provider_json(&[
+        "search",
+        "retry symptom",
+        "--mode",
+        "semantic",
+        "--freshness",
+        "cached",
+        "--range",
+        &format!("{parent}..{commit}"),
+        "--path",
+        &format!(":(literal){selected_path}"),
+    ]);
+    assert_eq!(result_ids(&selected), [commit.as_str()]);
+    let evidence = selected["results"][0]["evidence"].as_array().unwrap();
+    assert_eq!(evidence.len(), 2);
+    let metadata = &evidence[0];
+    let code = &evidence[1];
+    assert_eq!(metadata["metadata_only"], true);
+    assert_eq!(metadata["role"], "match");
+    assert_eq!(metadata["old_lines"], 0);
+    assert_eq!(metadata["new_lines"], 0);
+    assert_eq!(code["metadata_only"], false);
+    assert_eq!(code["role"], "supporting_code");
+    assert_ne!(code["id"], metadata["id"]);
+    assert!(
+        code["excerpt"]
+            .as_str()
+            .unwrap()
+            .contains("+pub fn retry_limit() -> u32 { 5 }")
+    );
+    for item in evidence {
+        assert_eq!(item["verified"], true);
+        assert_eq!(item["new_path"]["display"], selected_path);
+        assert_eq!(item["parent_oid"], parent);
+        assert_eq!(item["parent_index"], 1);
+    }
+    let expanded = repository.json(&[
+        "show",
+        "--evidence",
+        metadata["id"].as_str().unwrap(),
+        "--full",
+    ]);
+    assert_eq!(expanded["evidence"]["excerpt"], metadata["excerpt"]);
+    assert_eq!(expanded["evidence"]["metadata_only"], true);
+    let patch_args: Vec<_> = metadata["patch_lookup"]["args"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|arg| arg.as_str().unwrap())
+        .collect();
+    assert_eq!(metadata["patch_lookup"]["file_scoped"], true);
+    let patch = repository.json(&patch_args);
+    assert!(
+        patch["patch"]
+            .as_str()
+            .unwrap()
+            .contains("+pub fn retry_limit() -> u32 { 5 }")
+    );
+    assert!(!patch["patch"].as_str().unwrap().contains("UNRELATED"));
+
+    let binary = repository.provider_json(&[
+        "search",
+        "retry symptom",
+        "--mode",
+        "semantic",
+        "--freshness",
+        "cached",
+        "--path",
+        "assets/blob.bin",
+    ]);
+    let binary_evidence = binary["results"][0]["evidence"].as_array().unwrap();
+    assert_eq!(
+        binary_evidence.len(),
+        1,
+        "binary metadata must not borrow another file's code"
+    );
+    assert_eq!(binary_evidence[0]["metadata_only"], true);
 }
 
 #[test]

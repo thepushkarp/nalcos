@@ -149,6 +149,9 @@ record hardware and distinguish cold startup from warm queries.
 `cli_matrix.py` runs lexical/semantic/hybrid against prepared indexes and a frozen
 manifest, preserving scope, generation, coverage and evidence checks. It never
 syncs or downloads. `evaluate.py metrics` scores the resulting rankings.
+The [hybrid regression fixture](../benchmarks/fixtures/hybrid/queries.jsonl) contains
+public retrospective queries, accepted merge equivalents, and supporting source
+labels. These are development cases, not held-out quality claims.
 `scale.py` generates a lexical fixture; `vector_scale.py` copies it and adds synthetic
 vectors. Default scale output goes into ignored `benchmarks/output/`.
 `workflows.py` assesses collected paired agent trials; it does not run agents.
