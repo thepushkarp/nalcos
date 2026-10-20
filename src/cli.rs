@@ -38,6 +38,8 @@ pub enum Command {
     Show(ShowArgs),
     /// Inspect readiness without changing the index.
     Status(StatusArgs),
+    /// Inspect recorded source omissions without changing the index.
+    Omissions(OmissionsArgs),
 }
 
 #[derive(Debug, Clone, Default, Args)]
@@ -159,6 +161,16 @@ pub struct StatusArgs {
         help = "Probe the installed model using synthetic text; never download or repair"
     )]
     pub check: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct OmissionsArgs {
+    #[command(flatten)]
+    pub scope: ScopeArgs,
+    #[arg(long, default_value_t = 20, value_parser = clap::value_parser!(u32).range(1..=100))]
+    pub limit: u32,
+    #[arg(long, default_value_t = 0)]
+    pub offset: u32,
 }
 
 fn parse_duration(value: &str) -> Result<Duration, String> {

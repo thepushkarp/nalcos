@@ -120,6 +120,7 @@ pub fn emit(value: &Value, json: bool) -> Result<()> {
                 writeln!(out)?;
             }
         }
+        "omissions" => write_omissions(&mut out, value)?,
         "init" | "sync" => {
             if value["dry_run"] == true {
                 serde_json::to_writer_pretty(&mut out, value)?;
@@ -162,6 +163,54 @@ pub fn emit(value: &Value, json: bool) -> Result<()> {
                 warning.as_str().unwrap_or("incomplete coverage")
             );
         }
+    }
+    Ok(())
+}
+
+fn write_omissions(out: &mut impl Write, value: &Value) -> Result<()> {
+    writeln!(
+        out,
+        "History: {}/{} commits indexed",
+        value["history_coverage"]["indexed"], value["history_coverage"]["total"]
+    )?;
+    writeln!(
+        out,
+        "Source omissions: {} recorded across all paths in selected commits",
+        value["source_coverage"]["recorded_omissions"]
+    )?;
+    if let Some(reasons) = value["source_coverage"]["reasons"].as_array() {
+        for reason in reasons {
+            writeln!(
+                out,
+                "  {}: {} ({}) — {}",
+                reason["reason"].as_str().unwrap_or("other"),
+                reason["count"],
+                reason["category"].as_str().unwrap_or("other"),
+                reason["action"].as_str().unwrap_or("")
+            )?;
+        }
+    }
+    if let Some(records) = value["records"].as_array() {
+        for record in records {
+            let oid = record["commit_oid"].as_str().unwrap_or("");
+            let path = record["path"]["display"]
+                .as_str()
+                .unwrap_or("(commit message or parent)");
+            writeln!(
+                out,
+                "\n{}  {} [{}]",
+                &oid[..oid.len().min(12)],
+                path,
+                record["reason"].as_str().unwrap_or("other")
+            )?;
+            writeln!(out, "  {}", record["detail"].as_str().unwrap_or(""))?;
+        }
+    }
+    if let Some(offset) = value["next_offset"].as_u64() {
+        writeln!(
+            out,
+            "\nMore records: repeat the command with --offset {offset} and the same scope options."
+        )?;
     }
     Ok(())
 }

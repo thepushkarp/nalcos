@@ -75,7 +75,7 @@ nalcos search "requests are retried after the caller cancels" \
 
 Ranking identifies changes worth inspecting. Verify the behavior with the patch, tests, and your existing debugging tools; similarity is not a probability that a commit caused the regression. NaLCoS does not generate answers or run bisection.
 
-## Five commands
+## Commands
 
 | Command | Purpose |
 | --- | --- |
@@ -84,6 +84,9 @@ Ranking identifies changes worth inspecting. Verify the behavior with the patch,
 | `search QUERY` | Retrieve ranked commit and patch evidence. |
 | `show COMMIT` | Read a commit's patch, or expand an exact result with `--evidence ID`. |
 | `status` | Inspect index coverage and active model/runtime state. Add `--check` for an explicit encoder probe. |
+| `omissions` | Inspect recorded source omissions and recovery guidance with bounded pagination. |
+
+`status` and `search` summarize source omissions by reason in `source_coverage`. These counts cover all paths in the selected commits, including path-filtered searches. Inspect stored commit/path/details and recovery guidance with `nalcos omissions --limit 20`; JSON provides `next_offset` for another bounded page. Complete commit coverage does not imply complete source text.
 
 All commands accept `--repo`, `--config`, `--json`, `--offline`, `--timeout DURATION`, `--device`, and `--verbose`. Use `nalcos COMMAND --help` for the complete option list.
 

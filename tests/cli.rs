@@ -607,6 +607,136 @@ fn cached_search_rechecks_reset_and_deleted_branch_reachability() {
 }
 
 #[test]
+fn source_omissions_explain_reasons_scope_and_bounded_details() {
+    let repository = Repository::new();
+    fs::write(
+        &repository.config,
+        "version = 1\n[index]\nmax_blob_bytes = 16\nexclude_paths = ['ignored/**']\n",
+    )
+    .unwrap();
+    repository.write("base.txt", "base\n");
+    let base = repository.commit("Initial source", "2024-01-01T12:00:00Z");
+    assert!(
+        repository.json(&["omissions"])["records"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+    assert!(
+        !repository.data.exists(),
+        "inspection must not initialize an index"
+    );
+
+    repository.write("src/check.ts", &"budgetNeedle ".repeat(4));
+    repository.write("ignored/hidden.txt", "excludedneedle\n");
+    repository.write("missing.txt", "lostneedle\n");
+    fs::create_dir(repository.path.join("assets")).unwrap();
+    fs::write(repository.path.join("assets/binary.bin"), [0, 1, 0, 2]).unwrap();
+    let commit = repository.commit("Add sample inputs", "2024-01-02T12:00:00Z");
+    let blob = repository.git(&["rev-parse", "HEAD:missing.txt"]);
+    let object = repository
+        .path
+        .join(".git/objects")
+        .join(&blob[..2])
+        .join(&blob[2..]);
+    let held_object = repository._directory.path().join("held-blob");
+    fs::rename(&object, &held_object).unwrap();
+
+    let search = repository.json(&[
+        "search",
+        "budgetNeedle",
+        "--mode",
+        "lexical",
+        "--freshness",
+        "wait",
+        "--path",
+        "src/check.ts",
+    ]);
+    assert!(result_ids(&search).is_empty());
+    assert_eq!(search["history_coverage"]["complete"], true);
+    let source = &search["source_coverage"];
+    assert_eq!(source["scope"], "selected_commits_all_paths");
+    assert_eq!(source["path_filter_applied"], false);
+    assert_eq!(source["recorded_omissions"], 4);
+    assert_eq!(source["categories"]["expected"], 2);
+    assert_eq!(source["categories"]["limited"], 1);
+    assert_eq!(source["categories"]["unavailable"], 1);
+    let reasons: Vec<_> = source["reasons"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|reason| {
+            (
+                reason["reason"].as_str().unwrap(),
+                reason["count"].as_u64().unwrap(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        reasons,
+        [
+            ("binary", 1),
+            ("blob_limit", 1),
+            ("excluded", 1),
+            ("missing_object", 1)
+        ]
+    );
+    assert!(
+        search["warnings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|warning| {
+                let warning = warning.as_str().unwrap();
+                warning.contains("all paths") && warning.contains("nalcos omissions")
+            })
+    );
+    assert_eq!(repository.json(&["status"])["source_coverage"], *source);
+
+    let first = repository.json(&["omissions", "--limit", "3"]);
+    assert_eq!(first["records"].as_array().unwrap().len(), 3);
+    assert_eq!(first["next_offset"], 3);
+    let second = repository.json(&["omissions", "--limit", "3", "--offset", "3"]);
+    assert_eq!(second["records"].as_array().unwrap().len(), 1);
+    assert!(second["next_offset"].is_null());
+    let records: Vec<_> = first["records"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .chain(second["records"].as_array().unwrap())
+        .collect();
+    for record in &records {
+        assert_eq!(record["commit_oid"], commit);
+        assert!(!record["detail"].as_str().unwrap().is_empty());
+    }
+    let paths: std::collections::BTreeSet<_> = records
+        .iter()
+        .map(|record| record["path"]["display"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        paths,
+        [
+            "assets/binary.bin",
+            "ignored/hidden.txt",
+            "missing.txt",
+            "src/check.ts"
+        ]
+        .into_iter()
+        .collect()
+    );
+    let earlier = repository.json(&["omissions", "--ref", &base]);
+    assert_eq!(earlier["source_coverage"]["recorded_omissions"], 0);
+    assert!(earlier["records"].as_array().unwrap().is_empty());
+
+    fs::rename(held_object, object).unwrap();
+    repository.json(&["sync"]);
+    assert_eq!(
+        repository.json(&["status"])["source_coverage"]["categories"]["unavailable"],
+        0
+    );
+}
+
+#[test]
 fn worktrees_share_index_but_keep_their_own_head_scope() {
     let repository = Repository::new();
     repository.write("shared.txt", "commoncitrine\n");

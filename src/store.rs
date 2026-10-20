@@ -592,6 +592,52 @@ impl Store {
             .collect()
     }
 
+    pub fn omission_counts(&self, execution: &Execution) -> Result<Vec<(String, usize)>> {
+        self.with_execution(execution, || {
+            self.require_scope()?;
+            let mut statement = self.conn.prepare(
+                "WITH reasons AS (
+                   SELECT json_extract(o.record,'$.reason') AS reason
+                   FROM omissions o JOIN query_scope s ON s.oid=o.commit_oid
+                 )
+                 SELECT CASE WHEN reason IN (
+                   'binary','excluded','submodule','blob_limit','document_limit',
+                   'patch_limit','message_limit','source_budget','read_budget','source_limit',
+                   'missing_object','missing_parent'
+                 ) THEN reason ELSE 'other' END AS bucket,COUNT(*)
+                 FROM reasons GROUP BY bucket ORDER BY bucket",
+            )?;
+            let rows = statement.query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+            })?;
+            rows.map(|row| {
+                let (reason, count) = row?;
+                Ok((reason, to_usize(count)?))
+            })
+            .collect()
+        })
+    }
+
+    pub fn omission_page(
+        &self,
+        limit: usize,
+        offset: usize,
+        execution: &Execution,
+    ) -> Result<Vec<ExtractionOmission>> {
+        self.with_execution(execution, || {
+            self.require_scope()?;
+            let mut statement = self.conn.prepare(
+                "SELECT o.record FROM omissions o JOIN query_scope s ON s.oid=o.commit_oid
+                 ORDER BY s.position,o.rowid LIMIT ?1 OFFSET ?2",
+            )?;
+            let rows = statement.query_map(params![to_i64(limit)?, to_i64(offset)?], |row| {
+                row.get::<_, String>(0)
+            })?;
+            rows.map(|row| serde_json::from_str(&row?).map_err(Into::into))
+                .collect()
+        })
+    }
+
     /// Read path-selection metadata without materializing source text.
     pub fn document_paths_in_scope(&self, execution: &Execution) -> Result<Vec<DocumentPaths>> {
         self.with_execution(execution, || {
