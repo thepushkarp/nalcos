@@ -8,7 +8,7 @@ use std::collections::BTreeMap;
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 /// Resolve/install is an explicit operation. Encoder loading never calls this function.
 pub fn resolve(
@@ -233,11 +233,18 @@ fn resolve_revision(
         .extend(["api", "models"])
         .extend(profile.id.split('/'))
         .extend(["revision", &profile.revision]);
+    let operation = format!("Resolve model revision {}@{}", profile.id, profile.revision);
+    eprintln!("{operation}");
     let response = authenticated(client(execution)?.get(url))
         .send()
-        .map_err(network_error)?;
-    let response = checked_response(response, "resolve model revision")?;
-    let metadata: serde_json::Value = response.json().map_err(network_error)?;
+        .map_err(network_error)
+        .map_err(|error| download_context(error, &operation))?;
+    let response = checked_response(response, "read revision metadata")
+        .map_err(|error| download_context(error, &operation))?;
+    let metadata: serde_json::Value = response
+        .json()
+        .map_err(network_error)
+        .map_err(|error| download_context(error, &operation))?;
     let revision = metadata
         .get("sha")
         .and_then(|v| v.as_str())
@@ -301,16 +308,19 @@ fn resolve_file(
         .timeout(request_timeout(execution))
         .build()
         .map_err(network_error)?;
+    let artifact = format!("{}@{} / {filename}", profile.id, profile.revision);
+    eprintln!("Checking model artifact: {artifact}");
     let metadata = authenticated(metadata_client.head(url.clone()))
         .send()
-        .map_err(network_error)?;
+        .map_err(network_error)
+        .map_err(|error| download_context(error, &format!("Read metadata for {artifact}")))?;
     if !metadata.status().is_success() && !metadata.status().is_redirection() {
-        return Err(AppError::new(
-            "model_download_failed",
-            format!(
-                "Model file {filename} metadata returned HTTP {}",
-                metadata.status()
+        return Err(download_context(
+            AppError::new(
+                "model_download_failed",
+                format!("Artifact metadata returned HTTP {}", metadata.status()),
             ),
+            &artifact,
         ));
     }
     let etag = metadata
@@ -321,9 +331,12 @@ fn resolve_file(
         .map(|v| v.trim_matches('"').to_owned())
         .filter(|v| matches!(v.len(), 40 | 64) && v.bytes().all(|b| b.is_ascii_hexdigit()))
         .ok_or_else(|| {
-            AppError::new(
-                "model_download_failed",
-                "Hugging Face did not return a content-addressed artifact ETag",
+            download_context(
+                AppError::new(
+                    "model_download_failed",
+                    "Hugging Face did not return a content-addressed artifact ETag",
+                ),
+                &artifact,
             )
         })?;
     let blob = repository.join("blobs").join(&etag);
@@ -332,44 +345,21 @@ fn resolve_file(
             blob.parent()
                 .ok_or_else(|| AppError::invalid("Invalid model cache path"))?,
         )?;
-        let temporary = temporary_path(&blob);
-        let response = authenticated(client(execution)?.get(url))
-            .send()
-            .map_err(network_error)?;
-        let mut response = checked_response(response, "download model artifact")?;
-        let mut output = OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&temporary)?;
-        let mut hash = Sha256::new();
-        let mut buffer = [0u8; 65_536];
-        loop {
-            execution.check()?;
-            let read = response.read(&mut buffer);
-            execution.check()?;
-            let read = read.map_err(|e| {
-                AppError::new(
-                    "model_download_failed",
-                    format!("Cannot read model artifact: {e}"),
-                )
-            })?;
-            if read == 0 {
-                break;
+        download_artifact(
+            &blob,
+            &artifact,
+            (etag.len() == 64).then_some(etag.as_str()),
+            || Ok(authenticated(client(execution)?.get(url.clone()))),
+            execution,
+        )
+        .map_err(|mut error| {
+            if error.code == "download_checksum_mismatch" {
+                error.code = "model_checksum_mismatch".into();
+            } else if error.code == "download_failed" {
+                error.code = "model_download_failed".into();
             }
-            hash.update(&buffer[..read]);
-            output.write_all(&buffer[..read])?;
-        }
-        if etag.len() == 64 && format!("{:x}", hash.finalize()) != etag {
-            return Err(AppError::new(
-                "model_checksum_mismatch",
-                format!(
-                    "Downloaded {filename} did not match its Hugging Face SHA256; incomplete file retained at {}",
-                    temporary.display()
-                ),
-            ));
-        }
-        output.sync_all()?;
-        fs::rename(&temporary, &blob)?;
+            error
+        })?;
     }
     fs::create_dir_all(
         snapshot
@@ -512,6 +502,192 @@ pub(crate) fn checked_response(
     }
 }
 
+fn download_context(mut error: AppError, operation: &str) -> AppError {
+    error.message = format!("{operation}: {}", error.message);
+    error.action = Some("Retry the same nalcos init or nalcos sync command with downloads enabled; completed downloads remain cached. Increase --timeout if the connection needs more time".into());
+    error
+}
+
+/// Caller holds the target's installer lock. Only this named partial belongs to
+/// the downloader; failed/crashed transfers restart rather than append unverified bytes.
+pub(crate) fn download_artifact(
+    target: &Path,
+    artifact: &str,
+    sha256: Option<&str>,
+    request: impl Fn() -> Result<reqwest::blocking::RequestBuilder>,
+    execution: &Execution,
+) -> Result<()> {
+    let temporary = target.with_extension("nalcos-download.part");
+    if discard_partial(&temporary).map_err(|error| download_context(error, artifact))? {
+        eprintln!("Restarting {artifact}; discarded its incomplete download");
+    }
+    let mut attempt = 1;
+    loop {
+        execution
+            .check()
+            .map_err(|error| download_context(error, artifact))?;
+        eprintln!("Downloading {artifact} (attempt {attempt}/3)");
+        let result = request().and_then(|request| {
+            download_attempt(request, &temporary, target, artifact, sha256, execution)
+        });
+        let Err(mut error) = result else {
+            return Ok(());
+        };
+        match discard_partial(&temporary) {
+            Ok(true) => eprintln!("Discarded incomplete download: {artifact}"),
+            Ok(false) => {}
+            Err(cleanup) => {
+                error.message = format!("{}; {}", error.message, cleanup.message);
+                return Err(download_context(error, artifact));
+            }
+        }
+        if error.code != "download_incomplete" || attempt == 3 {
+            if error.code == "download_incomplete" {
+                error.code = "download_failed".into();
+            }
+            return Err(download_context(error, artifact));
+        }
+        eprintln!("Retrying {artifact} from byte 0: {}", error.message);
+        for _ in 0..attempt * 10 {
+            execution
+                .check()
+                .map_err(|error| download_context(error, artifact))?;
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        attempt += 1;
+    }
+}
+
+fn download_attempt(
+    request: reqwest::blocking::RequestBuilder,
+    temporary: &Path,
+    target: &Path,
+    artifact: &str,
+    sha256: Option<&str>,
+    execution: &Execution,
+) -> Result<()> {
+    let response = request.send();
+    execution.check()?;
+    let mut response = response.map_err(|error| {
+        let retryable = error.is_connect() || error.is_timeout() || error.is_request();
+        let mut error = network_error(error);
+        error.code = if retryable {
+            "download_incomplete"
+        } else {
+            "download_failed"
+        }
+        .into();
+        error.message = format!("Open artifact response: {}", error.message);
+        error
+    })?;
+    let status = response.status();
+    if !status.is_success() {
+        return Err(AppError::new(
+            if status.is_server_error() || status.as_u16() == 429 {
+                "download_incomplete"
+            } else {
+                "download_failed"
+            },
+            format!("Open artifact response: HTTP {status}"),
+        ));
+    }
+    let total = response.content_length();
+    let mut output = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(temporary)
+        .map_err(|error| {
+            AppError::new(
+                "io_error",
+                format!("Create partial download {}: {error}", temporary.display()),
+            )
+        })?;
+    let mut hash = Sha256::new();
+    let mut received = 0u64;
+    let mut progress = Instant::now();
+    transfer_progress(artifact, received, total);
+    let mut buffer = [0u8; 65_536];
+    loop {
+        execution.check()?;
+        let read = response.read(&mut buffer);
+        execution.check()?;
+        let count = read.map_err(|error| {
+            let kind = error.kind();
+            let detail = error.into_inner().map_or_else(
+                || format!("response I/O error ({kind:?})"),
+                |inner| match inner.downcast::<reqwest::Error>() {
+                    Ok(error) => error.without_url().to_string(),
+                    Err(_) => format!("response I/O error ({kind:?})"),
+                },
+            );
+            AppError::new(
+                "download_incomplete",
+                format!("Read response after {received} bytes: {detail}"),
+            )
+        })?;
+        if count == 0 {
+            break;
+        }
+        output
+            .write_all(&buffer[..count])
+            .map_err(|error| AppError::new("io_error", format!("Write artifact bytes: {error}")))?;
+        hash.update(&buffer[..count]);
+        received += count as u64;
+        if progress.elapsed() >= Duration::from_secs(2) {
+            transfer_progress(artifact, received, total);
+            progress = Instant::now();
+        }
+    }
+    if total.is_some_and(|total| received != total) {
+        return Err(AppError::new(
+            "download_incomplete",
+            format!(
+                "Response ended after {received} bytes; expected {}",
+                total.unwrap()
+            ),
+        ));
+    }
+    eprintln!("Verifying {artifact} ({received} bytes)");
+    if sha256.is_some_and(|expected| format!("{:x}", hash.finalize()) != expected) {
+        return Err(AppError::new(
+            "download_checksum_mismatch",
+            "Artifact did not match its expected SHA256",
+        ));
+    }
+    output
+        .sync_all()
+        .map_err(|error| AppError::new("io_error", format!("Flush artifact bytes: {error}")))?;
+    drop(output);
+    execution.check()?;
+    fs::rename(temporary, target).map_err(|error| {
+        AppError::new(
+            "io_error",
+            format!("Publish verified artifact {}: {error}", target.display()),
+        )
+    })?;
+    eprintln!("Downloaded {artifact} ({received} bytes)");
+    Ok(())
+}
+
+fn transfer_progress(artifact: &str, received: u64, total: Option<u64>) {
+    if let Some(total) = total {
+        eprintln!("Downloading {artifact}: {received}/{total} bytes");
+    } else {
+        eprintln!("Downloading {artifact}: {received} bytes");
+    }
+}
+
+fn discard_partial(path: &Path) -> Result<bool> {
+    match fs::remove_file(path) {
+        Ok(()) => Ok(true),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(error) => Err(AppError::new(
+            "io_error",
+            format!("Discard partial download {}: {error}", path.display()),
+        )),
+    }
+}
+
 pub(crate) fn acquire_lock(path: &Path, execution: &Execution) -> Result<File> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
@@ -583,22 +759,88 @@ mod tests {
                 }
             });
             let execution = Execution::new(timeout, Arc::new(AtomicBool::new(false)));
-            let mut response = client(&execution)
-                .unwrap()
-                .get(format!("http://{address}"))
-                .send()
-                .unwrap();
-            let mut body = Vec::new();
-            let result = response.read_to_end(&mut body);
+            let directory = tempfile::tempdir().unwrap();
+            let target = directory.path().join("artifact");
+            let result = download_artifact(
+                &target,
+                "slow fixture artifact",
+                Some(&format!("{:x}", Sha256::digest(b"ab"))),
+                || Ok(client(&execution)?.get(format!("http://{address}"))),
+                &execution,
+            );
             if timeout.is_some() {
-                assert!(result.is_err());
-                assert_eq!(execution.check().unwrap_err().code, "timeout");
+                assert_eq!(result.unwrap_err().code, "timeout");
+                assert!(!target.exists());
             } else {
                 result.unwrap();
-                assert_eq!(body, b"ab");
-                execution.check().unwrap();
+                assert_eq!(fs::read(&target).unwrap(), b"ab");
             }
+            assert!(!target.with_extension("nalcos-download.part").exists());
             server.join().unwrap();
         }
+    }
+
+    #[test]
+    fn truncated_download_restarts_and_invalid_checksum_never_publishes() {
+        use std::io::{BufRead, BufReader};
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let contents = b"verified fixture artifact";
+        let server = std::thread::spawn(move || {
+            for body in [&contents[..5], contents.as_slice(), contents.as_slice()] {
+                let (mut stream, _) = listener.accept().unwrap();
+                {
+                    let mut request = BufReader::new(&mut stream);
+                    let mut line = String::new();
+                    while request.read_line(&mut line).unwrap() != 0 {
+                        if line.ends_with("\r\n\r\n") {
+                            break;
+                        }
+                    }
+                }
+                write!(
+                    stream,
+                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                    contents.len()
+                )
+                .unwrap();
+                stream.write_all(body).unwrap();
+            }
+        });
+        let directory = tempfile::tempdir().unwrap();
+        let target = directory.path().join("artifact");
+        fs::write(
+            target.with_extension("nalcos-download.part"),
+            "stale partial",
+        )
+        .unwrap();
+        let execution = Execution::unlimited();
+        let request = || Ok(client(&execution)?.get(format!("http://{address}")));
+        download_artifact(
+            &target,
+            "fixture artifact",
+            Some(&format!("{:x}", Sha256::digest(contents))),
+            request,
+            &execution,
+        )
+        .unwrap();
+        assert_eq!(fs::read(&target).unwrap(), contents);
+        assert!(!target.with_extension("nalcos-download.part").exists());
+
+        let invalid = directory.path().join("invalid");
+        let error = download_artifact(
+            &invalid,
+            "checksum fixture",
+            Some(&"0".repeat(64)),
+            request,
+            &execution,
+        )
+        .unwrap_err();
+        assert_eq!(error.code, "download_checksum_mismatch");
+        assert!(error.message.contains("checksum fixture"));
+        assert!(error.action.unwrap().contains("Retry"));
+        assert!(!invalid.exists());
+        assert!(!invalid.with_extension("nalcos-download.part").exists());
+        server.join().unwrap();
     }
 }

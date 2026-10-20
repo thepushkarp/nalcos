@@ -1,13 +1,10 @@
-use super::hub::{
-    acquire_lock, checked_response, client, inspect_file, network_error, temporary_path,
-};
+use super::hub::{acquire_lock, client, download_artifact, inspect_file, temporary_path};
 use super::{Device, ResolveOptions};
 use crate::error::{AppError, Result};
 use crate::execution::Execution;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::fs::{self, File, OpenOptions};
-use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone)]
@@ -321,39 +318,25 @@ pub fn ensure_cpu_runtime(options: ResolveOptions, execution: &Execution) -> Res
     }
     let archive_path = runtime_root()?.join(pack.archive);
     if !archive_path.is_file() || inspect_file(&archive_path, execution)?.sha256 != pack.sha256 {
-        let temporary = temporary_path(&archive_path);
         let url = format!(
             "https://github.com/microsoft/onnxruntime/releases/download/v{ORT_VERSION}/{}",
             pack.archive
         );
-        let response = client(execution)?.get(url).send().map_err(network_error)?;
-        let mut response = checked_response(response, "download ONNX Runtime")?;
-        let mut file = OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&temporary)?;
-        let mut hash = Sha256::new();
-        let mut buffer = [0u8; 65_536];
-        loop {
-            execution.check()?;
-            let count = response.read(&mut buffer);
-            execution.check()?;
-            let count = count?;
-            if count == 0 {
-                break;
+        download_artifact(
+            &archive_path,
+            pack.archive,
+            Some(pack.sha256),
+            || Ok(client(execution)?.get(&url)),
+            execution,
+        )
+        .map_err(|mut error| {
+            if error.code == "download_checksum_mismatch" {
+                error.code = "runtime_checksum_mismatch".into();
             }
-            hash.update(&buffer[..count]);
-            file.write_all(&buffer[..count])?;
-        }
-        if format!("{:x}", hash.finalize()) != pack.sha256 {
-            return Err(AppError::new(
-                "runtime_checksum_mismatch",
-                "ONNX Runtime archive does not match the pinned release checksum",
-            ));
-        }
-        file.sync_all()?;
-        fs::rename(temporary, &archive_path)?;
+            error
+        })?;
     }
+    eprintln!("Installing ONNX Runtime {ORT_VERSION}");
     fs::create_dir_all(&directory)?;
     let decoder = flate2::read::GzDecoder::new(File::open(&archive_path)?);
     let mut archive = tar::Archive::new(decoder);
