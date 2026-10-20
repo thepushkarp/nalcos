@@ -1,6 +1,6 @@
 # Configuration
 
-Fresh `nalcos init` defaults to MiniLM INT8 on CPU. Lexical search and fresh plain `sync` can bootstrap an index without a model. `init` and explicit model changes may download required assets; search never installs a model implicitly. The alpha default prioritizes download size and CPU indexing speed; it is not a claim that the broader qualification gates have passed.
+Fresh `nalcos init` defaults to CodeRankEmbed 137M FP16 with automatic device selection. Lexical search and fresh plain `sync` can bootstrap an index without a model. `init` and explicit model changes may download required assets; search never installs a model implicitly.
 
 ## Configuration and data locations
 
@@ -10,7 +10,7 @@ Configuration files use `version = 1`. Unknown fields and unsupported versions a
 
 ```sh
 nalcos --config examples/config.toml status
-nalcos --config examples/config.toml init --model profile:minilm
+nalcos --config examples/config.toml init --model profile:coderank
 ```
 
 `init` and `sync` choose a model in this order:
@@ -18,7 +18,7 @@ nalcos --config examples/config.toml init --model profile:minilm
 1. An explicit `--model`.
 2. A nonempty `default_model` whose value changed since the last applied setup.
 3. The persisted pending selection, if a replacement generation is being built; otherwise the active selection.
-4. For `init` only, the built-in `minilm-int8` CPU profile when no selection exists.
+4. For `init` only, the built-in `coderank` profile when no selection exists.
 
 A CLI model choice persists across later syncs. An unchanged configuration default cannot switch it back. Removing `default_model` also leaves the persisted selection in place. Edits to the selected named profile are applied by `init` or `sync`; `search` continues using the active generation until setup applies those edits.
 
@@ -36,18 +36,21 @@ Identical document content can reuse active-model vectors before obsolete associ
 
 ## Select a model
 
-The following recipes are registered. `minilm-int8` is the alpha default; other recipes remain explicit choices:
+The following recipes are registered. `coderank` is the alpha default; other recipes remain explicit choices:
 
 | Model ID | Alias | Backend and registered artifact |
 | --- | --- | --- |
-| `sentence-transformers/multi-qa-MiniLM-L6-cos-v1` | `minilm-int8` | ONNX CPU, `onnx/model_qint8_arm64.onnx` on ARM64 or `onnx/model_quint8_avx2.onnx` on AVX2 x86_64 |
+| `handwoven8588/CodeRankEmbed-GGUF` | `coderank` | GGUF FP16, `CodeRankEmbed-f16.gguf` |
+| `sentence-transformers/multi-qa-MiniLM-L6-cos-v1` | `minilm-int8` | ONNX INT8, `onnx/model_qint8_arm64.onnx` on ARM64 or `onnx/model_quint8_avx2.onnx` on AVX2 x86_64 |
 | `sentence-transformers/multi-qa-MiniLM-L6-cos-v1` | `minilm` | ONNX, `onnx/model.onnx` |
 | `jinaai/jina-embeddings-v2-base-code` | `jina-code`, `jina` | ONNX, `onnx/model.onnx` |
 | `BAAI/bge-small-en-v1.5` | `bge-small` | ONNX, `onnx/model.onnx` |
 | `ggml-org/embeddinggemma-300M-GGUF` | `embeddinggemma`, `gemma` | GGUF, `embeddinggemma-300M-Q8_0.gguf` |
 | `Qwen/Qwen3-Embedding-0.6B-GGUF` | `qwen3` | GGUF, `Qwen3-Embedding-0.6B-Q8_0.gguf` |
 
-The INT8 default pins revision `b207367332321f8e44f96e224ef15bc607f4dbf0`, 384 dimensions, mean pooling, and a 512-token input limit. Its platform-specific artifact is resolved during setup and persisted in the generation. Unsupported CPUs receive an actionable error rather than a silent precision change. The `minilm` alias and bare MiniLM HF ID retain the FP32 recipe.
+The CodeRank default pins revision `14be4104a35a5f4e32e6e225955ccf271fb5b956` of the community GGUF conversion of [nomic-ai/CodeRankEmbed](https://huggingface.co/nomic-ai/CodeRankEmbed). It uses CLS pooling, 768 dimensions, a 512-token input limit, and the query prefix `Represent this query for searching relevant code: `; documents have no prefix. The FP16 artifact is approximately 274 MB. CPU/Metal parity has passed on Apple M2; parity with the original model remains unqualified.
+
+`minilm-int8` pins revision `b207367332321f8e44f96e224ef15bc607f4dbf0`, 384 dimensions, mean pooling, and a 512-token input limit. Its platform-specific artifact is resolved during setup and persisted in the generation. Unsupported CPUs receive an actionable error rather than a silent precision change. The `minilm` alias and bare MiniLM HF ID retain the FP32 recipe.
 
 Each registered recipe pins a model revision and defines its dimensions, token limit, pooling, and query/document formatting. A bare HF ID must have a known recipe. Other repositories require a custom `[profiles.NAME]` section; NaLCoS cannot infer an arbitrary model's embedding contract from its repository name.
 
@@ -71,7 +74,7 @@ A model change builds a complete replacement embedding generation for retained i
 
 HF model artifacts use the shared Hugging Face cache: `HF_HUB_CACHE` takes precedence; otherwise the hub cache is derived from `HF_HOME`, normally `~/.cache/huggingface/hub`. Cached snapshots are reused across repositories. Model weights are not copied into each NaLCoS index.
 
-Explicit setup may download missing artifacts. Artifact downloads use the remaining `--timeout` budget, with no fixed total-transfer cap when that option is absent; connection setup has a 15-second timeout. Automatic search updates and `status` never download models or runtime libraries. HF credentials can be supplied through `HF_TOKEN` or the Hugging Face token cache; keep them out of the TOML file. See [HF cache documentation](https://huggingface.co/docs/huggingface_hub/en/guides/manage-cache) for shared-cache management.
+Explicit setup may download missing artifacts. Phase, artifact, and bounded byte progress appear on stderr. Recoverable transfer failures retry up to three attempts; incomplete NaLCoS-owned partials are discarded and each attempt restarts from byte zero. Completed downloads remain cached. Artifact downloads use the remaining `--timeout` budget, with no fixed total-transfer cap when that option is absent; connection setup has a 15-second timeout. A stalled HTTP request can delay Ctrl-C until it returns; set `--timeout` to bound setup. Automatic search updates and `status` never download models or runtime libraries. HF credentials can be supplied through `HF_TOKEN` or the Hugging Face token cache; keep them out of the TOML file. See [HF cache documentation](https://huggingface.co/docs/huggingface_hub/en/guides/manage-cache) for shared-cache management.
 
 ## Index and retrieval settings
 
@@ -91,6 +94,8 @@ Blob and patch limits must be positive; the document limit must be at least `256
 
 Exclusions and size limits affect coverage. Inspect reported omissions before interpreting absent results. A search's repeatable `--path` accepts Git pathspecs and narrows that query; it is not a persistent indexing exclusion. Diff evidence must match the old or new path. Commit-message evidence remains eligible when the commit's first-parent changes touch a matching path; unrelated file diffs from the same commit are excluded.
 
+Binary content does not consume the text-source budget. Blob inspection has a separate bounded read budget; exhausted commits report `read_budget` omissions. Run `sync` when `source_refresh_required` is reported to refresh cached extraction while reusing unchanged vectors.
+
 ## Runtime settings
 
 | Setting | Default | Meaning |
@@ -101,11 +106,11 @@ Exclusions and size limits affect coverage. Inspect reported omissions before in
 | `runtime.batch_size` | `8` | Indexing batch size; valid range `1..=1024`. Query embedding uses a batch size of one. |
 | `runtime.ort_library` | Unset | Optional path to an existing ONNX Runtime shared library. |
 
-Device selection uses the global `--device` option first, then a non-`auto` workload setting (`runtime.query_device` or `runtime.index_device`), then the selected profile's `device`. Custom profiles default to `auto`; the built-in `minilm-int8` profile selects `cpu`. An explicit `--device auto` overrides even a strict profile device; use it with `init` to request automatic calibration. Search uses a matching cached calibration or falls back to CPU, as described below.
+Device selection uses the global `--device` option first, then a non-`auto` workload setting (`runtime.query_device` or `runtime.index_device`), then the selected profile's `device`. Built-in and custom profiles default to `auto`. An explicit `--device auto` overrides even a strict profile device; use it with `init` to request automatic calibration. Search uses a matching cached calibration or falls back to CPU, as described below.
 
 `sync` applies changed device, thread, batch, or runtime-library settings by probing both workloads and calibrating automatic device choices while preserving the generation and existing vectors; unchanged syncs skip those probes.
 
-Runtime device names are `auto`, `cpu`, `metal`, `cuda`, and `vulkan`; CUDA and Vulkan may include a zero-based device index, such as `cuda:1`. Backend support and device availability are checked at runtime. Inspect the reported effective backend/device instead of assuming the requested accelerator was used.
+Runtime device names are `auto`, `cpu`, `metal`, `coreml`, `cuda`, and `vulkan`; CUDA and Vulkan may include a zero-based device index, such as `cuda:1`. Automatic calibration probes the first device of each backend; select another GPU explicitly by index. Backend support and device availability are checked at runtime. Inspect the reported effective backend/device instead of assuming the requested accelerator was used.
 
 ONNX uses a dynamically loaded runtime library. Explicit setup can install the pinned ONNX Runtime `1.23.2` CPU package when needed; search does not install it implicitly. On macOS, libraries older than `1.23.2` are rejected before runtime initialization because they can abort during process shutdown. A configured `runtime.ort_library` takes precedence over `NALCOS_ORT_LIBRARY`, then `ORT_DYLIB_PATH`; otherwise NaLCoS checks bundled/managed libraries. `NALCOS_RUNTIME_CACHE` can relocate the managed runtime cache. GGUF uses the bundled llama.cpp backend. Native Metal support is built for Apple Silicon. Linux accelerator builds are optional:
 
@@ -121,7 +126,7 @@ The corresponding native SDK/toolchain is required. CUDA remains unqualified in 
 
 ### Compare CPU and Metal
 
-During `init`, an effective `auto` device measures the available devices against CPU using the same artifact. Query and indexing workloads have separate calibration because their batch sizes differ. Search reuses a matching calibration; without one, it selects CPU and reports why. ONNX `auto` uses CPU on macOS; Metal requires a compatible GGUF model.
+During `init`, an effective `auto` device detects devices supported by the model's runtime, checks their output against CPU using the same artifact, and selects the fastest eligible device. Query and indexing workloads have separate calibration because their batch sizes differ: query selection includes startup and one query, while indexing includes startup and 32 batches. Timings use three warm measurements after a warmup. Search reuses a matching calibration; without one, it selects CPU and reports why. ONNX can use CoreML on macOS when the installed runtime and model support it; Metal requires a compatible GGUF model. CoreML may schedule work across the CPU, GPU, and Neural Engine.
 
 After explicitly installing a GGUF candidate and building its index, inspect each device on Apple Silicon:
 
@@ -160,7 +165,7 @@ Profiles live under `[profiles.NAME]` and are selected with `--model profile:NAM
 | `api_key_env` | Name of the environment variable holding an API credential. |
 | `device` | Profile device, default `auto`; used when the workload setting is `auto` and no CLI override is supplied. |
 
-The [complete native example](../examples/config.toml) pins the MiniLM recipe. Device placement and credential-variable names are operational settings. The document-vector fingerprint covers the document embedding contract and resolved file contents; a query-prefix-only change does not require recomputing document vectors. Applying that change with `sync` still probes the encoder and, for API profiles, checks the provider's identity. Pending documents are embedded normally.
+The [complete native example](../examples/config.toml) pins the CodeRank recipe. Device placement and credential-variable names are operational settings. The document-vector fingerprint covers the document embedding contract and resolved file contents; a query-prefix-only change does not require recomputing document vectors. Applying that change with `sync` still probes the encoder and, for API profiles, checks the provider's identity. Pending documents are embedded normally.
 
 ### API embedding profiles
 

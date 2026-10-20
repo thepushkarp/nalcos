@@ -1,13 +1,10 @@
-use super::hub::{
-    acquire_lock, checked_response, client, inspect_file, network_error, temporary_path,
-};
+use super::hub::{acquire_lock, client, download_artifact, inspect_file, temporary_path};
 use super::{Device, ResolveOptions};
 use crate::error::{AppError, Result};
 use crate::execution::Execution;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::fs::{self, File, OpenOptions};
-use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone)]
@@ -59,8 +56,7 @@ pub struct Calibration {
 
 /// Version of the numerical and performance gates used to select automatic devices.
 /// Persist this with applied runtime settings so a stricter policy requires fresh setup.
-pub const CALIBRATION_POLICY: &str =
-    "calibration-policy-v2-parity9999-query3-doc3-10pct-32-batches";
+pub const CALIBRATION_POLICY: &str = "calibration-policy-v3-parity9999-fastest-median3-32-batches";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct CachedCalibration {
@@ -70,7 +66,12 @@ pub(crate) struct CachedCalibration {
 }
 
 fn calibration_path(model: &super::ResolvedModel, options: &RuntimeOptions) -> Result<PathBuf> {
-    let inventory = devices()?;
+    let inventory = available_devices(model.profile.backend, options)?;
+    let hardware = if model.profile.backend == super::Backend::Onnx {
+        devices()?
+    } else {
+        vec![]
+    };
     let library = if model.profile.backend == super::Backend::Onnx {
         let path = locate_ort_library(options.ort_library.as_deref())?;
         let metadata = fs::metadata(&path)?;
@@ -95,6 +96,7 @@ fn calibration_path(model: &super::ResolvedModel, options: &RuntimeOptions) -> R
         options.batch_size,
         options.device_index,
         inventory,
+        hardware,
         library,
         std::env::var("CUDA_VISIBLE_DEVICES").ok(),
     ))?;
@@ -163,6 +165,17 @@ pub struct DeviceInfo {
 /// Enumerates actual compiled GGML devices; loading and inference are separate capability probes.
 pub fn devices() -> Result<Vec<DeviceInfo>> {
     super::gguf::devices()
+}
+
+pub(crate) fn available_devices(
+    backend: super::Backend,
+    options: &RuntimeOptions,
+) -> Result<Vec<DeviceInfo>> {
+    match backend {
+        super::Backend::Onnx => super::onnx::devices(options),
+        super::Backend::Gguf => devices(),
+        _ => Ok(vec![]),
+    }
 }
 
 pub fn prepare_runtime(
@@ -305,39 +318,25 @@ pub fn ensure_cpu_runtime(options: ResolveOptions, execution: &Execution) -> Res
     }
     let archive_path = runtime_root()?.join(pack.archive);
     if !archive_path.is_file() || inspect_file(&archive_path, execution)?.sha256 != pack.sha256 {
-        let temporary = temporary_path(&archive_path);
         let url = format!(
             "https://github.com/microsoft/onnxruntime/releases/download/v{ORT_VERSION}/{}",
             pack.archive
         );
-        let response = client(execution)?.get(url).send().map_err(network_error)?;
-        let mut response = checked_response(response, "download ONNX Runtime")?;
-        let mut file = OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&temporary)?;
-        let mut hash = Sha256::new();
-        let mut buffer = [0u8; 65_536];
-        loop {
-            execution.check()?;
-            let count = response.read(&mut buffer);
-            execution.check()?;
-            let count = count?;
-            if count == 0 {
-                break;
+        download_artifact(
+            &archive_path,
+            pack.archive,
+            Some(pack.sha256),
+            || Ok(client(execution)?.get(&url)),
+            execution,
+        )
+        .map_err(|mut error| {
+            if error.code == "download_checksum_mismatch" {
+                error.code = "runtime_checksum_mismatch".into();
             }
-            hash.update(&buffer[..count]);
-            file.write_all(&buffer[..count])?;
-        }
-        if format!("{:x}", hash.finalize()) != pack.sha256 {
-            return Err(AppError::new(
-                "runtime_checksum_mismatch",
-                "ONNX Runtime archive does not match the pinned release checksum",
-            ));
-        }
-        file.sync_all()?;
-        fs::rename(temporary, &archive_path)?;
+            error
+        })?;
     }
+    eprintln!("Installing ONNX Runtime {ORT_VERSION}");
     fs::create_dir_all(&directory)?;
     let decoder = flate2::read::GzDecoder::new(File::open(&archive_path)?);
     let mut archive = tar::Archive::new(decoder);

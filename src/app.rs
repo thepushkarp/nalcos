@@ -1,5 +1,8 @@
 use crate::{
-    cli::{Cli, Command, Freshness, ModelArgs, ScopeArgs, SearchArgs, SearchMode, ShowArgs},
+    cli::{
+        Cli, Command, Freshness, ModelArgs, OmissionsArgs, ScopeArgs, SearchArgs, SearchMode,
+        ShowArgs,
+    },
     config::{Config, IndexConfig},
     embedding::{
         self, Backend, ChunkOptions, Encoder, InputKind, ModelProfile, ModelRequest,
@@ -8,8 +11,8 @@ use crate::{
     error::{AppError, Result},
     execution::Execution,
     git::{
-        DocumentRecord, EXTRACTION_VERSION, FilterOptions, IndexOptions, Repository, ScopeOptions,
-        ScopeSnapshot, ShowOptions,
+        DocumentKind, DocumentRecord, EXTRACTION_VERSION, FilterOptions, IndexOptions, Repository,
+        ScopeOptions, ScopeSnapshot, ShowOptions,
     },
     output::{self, truncate_utf8},
     store::{Candidate, CandidateFilter, Coverage, Generation, Store, VectorChunk},
@@ -18,7 +21,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet},
     fs::{File, OpenOptions},
     path::Path,
     time::{Duration, Instant},
@@ -130,6 +133,7 @@ pub fn run(cli: &Cli, execution: &Execution) -> Result<Value> {
             args.check,
             execution,
         )?,
+        Command::Omissions(args) => omissions(&repo, &index_path, args, execution)?,
     };
     Ok(result)
 }
@@ -183,6 +187,126 @@ fn coverage_views(coverage: &Coverage, semantic_available: bool) -> (Value, Valu
     )
 }
 
+fn source_coverage(store: Option<&Store>, execution: &Execution) -> Result<Value> {
+    let counts = store
+        .map(|store| store.omission_counts(execution))
+        .transpose()?
+        .unwrap_or_default();
+    let mut categories = BTreeMap::from([
+        ("expected", 0usize),
+        ("limited", 0),
+        ("unavailable", 0),
+        ("other", 0),
+    ]);
+    let mut reasons = Vec::new();
+    for (reason, count) in counts {
+        let (category, action) = match reason.as_str() {
+            "binary" => ("expected", "Binary or non-UTF-8 content is not indexed"),
+            "excluded" => (
+                "expected",
+                "Review index.exclude_paths; change exclusions and run nalcos sync if this source is needed",
+            ),
+            "submodule" => ("expected", "Index the submodule repository separately"),
+            "blob_limit" => (
+                "limited",
+                "Review index.max_blob_bytes, then run nalcos sync",
+            ),
+            "document_limit" | "message_limit" => (
+                "limited",
+                "Review index.max_document_bytes, then run nalcos sync",
+            ),
+            "patch_limit" | "source_budget" | "read_budget" => (
+                "limited",
+                "Review index.exclude_paths or index.max_patch_bytes, then run nalcos sync",
+            ),
+            "source_limit" => (
+                "limited",
+                "Reduce index.max_blob_bytes or exclude large files, then run nalcos sync",
+            ),
+            "missing_object" | "missing_parent" => (
+                "unavailable",
+                "Restore missing Git objects or deepen shallow history, then run nalcos sync",
+            ),
+            _ => (
+                "other",
+                "Inspect the recorded details before interpreting absent results",
+            ),
+        };
+        *categories
+            .get_mut(category)
+            .expect("known omission category") += count;
+        reasons.push(json!({"reason":reason,"count":count,"category":category,"action":action}));
+    }
+    let total: usize = categories.values().sum();
+    Ok(json!({
+        "scope":"selected_commits_all_paths", "path_filter_applied":false,
+        "recorded_omissions":total, "categories":categories, "reasons":reasons,
+    }))
+}
+
+fn add_omission_warning(warnings: &mut Vec<String>, source: &Value) {
+    if source["recorded_omissions"].as_u64().unwrap_or(0) == 0 {
+        return;
+    }
+    let reasons = source["reasons"]
+        .as_array()
+        .expect("omission reasons")
+        .iter()
+        .map(|reason| {
+            format!(
+                "{} {} ({})",
+                reason["reason"].as_str().unwrap_or("other"),
+                reason["count"],
+                reason["category"].as_str().unwrap_or("other")
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+    warnings.push(format!("Source omissions across all paths in selected commits: {reasons}. Commit coverage does not imply complete source text; inspect with nalcos omissions using the same repository, configuration, and history options"));
+}
+
+fn omissions(
+    repo: &Repository,
+    path: &Path,
+    args: &OmissionsArgs,
+    execution: &Execution,
+) -> Result<Value> {
+    let scope = repo.resolve_scope(&scope_options(&args.scope), execution)?;
+    let (coverage, source, mut records) = if path.exists() {
+        let mut store = Store::read_only(path)?;
+        store.set_scope(&scope.oids)?;
+        store.begin_snapshot()?;
+        let coverage = store.scope_coverage()?;
+        let source = source_coverage(Some(&store), execution)?;
+        let records =
+            store.omission_page(args.limit as usize + 1, args.offset as usize, execution)?;
+        store.end_snapshot()?;
+        (coverage, source, records)
+    } else {
+        (
+            Coverage {
+                total_commits: scope.oids.len(),
+                ..Coverage::default()
+            },
+            source_coverage(None, execution)?,
+            Vec::new(),
+        )
+    };
+    let next_offset =
+        (records.len() > args.limit as usize).then_some(args.offset as usize + args.limit as usize);
+    records.truncate(args.limit as usize);
+    if !repo.validate_snapshot(&scope_options(&args.scope), &scope, execution)? {
+        return Err(repository_changed());
+    }
+    execution.check()?;
+    let (history, _) = coverage_views(&coverage, false);
+    Ok(json!({
+        "schema_version":1,"command":"omissions","repository":repository_view(repo),"scope":scope_view(&scope)?,
+        "history_coverage":history,"source_coverage":source,"records":records,
+        "limit":args.limit,"offset":args.offset,"next_offset":next_offset,
+    }))
+}
+
 fn snapshot(generation: &Generation) -> Result<ModelSnapshot> {
     serde_json::from_value(generation.model.clone()).map_err(|e| {
         AppError::new(
@@ -200,6 +324,49 @@ fn generation_view(generation: Option<&Generation>) -> Result<Value> {
     Ok(
         json!({"id":generation.id,"fingerprint":generation.fingerprint,"state":generation.state,"model":saved.resolved.profile.id,"revision":saved.resolved.profile.revision,"artifact":saved.resolved.profile.artifact,"dimensions":saved.resolved.profile.dimensions,"backend":saved.resolved.profile.backend,"query_prefix":saved.resolved.profile.query_prefix,"document_prefix":saved.resolved.profile.document_prefix}),
     )
+}
+
+fn staging_progress(
+    store: &Store,
+    config: &Config,
+    generation: Option<&Generation>,
+) -> Result<Value> {
+    let Some(generation) = generation else {
+        return Ok(Value::Null);
+    };
+    let progress = store.generation_progress(generation.id, false)?;
+    Ok(json!({
+        "generation_id": generation.id,
+        "completed": progress.completed,
+        "total": progress.total,
+        "remaining": progress.total.saturating_sub(progress.completed),
+        "scope": "generation",
+        "resume_command": staging_compatible(config, generation)?.then_some("nalcos sync"),
+    }))
+}
+
+fn staging_compatible(config: &Config, generation: &Generation) -> Result<bool> {
+    let saved = snapshot(generation)?;
+    let desired = selected_profile(&ModelArgs::default(), config, Some(generation), true)?.0;
+    Ok(
+        saved.chunk_overlap_tokens == config.index.chunk_overlap_tokens
+            && same_document_profile(&desired, &Some(saved.resolved.profile)),
+    )
+}
+
+fn semantic_unavailable_with_staging(
+    config: &Config,
+    generation: Option<&Generation>,
+) -> Result<AppError> {
+    if let Some(generation) = generation
+        && staging_compatible(config, generation)?
+    {
+        return Ok(semantic_unavailable().action(format!(
+            "Run nalcos sync to resume embedding generation {}, or use --mode lexical",
+            generation.id
+        )));
+    }
+    Ok(semantic_unavailable())
 }
 
 fn selected_profile(
@@ -268,6 +435,11 @@ fn selected_profile(
     }
     if let Some(artifact) = &args.variant {
         profile.artifact = artifact.clone();
+    }
+    if apply_config && selector.as_deref() == Some("minilm-int8") {
+        // Built-in device policy is operational; persisted artifact overrides
+        // still define the document embedding contract.
+        profile.device = embedding::profile("minilm-int8")?.device;
     }
     profile.validate()?;
     if apply_config && config.index.chunk_overlap_tokens >= profile.max_tokens {
@@ -452,16 +624,28 @@ fn fill_embeddings(
     encoder: &mut Encoder,
     overlap: usize,
     scoped: bool,
+    report_runtime: bool,
     execution: &Execution,
 ) -> Result<usize> {
     let mut completed = 0;
     let mut progress = Instant::now();
-    let max_tokens = snapshot(generation)?.resolved.profile.max_tokens;
+    let model = snapshot(generation)?.resolved.profile;
+    let max_tokens = model.max_tokens;
     if overlap >= max_tokens {
         return Err(AppError::new(
             "invalid_config",
             "index.chunk_overlap_tokens must be smaller than the model's token budget",
         ));
+    }
+    let retained = store.generation_progress(generation.id, scoped)?;
+    let report_runtime = report_runtime && retained.completed < retained.total;
+    let mut reported_runtime = encoder.info().clone();
+    if report_runtime {
+        output::indexing_runtime(&model, encoder.info(), None)?;
+        eprintln!(
+            "Indexing embeddings: {}/{} documents completed ({} retained)",
+            retained.completed, retained.total, retained.completed
+        );
     }
     loop {
         execution.check()?;
@@ -492,10 +676,16 @@ fn fill_embeddings(
             documents.push((document.id, chunks));
         }
         let vectors = if texts.is_empty() {
-            vec![]
+            Ok(vec![])
         } else {
-            encoder.encode(&texts, InputKind::Document, execution)?
+            encoder.encode(&texts, InputKind::Document, execution)
         };
+        if report_runtime {
+            // Runtime fallback can happen inside a batch, including a failed batch.
+            output::indexing_runtime(&model, encoder.info(), Some(&reported_runtime))?;
+            reported_runtime = encoder.info().clone();
+        }
+        let vectors = vectors?;
         if vectors.len() != texts.len() {
             return Err(AppError::new(
                 "embedding_count_mismatch",
@@ -517,7 +707,11 @@ fn fill_embeddings(
             completed += 1;
         }
         if progress.elapsed() >= Duration::from_secs(2) {
-            eprintln!("Indexing embeddings: {completed} documents completed");
+            eprintln!(
+                "Indexing embeddings: {}/{} documents completed",
+                retained.completed + completed,
+                retained.total
+            );
             progress = Instant::now();
         }
     }
@@ -603,7 +797,7 @@ fn sync(
         && selection_args.model.is_none()
         && config.default_model.is_none()
     {
-        selection_args.model = Some("minilm-int8".into());
+        selection_args.model = Some("coderank".into());
     }
     let (profile, selector, requested_profile) = selected_profile(
         &selection_args,
@@ -729,6 +923,7 @@ fn sync(
     }
     let mut documents_embedded = 0;
     let mut runtime = Value::Null;
+    let mut indexing_runtime = Value::Null;
     if let Some(resolved) = resolved {
         let fingerprint = document_fingerprint(&resolved, policy.chunk_overlap_tokens);
         let mut saved = ModelSnapshot {
@@ -798,9 +993,13 @@ fn sync(
                 &mut encoder,
                 policy.chunk_overlap_tokens,
                 false,
+                true,
                 execution,
             )?;
             runtime = serde_json::to_value(encoder.info())?;
+            if pending {
+                indexing_runtime = runtime.clone();
+            }
             saved.runtime = Some(runtime.clone());
             drop(encoder);
             if apply_config {
@@ -845,8 +1044,17 @@ fn sync(
                 &mut encoder,
                 policy.chunk_overlap_tokens,
                 false,
+                true,
                 execution,
             )?;
+            indexing_runtime = serde_json::to_value(encoder.info())?;
+            saved.runtime = Some(indexing_runtime.clone());
+            store.update_generation_model(generation.id, &serde_json::to_value(&saved)?)?;
+            if runtime.get("index").is_some() {
+                runtime["index"] = indexing_runtime.clone();
+            } else {
+                runtime = indexing_runtime.clone();
+            }
         }
         store.cleanup_retired()?;
     }
@@ -876,7 +1084,7 @@ fn sync(
         );
     }
     Ok(
-        json!({"schema_version":1,"command":if initialization {"init"} else {"sync"},"dry_run":false,"repository":repository_view(repo),"scope":scope_view(&scope)?,"commits_added":commits_added,"commits_pruned":commits_pruned,"documents_embedded":documents_embedded,"source_refresh_required":false,"history_coverage":history,"embedding_coverage":embedding,"active_generation":generation_view(active.as_ref())?,"staging_generation":generation_view(store.staging_generation()?.as_ref())?,"runtime":runtime,"warnings":warnings}),
+        json!({"schema_version":1,"command":if initialization {"init"} else {"sync"},"dry_run":false,"repository":repository_view(repo),"scope":scope_view(&scope)?,"commits_added":commits_added,"commits_pruned":commits_pruned,"documents_embedded":documents_embedded,"source_refresh_required":false,"history_coverage":history,"embedding_coverage":embedding,"active_generation":generation_view(active.as_ref())?,"staging_generation":generation_view(store.staging_generation()?.as_ref())?,"runtime":runtime,"indexing_runtime":indexing_runtime,"warnings":warnings}),
     )
 }
 
@@ -979,6 +1187,7 @@ fn refresh_search(
             &mut encoder,
             saved.chunk_overlap_tokens,
             true,
+            false,
             execution,
         )?;
     }
@@ -1026,7 +1235,8 @@ fn search(
         };
         let scope = repo.resolve_scope(&scope_options, execution)?;
         trace("Git scope");
-        let eligible = repo.filter_scope(&scope, &filter_options, execution)?;
+        let filtered = repo.filter_scope(&scope, &filter_options, execution)?;
+        let eligible = &filtered.oids;
         trace("history filters");
         let mut warnings = Vec::new();
         if scope.shallow {
@@ -1046,7 +1256,7 @@ fn search(
                 config,
                 repo,
                 path,
-                &eligible,
+                eligible,
                 args.mode,
                 args.freshness == Freshness::Wait,
                 &indexing_execution,
@@ -1085,12 +1295,12 @@ fn search(
                 }
             }
             return Ok(
-                json!({"schema_version":1,"command":"search","repository":repository_view(repo),"scope":scope_view(&scope)?,"mode_requested":args.mode,"mode_used":"lexical","source_refresh_required":false,"history_coverage":history,"embedding_coverage":embedding,"results":[],"active_generation":null,"runtime":null,"output_truncated":false,"warnings":warnings}),
+                json!({"schema_version":1,"command":"search","repository":repository_view(repo),"scope":scope_view(&scope)?,"mode_requested":args.mode,"mode_used":"lexical","source_refresh_required":false,"history_coverage":history,"embedding_coverage":embedding,"source_coverage":source_coverage(None, execution)?,"results":[],"active_generation":null,"runtime":null,"output_truncated":false,"warnings":warnings}),
             );
         }
         let mut store = Store::read_only(path)?;
         trace("refresh and index open");
-        store.set_scope(&eligible)?;
+        store.set_scope(eligible)?;
         store.begin_snapshot()?;
         trace("index scope");
         let source_refresh_required = source_refresh_required(&store)?;
@@ -1104,7 +1314,15 @@ fn search(
             None
         } else {
             let encoded = (|| -> Result<Vec<f32>> {
-                let generation = active.as_ref().ok_or_else(semantic_unavailable)?;
+                let generation = match active.as_ref() {
+                    Some(generation) => generation,
+                    None => {
+                        return Err(semantic_unavailable_with_staging(
+                            config,
+                            store.staging_generation()?.as_ref(),
+                        )?);
+                    }
+                };
                 let saved = snapshot(generation)?;
                 check_offline(&saved.resolved, cli.offline)?;
                 let mut encoder = Encoder::load(
@@ -1145,11 +1363,12 @@ fn search(
         if !args.paths.is_empty() {
             candidate_filter.allowed_documents = Some(repo.matching_document_ids(
                 &store.document_paths_in_scope(execution)?,
-                &args.paths,
+                &filtered,
                 execution,
             )?);
+            trace("document path filters");
         }
-        let ranked = loop {
+        let mut ranked = loop {
             execution.check()?;
             let lexical = if used != SearchMode::Semantic {
                 store.lexical_candidates(
@@ -1201,6 +1420,14 @@ fn search(
             }
             candidate_limit = candidate_limit.saturating_mul(2).min(eligible.len().max(1));
         };
+        let returned = ranked.len().min(args.limit as usize);
+        missing_sources.extend(add_supporting_hunks(
+            &mut ranked[..returned],
+            &store,
+            repo,
+            &candidate_filter,
+            execution,
+        )?);
         if !missing_sources.is_empty() {
             warnings.push(format!(
                 "Omitted {} evidence records whose Git source could not be verified",
@@ -1209,6 +1436,7 @@ fn search(
         }
         let coverage = store.scope_coverage()?;
         trace("ranking and coverage");
+        let source = source_coverage(Some(&store), execution)?;
         let (history, embedding) = coverage_views(&coverage, active.is_some());
         if coverage.indexed_commits < coverage.total_commits {
             warnings.push("History coverage is partial".to_owned());
@@ -1216,16 +1444,33 @@ fn search(
         if used != SearchMode::Lexical && coverage.embedded_documents < coverage.documents {
             warnings.push("Embedding coverage is partial".to_owned());
         }
-        if coverage.omissions > 0 {
-            warnings.push(format!(
-                "{} source omissions are recorded for this scope",
-                coverage.omissions
-            ));
-        }
-        let mut budget = args.max_bytes;
+        add_omission_warning(&mut warnings, &source);
+        let ranked: Vec<_> = ranked.into_iter().take(args.limit as usize).collect();
+        let evidence_lengths: Vec<Vec<_>> = ranked
+            .iter()
+            .map(|hit| {
+                hit.evidence
+                    .iter()
+                    .take(2)
+                    .map(|candidate| {
+                        evidence_text(
+                            &candidate.document,
+                            candidate.byte_start,
+                            candidate.byte_end,
+                        )
+                        .map(str::len)
+                    })
+                    .collect::<Result<_>>()
+            })
+            .collect::<Result<_>>()?;
+        let result_lengths: Vec<_> = evidence_lengths
+            .iter()
+            .map(|lengths| lengths.iter().copied().fold(0, usize::saturating_add))
+            .collect();
+        let budgets = allocate_excerpt_budget(&result_lengths, args.max_bytes);
         let mut truncated = false;
         let mut results = Vec::new();
-        for hit in ranked.into_iter().take(args.limit as usize) {
+        for ((hit, lengths), budget) in ranked.into_iter().zip(evidence_lengths).zip(budgets) {
             let commit = store.get_commit(&hit.oid)?.ok_or_else(|| {
                 AppError::new(
                     "invalid_index",
@@ -1236,13 +1481,22 @@ fn search(
                 .evidence
                 .into_iter()
                 .take(2)
-                .map(|candidate| {
-                    evidence_view(
+                .zip(allocate_excerpt_budget(&lengths, budget))
+                .map(|(candidate, mut budget)| {
+                    let mut value = search_evidence_view(
                         &candidate.document,
-                        Some((candidate.byte_start, candidate.byte_end)),
+                        (candidate.byte_start, candidate.byte_end),
                         &mut budget,
                         &mut truncated,
-                    )
+                    )?;
+                    value["role"] = json!(if hit.supporting_evidence.as_ref()
+                        == Some(&candidate.document.id)
+                    {
+                        "supporting_code"
+                    } else {
+                        "match"
+                    });
+                    Ok(value)
                 })
                 .collect::<Result<_>>()?;
             let mut commit = serde_json::to_value(commit)?;
@@ -1268,7 +1522,7 @@ fn search(
             }
         }
         return Ok(
-            json!({"schema_version":1,"command":"search","repository":repository_view(repo),"scope":scope_view(&scope)?,"filters":{"paths":args.paths,"author":args.author,"since":args.since,"until":args.until},"mode_requested":args.mode,"mode_used":used,"freshness":args.freshness,"source_refresh_required":source_refresh_required,"history_coverage":history,"embedding_coverage":embedding,"active_generation":generation,"runtime":runtime,"results":results,"output_truncated":truncated,"warnings":warnings}),
+            json!({"schema_version":1,"command":"search","repository":repository_view(repo),"scope":scope_view(&scope)?,"filters":{"paths":args.paths,"author":args.author,"since":args.since,"until":args.until},"mode_requested":args.mode,"mode_used":used,"freshness":args.freshness,"source_refresh_required":source_refresh_required,"history_coverage":history,"embedding_coverage":embedding,"source_coverage":source,"active_generation":generation,"runtime":runtime,"results":results,"output_truncated":truncated,"warnings":warnings}),
         );
     }
     Err(repository_changed())
@@ -1279,7 +1533,7 @@ fn semantic_unavailable() -> AppError {
         "semantic_unavailable",
         "No active embedding generation is available",
     )
-    .action("Run nalcos init to install MiniLM INT8, select --model HF_ID, or use --mode lexical")
+    .action("Run nalcos init to configure an embedding model, select --model HF_ID, or use --mode lexical")
 }
 
 fn repository_changed() -> AppError {
@@ -1294,6 +1548,59 @@ struct RankedHit {
     oid: String,
     score: f64,
     evidence: Vec<Candidate>,
+    supporting_evidence: Option<String>,
+}
+
+fn metadata_only(document: &DocumentRecord) -> bool {
+    document.kind == DocumentKind::Diff && document.old_lines == 0 && document.new_lines == 0
+}
+
+fn add_supporting_hunks(
+    hits: &mut [RankedHit],
+    store: &Store,
+    repo: &Repository,
+    filter: &CandidateFilter,
+    execution: &Execution,
+) -> Result<Vec<String>> {
+    let mut supporting = Vec::new();
+    for (position, hit) in hits.iter().enumerate() {
+        let Some(primary) = hit.evidence.first() else {
+            continue;
+        };
+        if !metadata_only(&primary.document)
+            || hit.evidence.iter().take(2).any(|candidate| {
+                candidate.document.kind == DocumentKind::Diff && !metadata_only(&candidate.document)
+            })
+        {
+            continue;
+        }
+        if let Some(document) = store.supporting_hunk(&primary.document, filter, execution)? {
+            supporting.push((position, document));
+        }
+    }
+    if supporting.is_empty() {
+        return Ok(Vec::new());
+    }
+    let documents: Vec<_> = supporting
+        .iter()
+        .map(|(_, document)| document.clone())
+        .collect();
+    let verification = repo.validate_documents(&documents, execution)?;
+    for (position, document) in supporting {
+        if verification.valid_ids.contains(&document.id) {
+            let hit = &mut hits[position];
+            hit.supporting_evidence = Some(document.id.clone());
+            hit.evidence.truncate(1);
+            let byte_end = document.text.len();
+            hit.evidence.push(Candidate {
+                document,
+                score: 0.0,
+                byte_start: 0,
+                byte_end,
+            });
+        }
+    }
+    Ok(verification.missing_ids)
 }
 
 fn rank_candidates(
@@ -1318,6 +1625,7 @@ fn rank_candidates(
                 oid,
                 score: 0.0,
                 evidence: vec![],
+                supporting_evidence: None,
             });
             hit.score += score;
             if !hit
@@ -1334,6 +1642,66 @@ fn rank_candidates(
     hits
 }
 
+/// Max-min allocation gives each result a share before a large source can use
+/// the remainder. Short results release their unused share to longer ones.
+fn allocate_excerpt_budget(lengths: &[usize], budget: usize) -> Vec<usize> {
+    let mut order: Vec<_> = (0..lengths.len()).collect();
+    order.sort_by_key(|&index| (lengths[index], index));
+    let mut allocations = vec![0; lengths.len()];
+    let mut remaining = budget;
+    for (position, index) in order.into_iter().enumerate() {
+        let allocation = lengths[index].min(remaining.div_ceil(lengths.len() - position));
+        allocations[index] = allocation;
+        remaining -= allocation;
+    }
+    allocations
+}
+
+fn search_evidence_view(
+    document: &DocumentRecord,
+    range: (usize, usize),
+    budget: &mut usize,
+    truncated: &mut bool,
+) -> Result<Value> {
+    let text = evidence_text(document, range.0, range.1)?;
+    let (start, end) = search_excerpt_range(
+        text,
+        *budget,
+        matches!(document.kind, crate::git::DocumentKind::Diff),
+    );
+    let mut value = evidence_view(
+        document,
+        Some((range.0 + start, range.0 + end)),
+        budget,
+        truncated,
+    )?;
+    if start > 0 || end < text.len() {
+        value["excerpt_truncated"] = json!(true);
+        *truncated = true;
+    }
+    Ok(value)
+}
+
+// Clipped hunk excerpts start at the patch rather than repeating file metadata.
+fn search_excerpt_range(text: &str, limit: usize, diff: bool) -> (usize, usize) {
+    let start = if text.len() > limit && diff {
+        text.find("\n@@ ").map_or(0, |offset| offset + 1)
+    } else {
+        0
+    };
+    let (excerpt, _) = truncate_utf8(&text[start..], limit);
+    (start, start + excerpt.len())
+}
+
+fn evidence_text(document: &DocumentRecord, start: usize, end: usize) -> Result<&str> {
+    document.text.get(start..end).ok_or_else(|| {
+        AppError::new(
+            "invalid_index",
+            format!("Invalid source range for evidence {}", document.id),
+        )
+    })
+}
+
 fn evidence_view(
     document: &DocumentRecord,
     range: Option<(usize, usize)>,
@@ -1341,12 +1709,7 @@ fn evidence_view(
     truncated: &mut bool,
 ) -> Result<Value> {
     let (start, end) = range.unwrap_or((0, document.text.len()));
-    let text = document.text.get(start..end).ok_or_else(|| {
-        AppError::new(
-            "invalid_index",
-            format!("Invalid source range for evidence {}", document.id),
-        )
-    })?;
+    let text = evidence_text(document, start, end)?;
     let (excerpt, clipped) = truncate_utf8(text, *budget);
     *budget = budget.saturating_sub(excerpt.len());
     *truncated |= clipped;
@@ -1358,6 +1721,38 @@ fn evidence_view(
     object.insert("excerpt_byte_end".into(), json!(start + excerpt.len()));
     object.insert("excerpt_truncated".into(), json!(clipped));
     object.insert("verified".into(), json!(true));
+    let metadata = metadata_only(document);
+    object.insert("metadata_only".into(), json!(metadata));
+    if metadata {
+        let mut args = vec![
+            "show".to_owned(),
+            document.commit_oid.clone(),
+            "--parent".to_owned(),
+            document.parent_index.to_string(),
+        ];
+        // Git's literal pathspec avoids interpreting names such as [draft].rs.
+        // Non-UTF-8 paths retain lossless coordinates; string-based CLI pathspecs
+        // can expand their commit/parent without a file restriction.
+        let paths = [document.old_path.as_ref(), document.new_path.as_ref()]
+            .into_iter()
+            .flatten()
+            .map(|path| path.bytes().map(|bytes| String::from_utf8(bytes).ok()))
+            .collect::<Result<Vec<_>>>()?;
+        let file_scoped = paths.iter().all(Option::is_some);
+        if file_scoped {
+            let mut seen = HashSet::new();
+            for path in paths.into_iter().flatten() {
+                if seen.insert(path.clone()) {
+                    args.extend(["--path".to_owned(), format!(":(literal){path}")]);
+                }
+            }
+        }
+        args.push("--full".to_owned());
+        object.insert(
+            "patch_lookup".into(),
+            json!({"args":args,"file_scoped":file_scoped}),
+        );
+    }
     Ok(value)
 }
 
@@ -1425,29 +1820,36 @@ fn status(
     execution: &Execution,
 ) -> Result<Value> {
     let scope = repo.resolve_scope(&scope_options(args), execution)?;
-    let (coverage, active, staging, counts, source_refresh_required) = if path.exists() {
-        let mut store = Store::read_only(path)?;
-        store.set_scope(&scope.oids)?;
-        store.begin_snapshot()?;
-        (
-            store.scope_coverage()?,
-            store.active_generation()?,
-            store.staging_generation()?,
-            serde_json::to_value(store.counts()?)?,
-            source_refresh_required(&store)?,
-        )
-    } else {
-        (
-            Coverage {
-                total_commits: scope.oids.len(),
-                ..Coverage::default()
-            },
-            None,
-            None,
-            Value::Null,
-            false,
-        )
-    };
+    let (coverage, active, staging, progress, counts, source_refresh_required, source) =
+        if path.exists() {
+            let mut store = Store::read_only(path)?;
+            store.set_scope(&scope.oids)?;
+            store.begin_snapshot()?;
+            let staging = store.staging_generation()?;
+            let progress = staging_progress(&store, config, staging.as_ref())?;
+            (
+                store.scope_coverage()?,
+                store.active_generation()?,
+                staging,
+                progress,
+                serde_json::to_value(store.counts()?)?,
+                source_refresh_required(&store)?,
+                source_coverage(Some(&store), execution)?,
+            )
+        } else {
+            (
+                Coverage {
+                    total_commits: scope.oids.len(),
+                    ..Coverage::default()
+                },
+                None,
+                None,
+                Value::Null,
+                Value::Null,
+                false,
+                source_coverage(None, execution)?,
+            )
+        };
     let (history, embedding) = coverage_views(&coverage, active.is_some());
     let readiness = if !path.exists() {
         "uninitialized"
@@ -1464,7 +1866,10 @@ fn status(
     };
     let mut probe = Value::Null;
     if check {
-        let generation = active.as_ref().ok_or_else(semantic_unavailable)?;
+        let generation = match active.as_ref() {
+            Some(generation) => generation,
+            None => return Err(semantic_unavailable_with_staging(config, staging.as_ref())?),
+        };
         let saved = snapshot(generation)?;
         check_offline(&saved.resolved, cli.offline)?;
         let mut encoder = Encoder::load(
@@ -1491,12 +1896,7 @@ fn status(
     if source_refresh_required {
         warnings.push(SOURCE_REFRESH_WARNING.to_owned());
     }
-    if coverage.omissions > 0 {
-        warnings.push(format!(
-            "{} source omissions are recorded for this scope",
-            coverage.omissions
-        ));
-    }
+    add_omission_warning(&mut warnings, &source);
     if scope.shallow {
         warnings.push(
             "Repository is shallow; coverage beyond the local history boundary is unknown"
@@ -1504,6 +1904,38 @@ fn status(
         );
     }
     Ok(
-        json!({"schema_version":1,"command":"status","repository":repository_view(repo),"scope":scope_view(&scope)?,"readiness":readiness,"source_refresh_required":source_refresh_required,"index_path":path,"storage_bytes":if path.exists() {std::fs::metadata(path)?.len()} else {0},"counts":counts,"history_coverage":history,"embedding_coverage":embedding,"active_generation":generation_view(active.as_ref())?,"staging_generation":generation_view(staging.as_ref())?,"desired_profile":desired,"effective_config":config,"runtime":active.as_ref().map(snapshot).transpose()?.and_then(|s| s.runtime),"check":probe,"warnings":warnings,"release_qualification":"pending"}),
+        json!({"schema_version":1,"command":"status","repository":repository_view(repo),"scope":scope_view(&scope)?,"readiness":readiness,"source_refresh_required":source_refresh_required,"index_path":path,"storage_bytes":if path.exists() {std::fs::metadata(path)?.len()} else {0},"counts":counts,"history_coverage":history,"embedding_coverage":embedding,"source_coverage":source,"active_generation":generation_view(active.as_ref())?,"staging_generation":generation_view(staging.as_ref())?,"staging_progress":progress,"desired_profile":desired,"effective_config":config,"runtime":active.as_ref().map(snapshot).transpose()?.and_then(|s| s.runtime),"check":probe,"warnings":warnings,"release_qualification":"pending"}),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn excerpt_budget_shares_space_and_reclaims_short_results() {
+        assert_eq!(
+            allocate_excerpt_budget(&[30_000, 90, 30_000], 1_000),
+            [455, 90, 455]
+        );
+        assert_eq!(allocate_excerpt_budget(&[0, 20, 40], 100), [0, 20, 40]);
+        assert_eq!(allocate_excerpt_budget(&[10, 10], 0), [0, 0]);
+        assert_eq!(allocate_excerpt_budget(&[10, 10], 1), [1, 0]);
+        assert!(allocate_excerpt_budget(&[], 100).is_empty());
+    }
+
+    #[test]
+    fn clipped_hunk_excerpt_skips_metadata_and_preserves_unicode() {
+        let text = "metadata\n@@ -0,0 +1 @@\n+éé\n";
+        let expected = "@@ -0,0 +1 @@\n+é";
+        assert_eq!(
+            search_excerpt_range(text, expected.len() + 1, true),
+            ("metadata\n".len(), "metadata\n".len() + expected.len())
+        );
+        assert_eq!(search_excerpt_range(text, 0, false), (0, 0));
+        assert_eq!(
+            search_excerpt_range(text, text.len(), true),
+            (0, text.len())
+        );
+    }
 }

@@ -1,8 +1,8 @@
 # Native runtime validation
 
-MiniLM INT8 on CPU is the alpha setup default. `release_qualification` remains `pending`. The checks below establish specific execution and numerical behavior; they do not establish retrieval quality or release performance.
+CodeRankEmbed 137M FP16 with automatic device selection is the alpha setup default. Its pinned GGUF artifact passes the CPU/Metal parity gate on Apple M2; query and indexing placement are measured independently. Parity with the original model remains unqualified. `release_qualification` remains `pending`. The checks below establish specific execution and numerical behavior; they do not establish retrieval quality or release performance.
 
-The default ARM64 INT8 CPU smoke passes shape, finite normalization, token budget, and same-batch repeatability (cosine at least 0.9999). Dynamic activation quantization is sensitive to batch composition: the two batch-versus-singleton samples measured cosine 0.9943486 and 0.9927478. This diagnostic is separate from the stricter FP32/GGUF and automatic-device parity gates, which remain unchanged. Retrieval qualification is still pending.
+The MiniLM ARM64 INT8 CPU smoke passes shape, finite normalization, token budget, and same-batch repeatability (cosine at least 0.9999). Dynamic activation quantization is sensitive to batch composition: the two batch-versus-singleton samples measured cosine 0.9943486 and 0.9927478. This diagnostic is separate from the stricter FP32/GGUF and automatic-device parity gates. Retrieval qualification is still pending.
 
 The October 2, 2026 checks used an Apple M2 with 16 GB memory, the cached pinned artifacts listed in [configuration.md](configuration.md), `ort` 2.0.0-rc.10, and `llama-cpp-2` / `llama-cpp-sys-2` 0.1.158. Native Rust tests used the development build, four inference threads, and batch size eight. Linux CUDA/Vulkan and Intel Mac execution have not been exercised on this host.
 
@@ -31,10 +31,10 @@ The normal test suite requires no model downloads. Real-model tests are ignored 
 
 ```sh
 NALCOS_RUN_MODEL_TESTS=1 cargo test --locked --lib \
-  embedding::tests::cached_embeddinggemma_metal_smoke -- --ignored --exact
+  embedding::tests::cached_coderank_smoke -- --ignored --exact
 ```
 
-The same opt-in requirement applies to `cached_minilm_int8_cpu_smoke`, `cached_minilm_cpu_smoke`, `cached_jina_cpu_smoke`, and `cached_embeddinggemma_cpu_smoke`. The exact pinned files must already exist in the shared Hugging Face cache; ONNX tests also need a compatible installed runtime. `cached_native_reference_parity` takes an independently generated JSON fixture through `NALCOS_EMBEDDING_REFERENCE_JSON` and never downloads. `managed_ort_install_smoke` is a separate, explicitly enabled installer check requiring `NALCOS_RUN_RUNTIME_INSTALL_TESTS=1` and an isolated `NALCOS_RUNTIME_CACHE`; it may download the pinned runtime pack.
+The CodeRank smoke uses Metal on Apple Silicon and CPU elsewhere. The same opt-in requirement applies to `cached_embeddinggemma_metal_smoke`, `cached_minilm_int8_cpu_smoke`, `cached_minilm_cpu_smoke`, `cached_jina_cpu_smoke`, and `cached_embeddinggemma_cpu_smoke`. The exact pinned files must already exist in the shared Hugging Face cache; ONNX tests also need a compatible installed runtime. `cached_native_reference_parity` takes an independently generated JSON fixture through `NALCOS_EMBEDDING_REFERENCE_JSON` and never downloads. `managed_ort_install_smoke` is a separate, explicitly enabled installer check requiring `NALCOS_RUN_RUNTIME_INSTALL_TESTS=1` and an isolated `NALCOS_RUNTIME_CACHE`; it may download the pinned runtime pack.
 
 ONNX inference supports cancellation through its native run options. GGUF cancellation is checked around model loading and complete inference batches; the Rust binding does not expose a safe abort callback for a running kernel. A currently executing GGUF batch can therefore exceed the requested deadline before control returns.
 

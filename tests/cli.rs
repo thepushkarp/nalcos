@@ -1,4 +1,5 @@
 use serde_json::Value;
+use std::collections::BTreeMap;
 use std::fs;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
@@ -492,6 +493,16 @@ fn read_provider_request(stream: &mut TcpStream) -> Value {
 }
 
 fn provider_vector(text: &str, model: &str, drift: bool) -> [f32; 4] {
+    if model == "mock-metadata" {
+        // Make file prefixes beat their hunks without depending on a real model.
+        return if text.starts_with("query: ")
+            || (text.contains("\n--- ") && !text.contains("\n@@ "))
+        {
+            [1.0, 0.0, 0.0, 0.0]
+        } else {
+            [0.0, 1.0, 0.0, 0.0]
+        };
+    }
     let axis = if text.contains("cobalt") {
         0
     } else if text.contains("amber") {
@@ -594,6 +605,136 @@ fn cached_search_rechecks_reset_and_deleted_branch_reachability() {
         "--all-refs",
     ]);
     assert!(result_ids(&deleted).is_empty());
+}
+
+#[test]
+fn source_omissions_explain_reasons_scope_and_bounded_details() {
+    let repository = Repository::new();
+    fs::write(
+        &repository.config,
+        "version = 1\n[index]\nmax_blob_bytes = 16\nexclude_paths = ['ignored/**']\n",
+    )
+    .unwrap();
+    repository.write("base.txt", "base\n");
+    let base = repository.commit("Initial source", "2024-01-01T12:00:00Z");
+    assert!(
+        repository.json(&["omissions"])["records"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+    assert!(
+        !repository.data.exists(),
+        "inspection must not initialize an index"
+    );
+
+    repository.write("src/check.ts", &"budgetNeedle ".repeat(4));
+    repository.write("ignored/hidden.txt", "excludedneedle\n");
+    repository.write("missing.txt", "lostneedle\n");
+    fs::create_dir(repository.path.join("assets")).unwrap();
+    fs::write(repository.path.join("assets/binary.bin"), [0, 1, 0, 2]).unwrap();
+    let commit = repository.commit("Add sample inputs", "2024-01-02T12:00:00Z");
+    let blob = repository.git(&["rev-parse", "HEAD:missing.txt"]);
+    let object = repository
+        .path
+        .join(".git/objects")
+        .join(&blob[..2])
+        .join(&blob[2..]);
+    let held_object = repository._directory.path().join("held-blob");
+    fs::rename(&object, &held_object).unwrap();
+
+    let search = repository.json(&[
+        "search",
+        "budgetNeedle",
+        "--mode",
+        "lexical",
+        "--freshness",
+        "wait",
+        "--path",
+        "src/check.ts",
+    ]);
+    assert!(result_ids(&search).is_empty());
+    assert_eq!(search["history_coverage"]["complete"], true);
+    let source = &search["source_coverage"];
+    assert_eq!(source["scope"], "selected_commits_all_paths");
+    assert_eq!(source["path_filter_applied"], false);
+    assert_eq!(source["recorded_omissions"], 4);
+    assert_eq!(source["categories"]["expected"], 2);
+    assert_eq!(source["categories"]["limited"], 1);
+    assert_eq!(source["categories"]["unavailable"], 1);
+    let reasons: BTreeMap<_, _> = source["reasons"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|reason| {
+            (
+                reason["reason"].as_str().unwrap(),
+                reason["count"].as_u64().unwrap(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        reasons,
+        BTreeMap::from([
+            ("binary", 1),
+            ("blob_limit", 1),
+            ("excluded", 1),
+            ("missing_object", 1)
+        ])
+    );
+    assert!(
+        search["warnings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|warning| {
+                let warning = warning.as_str().unwrap();
+                warning.contains("all paths") && warning.contains("nalcos omissions")
+            })
+    );
+    assert_eq!(repository.json(&["status"])["source_coverage"], *source);
+
+    let first = repository.json(&["omissions", "--limit", "3"]);
+    assert_eq!(first["records"].as_array().unwrap().len(), 3);
+    assert_eq!(first["next_offset"], 3);
+    let second = repository.json(&["omissions", "--limit", "3", "--offset", "3"]);
+    assert_eq!(second["records"].as_array().unwrap().len(), 1);
+    assert!(second["next_offset"].is_null());
+    let records: Vec<_> = first["records"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .chain(second["records"].as_array().unwrap())
+        .collect();
+    for record in &records {
+        assert_eq!(record["commit_oid"], commit);
+        assert!(!record["detail"].as_str().unwrap().is_empty());
+    }
+    let paths: std::collections::BTreeSet<_> = records
+        .iter()
+        .map(|record| record["path"]["display"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        paths,
+        [
+            "assets/binary.bin",
+            "ignored/hidden.txt",
+            "missing.txt",
+            "src/check.ts"
+        ]
+        .into_iter()
+        .collect()
+    );
+    let earlier = repository.json(&["omissions", "--ref", &base]);
+    assert_eq!(earlier["source_coverage"]["recorded_omissions"], 0);
+    assert!(earlier["records"].as_array().unwrap().is_empty());
+
+    fs::rename(held_object, object).unwrap();
+    repository.json(&["sync"]);
+    assert_eq!(
+        repository.json(&["status"])["source_coverage"]["categories"]["unavailable"],
+        0
+    );
 }
 
 #[test]
@@ -768,33 +909,20 @@ fn setup_defaults_are_explicit_and_dry_runs_do_not_create_files() {
     assert!(sync["model"].is_null());
     let output = repository.run(&["init", "--dry-run"]);
     let init = parse_json(&output);
-    if init["error"]["code"] == "unsupported_cpu" && !cfg!(target_arch = "aarch64") {
-        #[cfg(target_arch = "x86_64")]
-        assert!(!std::is_x86_feature_detected!("avx2"));
-        assert_eq!(output.status.code(), Some(1));
-        assert!(!repository.data.exists());
-        assert!(!repository.hf_home.exists());
-        return;
-    }
     assert_success(&output);
-    assert_eq!(
-        init["model"],
-        "sentence-transformers/multi-qa-MiniLM-L6-cos-v1"
-    );
-    assert_eq!(init["model_profile"]["device"], "cpu");
+    assert_eq!(init["model"], "handwoven8588/CodeRankEmbed-GGUF");
+    assert_eq!(init["model_profile"]["device"], "auto");
     assert_eq!(
         init["model_profile"]["revision"],
-        "b207367332321f8e44f96e224ef15bc607f4dbf0"
+        "14be4104a35a5f4e32e6e225955ccf271fb5b956"
     );
-    #[cfg(target_arch = "aarch64")]
+    assert_eq!(init["model_profile"]["artifact"], "CodeRankEmbed-f16.gguf");
+    assert_eq!(init["model_profile"]["dimensions"], 768);
+    assert_eq!(init["model_profile"]["max_tokens"], 512);
+    assert_eq!(init["model_profile"]["pooling"], "cls");
     assert_eq!(
-        init["model_profile"]["artifact"],
-        "onnx/model_qint8_arm64.onnx"
-    );
-    #[cfg(target_arch = "x86_64")]
-    assert_eq!(
-        init["model_profile"]["artifact"],
-        "onnx/model_quint8_avx2.onnx"
+        init["model_profile"]["query_prefix"],
+        "Represent this query for searching relevant code: "
     );
     let explicit = repository.json(&["init", "--model", "minilm", "--dry-run"]);
     assert_eq!(explicit["model_profile"]["artifact"], "onnx/model.onnx");
@@ -873,7 +1001,7 @@ fn legacy_source_refresh_is_explicit_retryable_and_preserves_embeddings() {
     assert!(!initial_version.is_empty());
     connection
         .execute(
-            "DELETE FROM metadata WHERE key='canonical_extraction_version'",
+            "UPDATE metadata SET value='3' WHERE key='canonical_extraction_version'",
             [],
         )
         .unwrap();
@@ -968,6 +1096,47 @@ fn legacy_source_refresh_is_explicit_retryable_and_preserves_embeddings() {
     let unchanged = repository.provider_json(&["sync", "--ref", "main"]);
     assert_eq!(unchanged["commits_added"], 0);
     assert_eq!(unchanged["documents_embedded"], 0);
+}
+
+#[test]
+fn large_first_result_does_not_starve_later_evidence() {
+    let repository = Repository::new();
+    repository.write(
+        "large.txt",
+        &"budgetmarker café 世界 readable patch content\n".repeat(1_500),
+    );
+    let large = repository.commit("Add bulk data", "2024-01-01T12:00:00Z");
+    repository.write("short.txt", "budgetmarker short targeted fix\n");
+    let short = repository.commit("Adjust a small component", "2024-01-02T12:00:00Z");
+    let found = repository.json(&[
+        "search",
+        "budgetmarker",
+        "--mode",
+        "lexical",
+        "--freshness",
+        "wait",
+    ]);
+    assert_eq!(result_ids(&found), [large.as_str(), short.as_str()]);
+    assert_eq!(found["output_truncated"], true);
+    let mut excerpt_bytes = 0;
+    for result in found["results"].as_array().unwrap() {
+        for evidence in result["evidence"].as_array().unwrap() {
+            let excerpt = evidence["excerpt"].as_str().unwrap();
+            assert!(excerpt.contains("budgetmarker"));
+            excerpt_bytes += excerpt.len();
+            let source = repository.json(&[
+                "show",
+                "--evidence",
+                evidence["id"].as_str().unwrap(),
+                "--full",
+            ]);
+            let source = source["evidence"]["excerpt"].as_str().unwrap();
+            let start = evidence["excerpt_byte_start"].as_u64().unwrap() as usize;
+            let end = evidence["excerpt_byte_end"].as_u64().unwrap() as usize;
+            assert_eq!(source.get(start..end), Some(excerpt));
+        }
+    }
+    assert!(excerpt_bytes <= 16_384);
 }
 
 #[test]
@@ -1283,6 +1452,98 @@ fn provider_model_changes_reembed_retained_history_but_query_prefix_changes_do_n
 }
 
 #[test]
+fn initial_embedding_progress_is_retained_visible_and_resumable() {
+    let repository = Repository::new();
+    let provider = MockProvider::new();
+    repository.configure_provider(&provider, "mock-v1", "");
+    repository.populate_provider_history();
+    provider.fail_after_documents("mock-v1", 16);
+    let failed = repository.run_provider(&["init", "--model", "profile:mock"]);
+    assert_eq!(parse_json(&failed)["error"]["code"], "provider_http_error");
+
+    let status = repository.json(&["status"]);
+    assert_eq!(status["readiness"], "lexical_only");
+    assert!(status["active_generation"].is_null());
+    assert_eq!(status["embedding_coverage"]["indexed"], 0);
+    let completed = status["staging_progress"]["completed"].as_u64().unwrap();
+    let total = status["staging_progress"]["total"].as_u64().unwrap();
+    assert!(completed > 0 && completed < total);
+    assert_eq!(status["staging_progress"]["resume_command"], "nalcos sync");
+
+    for args in [
+        vec![
+            "search",
+            "cobalt",
+            "--mode",
+            "semantic",
+            "--freshness",
+            "cached",
+        ],
+        vec!["status", "--check"],
+    ] {
+        let unavailable = repository.run_provider(&args);
+        let error = parse_json(&unavailable);
+        assert_eq!(error["error"]["code"], "semantic_unavailable");
+        assert!(
+            error["error"]["action"]
+                .as_str()
+                .unwrap()
+                .contains("nalcos sync to resume")
+        );
+    }
+
+    repository.configure_provider(&provider, "mock-v2", "");
+    assert!(repository.json(&["status"])["staging_progress"]["resume_command"].is_null());
+    let unavailable = repository.run_provider(&[
+        "search",
+        "cobalt",
+        "--mode",
+        "semantic",
+        "--freshness",
+        "cached",
+    ]);
+    assert!(
+        !parse_json(&unavailable)["error"]["action"]
+            .as_str()
+            .unwrap()
+            .contains("resume")
+    );
+    repository.configure_provider(&provider, "mock-v1", "");
+
+    provider.recover();
+    let resumed = repository.run_provider(&["sync"]);
+    assert_success(&resumed);
+    let stderr = String::from_utf8_lossy(&resumed.stderr);
+    assert!(stderr.contains(&format!(
+        "{completed}/{total} documents completed ({completed} retained)"
+    )));
+    assert!(stderr.contains("Embedding model: mock-v1"));
+    assert!(stderr.contains("Indexing provider: remote"));
+    assert!(!stderr.contains("Indexing device: cpu"));
+    let resumed = parse_json(&resumed);
+    assert_eq!(resumed["documents_embedded"], total - completed);
+    assert_eq!(resumed["indexing_runtime"]["provider"], "OpenAi");
+    assert_eq!(resumed["embedding_coverage"]["complete"], true);
+    assert!(repository.json(&["status"])["staging_progress"].is_null());
+
+    provider.clear_requests();
+    for args in [
+        vec!["sync"],
+        vec!["sync", "--dry-run"],
+        vec!["init", "--dry-run"],
+    ] {
+        let output = repository.run_provider(&args);
+        assert_success(&output);
+        assert!(parse_json(&output)["indexing_runtime"].is_null());
+        assert!(!String::from_utf8_lossy(&output.stderr).contains("Indexing provider:"));
+    }
+    assert!(
+        provider.requests().is_empty(),
+        "display must not load or probe an idle encoder"
+    );
+}
+
+#[test]
 fn failed_provider_migration_preserves_active_generation_resumes_and_detects_alias_drift() {
     let repository = Repository::new();
     let provider = MockProvider::new();
@@ -1322,6 +1583,16 @@ fn failed_provider_migration_preserves_active_generation_resumes_and_detects_ali
     assert_ne!(staging_generation, first_generation);
     assert_eq!(interrupted["active_generation"]["id"], first_generation);
     assert_eq!(interrupted["embedding_coverage"]["complete"], true);
+    assert!(
+        interrupted["staging_progress"]["completed"]
+            .as_u64()
+            .unwrap()
+            > 0
+    );
+    assert_eq!(
+        interrupted["staging_progress"]["total"],
+        full_document_count
+    );
     let old_generation_search = repository.provider_json(&[
         "search",
         "cobalt symptom",
@@ -1453,6 +1724,103 @@ fn explicit_model_selection_cancels_staging_and_forced_reembedding_resumes_its_o
     ]);
     assert_eq!(result_ids(&verified), [cobalt.as_str()]);
     assert_eq!(verified["active_generation"]["id"], staging_generation);
+}
+
+#[test]
+fn semantic_metadata_match_retains_its_identity_and_adds_same_file_code() {
+    let repository = Repository::new();
+    let provider = MockProvider::new();
+    repository.configure_provider(&provider, "mock-metadata", "query: ");
+    let selected_path = "src/[draft]'retry.rs";
+    repository.write(selected_path, "pub fn retry_limit() -> u32 { 3 }\n");
+    let parent = repository.commit("fixture-base", "2024-01-01T12:00:00Z");
+    repository.write(selected_path, "pub fn retry_limit() -> u32 { 5 }\n");
+    repository.write("unrelated.rs", "pub const UNRELATED: bool = true;\n");
+    fs::create_dir_all(repository.path.join("assets")).unwrap();
+    fs::write(repository.path.join("assets/blob.bin"), [0, 1, 0, 2]).unwrap();
+    let commit = repository.commit("fixture-update retry policy", "2024-01-02T12:00:00Z");
+    repository.provider_json(&["init", "--model", "profile:mock"]);
+
+    let selected = repository.provider_json(&[
+        "search",
+        "retry symptom",
+        "--mode",
+        "semantic",
+        "--freshness",
+        "cached",
+        "--range",
+        &format!("{parent}..{commit}"),
+        "--path",
+        &format!(":(literal){selected_path}"),
+    ]);
+    assert_eq!(result_ids(&selected), [commit.as_str()]);
+    let evidence = selected["results"][0]["evidence"].as_array().unwrap();
+    let metadata = evidence
+        .iter()
+        .find(|item| item["role"] == "match")
+        .unwrap();
+    let code = evidence
+        .iter()
+        .find(|item| item["role"] == "supporting_code")
+        .unwrap();
+    assert_eq!(metadata["metadata_only"], true);
+    assert_eq!(metadata["old_lines"], 0);
+    assert_eq!(metadata["new_lines"], 0);
+    assert_eq!(code["metadata_only"], false);
+    assert_ne!(code["id"], metadata["id"]);
+    assert!(
+        code["excerpt"]
+            .as_str()
+            .unwrap()
+            .contains("+pub fn retry_limit() -> u32 { 5 }")
+    );
+    for item in evidence {
+        assert_eq!(item["verified"], true);
+        assert_eq!(item["new_path"]["display"], selected_path);
+        assert_eq!(item["parent_oid"], parent);
+        assert_eq!(item["parent_index"], 1);
+    }
+    let expanded = repository.json(&[
+        "show",
+        "--evidence",
+        metadata["id"].as_str().unwrap(),
+        "--full",
+    ]);
+    assert_eq!(expanded["evidence"]["excerpt"], metadata["excerpt"]);
+    assert_eq!(expanded["evidence"]["metadata_only"], true);
+    let patch_args: Vec<_> = metadata["patch_lookup"]["args"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|arg| arg.as_str().unwrap())
+        .collect();
+    assert_eq!(metadata["patch_lookup"]["file_scoped"], true);
+    let patch = repository.json(&patch_args);
+    assert!(
+        patch["patch"]
+            .as_str()
+            .unwrap()
+            .contains("+pub fn retry_limit() -> u32 { 5 }")
+    );
+    assert!(!patch["patch"].as_str().unwrap().contains("UNRELATED"));
+
+    let binary = repository.provider_json(&[
+        "search",
+        "retry symptom",
+        "--mode",
+        "semantic",
+        "--freshness",
+        "cached",
+        "--path",
+        "assets/blob.bin",
+    ]);
+    let binary_evidence = binary["results"][0]["evidence"].as_array().unwrap();
+    assert_eq!(
+        binary_evidence.len(),
+        1,
+        "binary metadata must not borrow another file's code"
+    );
+    assert_eq!(binary_evidence[0]["metadata_only"], true);
 }
 
 #[test]

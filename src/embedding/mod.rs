@@ -14,8 +14,7 @@ pub use profile::{
     Backend, Device, ModelProfile, ModelRequest, Pooling, ResolveOptions, ResolvedModel, profile,
 };
 pub use runtime::{
-    CALIBRATION_POLICY, Calibration, DeviceInfo, RuntimeInfo, RuntimeOptions, devices,
-    prepare_runtime,
+    CALIBRATION_POLICY, Calibration, DeviceInfo, RuntimeInfo, RuntimeOptions, prepare_runtime,
 };
 pub use tokenize::{ChunkOptions, DocumentChunk};
 
@@ -116,6 +115,9 @@ impl Encoder {
                             return Ok(encoder);
                         }
                         Err(error) => {
+                            if matches!(error.code.as_str(), "timeout" | "interrupted") {
+                                return Err(error);
+                            }
                             execution.check()?;
                             reasons.push(format!("Cached {} selection is unavailable: {error}", cached.selected_device));
                         }
@@ -130,64 +132,121 @@ impl Encoder {
             encoder.info.fallback_reasons.extend(reasons);
             return Ok(encoder);
         }
-        let candidates = match model.profile.backend {
-            Backend::Gguf => {
-                let available = devices()?;
-                [Device::Metal, Device::Cuda, Device::Vulkan]
-                    .into_iter()
-                    .filter(|device| available.iter().any(|item| item.device == *device))
-                    .collect::<Vec<_>>()
-            }
-            Backend::Onnx if cfg!(target_os = "linux") => vec![Device::Cuda],
-            Backend::Onnx => {
-                reasons.push("ONNX auto uses CPU on macOS; CoreML is an explicit experimental profile option, and Metal requires a GGUF artifact".into());
-                vec![]
-            }
-            _ => unreachable!(),
-        };
-        // Calibrated auto compares the same artifact and precision on each device. The selected
-        // batch size expresses the caller's workload: one for queries, larger for indexing.
+        eprintln!(
+            "Detecting available inference devices for {:.120} (batch size {})",
+            model.profile.id, options.batch_size
+        );
+        let inventory = runtime::available_devices(model.profile.backend, &options)?;
+        execution.check()?;
+        let listed = inventory
+            .iter()
+            .take(8)
+            .map(|item| format!("{} ({:.80})", item.device, item.name))
+            .collect::<Vec<_>>()
+            .join(", ");
+        eprintln!("Available runtime devices: {listed}");
+        let candidates = [Device::Metal, Device::CoreMl, Device::Cuda, Device::Vulkan]
+            .into_iter()
+            .filter(|device| inventory.iter().any(|item| item.device == *device))
+            .collect::<Vec<_>>();
+        // Every candidate uses the same artifact and precision. Query and indexing
+        // workloads retain independent measurements and cached selections.
+        eprintln!("Calibrating cpu (batch size {})", options.batch_size);
         let mut cpu = Self::load_device(model, &options, Device::Cpu, execution)?;
         cpu.probe(execution)?;
+        let mut measurements = Vec::new();
         if !candidates.is_empty() {
-            let measurement = cpu.measure(execution)?;
-            cpu.info.calibration.push(measurement);
+            measurements.push(cpu.measure(execution)?);
         }
-        let mut measurements = cpu.info.calibration.clone();
         for candidate in candidates {
             execution.check()?;
-            let attempted = Self::load_device(model, &options, candidate, execution).and_then(|mut encoder| {
-                encoder.probe(execution)?;
-                encoder.compare_cpu(&mut cpu, execution)?;
-                let measurement = encoder.measure(execution)?;
-                measurements.push(measurement.clone());
-                let baseline = measurements.iter().find(|m| m.device == Device::Cpu);
-                if baseline.is_some_and(|value| score(&measurement, options.batch_size) > score(value, options.batch_size) * 0.90) {
-                    reasons.push(format!("{candidate} did not improve measured startup plus workload time by at least 10% for batch size {}; CPU retained", options.batch_size));
-                    return Ok(None);
-                }
-                Ok(Some(encoder))
-            });
+            eprintln!(
+                "Calibrating {candidate} (batch size {})",
+                options.batch_size
+            );
+            let attempted =
+                Self::load_device(model, &options, candidate, execution).and_then(|mut encoder| {
+                    encoder.probe(execution)?;
+                    encoder.compare_cpu(&mut cpu, execution)?;
+                    let measurement = encoder.measure(execution)?;
+                    if encoder.info.selected_device != candidate {
+                        return Err(AppError::new(
+                            "device_unavailable",
+                            format!(
+                                "{candidate} probe fell back to {}",
+                                encoder.info.selected_device
+                            ),
+                        ));
+                    }
+                    Ok(measurement)
+                });
             match attempted {
-                Ok(Some(mut encoder)) => {
-                    encoder.info.requested_device = Device::Auto;
-                    encoder.info.fallback_reasons.extend(reasons);
-                    encoder.info.calibration = measurements;
-                    runtime::save_calibration(model, &options, &encoder.info)?;
-                    return Ok(encoder);
-                }
-                Ok(None) => {}
+                Ok(measurement) => measurements.push(measurement),
                 Err(error) => {
+                    if matches!(error.code.as_str(), "timeout" | "interrupted") {
+                        return Err(error);
+                    }
                     execution.check()?;
+                    eprintln!("Device {candidate} rejected: {:.512}", error.message);
                     reasons.push(format!("{candidate} probe failed: {error}"));
                 }
             }
         }
-        cpu.info.requested_device = Device::Auto;
-        cpu.info.fallback_reasons.extend(reasons);
-        cpu.info.calibration = measurements;
-        runtime::save_calibration(model, &options, &cpu.info)?;
-        Ok(cpu)
+        for measurement in &measurements {
+            eprintln!(
+                "Device {}: startup {:.1} ms, query {:.2} ms, batch {:.2} ms ({} documents), workload {:.1} ms",
+                measurement.device,
+                measurement.startup_ms,
+                measurement.query_ms,
+                measurement.batch_ms,
+                measurement.batch_size,
+                score(measurement, options.batch_size)
+            );
+        }
+        // Release measured accelerator sessions before loading the winner so one
+        // candidate's resident model cannot prevent another from being tested.
+        let mut remaining = measurements.clone();
+        let mut selected = loop {
+            let device = fastest_calibration(&remaining, options.batch_size)
+                .map_or(Device::Cpu, |measurement| measurement.device);
+            if device == Device::Cpu {
+                break cpu;
+            }
+            match Self::load_device(model, &options, device, execution).and_then(|mut encoder| {
+                encoder.probe(execution)?;
+                Ok(encoder)
+            }) {
+                Ok(encoder) if encoder.info.selected_device == device => break encoder,
+                Ok(_) => {
+                    reasons.push(format!(
+                        "{device} fell back to CPU while loading the selected device"
+                    ));
+                }
+                Err(error) => {
+                    if matches!(error.code.as_str(), "timeout" | "interrupted") {
+                        return Err(error);
+                    }
+                    execution.check()?;
+                    eprintln!(
+                        "Device {device} rejected while selecting: {:.512}",
+                        error.message
+                    );
+                    reasons.push(format!(
+                        "{device} could not be loaded after calibration: {error}"
+                    ));
+                }
+            }
+            remaining.retain(|measurement| measurement.device != device);
+        };
+        selected.info.requested_device = Device::Auto;
+        selected.info.fallback_reasons.extend(reasons);
+        selected.info.calibration = measurements;
+        eprintln!(
+            "Selected {} for batch size {} from available, numerically compatible devices",
+            selected.info.selected_device, options.batch_size
+        );
+        runtime::save_calibration(model, &options, &selected.info)?;
+        Ok(selected)
     }
 
     fn load_device(
@@ -263,22 +322,31 @@ impl Encoder {
     }
 
     fn measure(&mut self, execution: &Execution) -> Result<Calibration> {
-        let start = Instant::now();
-        self.encode(
-            &["Find the commit that introduced retry backoff".into()],
-            InputKind::Query,
-            execution,
-        )?;
-        let query_ms = start.elapsed().as_secs_f64() * 1000.0;
+        let query = ["Find the commit that introduced retry backoff".into()];
         let sample = "Commit: fix retry backoff\nChange: retry network requests with an exponential delay and preserve the original error after exhausting the retry budget.\n".repeat(3);
         let count = self.options.batch_size.min(8);
-        let start = Instant::now();
-        self.encode(&vec![sample; count], InputKind::Document, execution)?;
+        let documents = vec![sample; count];
+        let mut query_ms = [0.0; 3];
+        let mut batch_ms = [0.0; 3];
+        for iteration in 0..4 {
+            let start = Instant::now();
+            self.encode(&query, InputKind::Query, execution)?;
+            let query = start.elapsed().as_secs_f64() * 1000.0;
+            let start = Instant::now();
+            self.encode(&documents, InputKind::Document, execution)?;
+            let batch = start.elapsed().as_secs_f64() * 1000.0;
+            if iteration != 0 {
+                query_ms[iteration - 1] = query;
+                batch_ms[iteration - 1] = batch;
+            }
+        }
+        query_ms.sort_by(f64::total_cmp);
+        batch_ms.sort_by(f64::total_cmp);
         Ok(Calibration {
             device: self.info.selected_device,
             startup_ms: self.startup_ms,
-            query_ms,
-            batch_ms: start.elapsed().as_secs_f64() * 1000.0,
+            query_ms: query_ms[1],
+            batch_ms: batch_ms[1],
             batch_size: count,
         })
     }
@@ -487,6 +555,16 @@ fn explicit_device_error(mut error: AppError, device: Device) -> AppError {
     );
     error.code = "explicit_device_unavailable".into();
     error
+}
+
+fn fastest_calibration(measurements: &[Calibration], batch_size: usize) -> Option<&Calibration> {
+    measurements.iter().reduce(|best, candidate| {
+        if score(candidate, batch_size) < score(best, batch_size) {
+            candidate
+        } else {
+            best
+        }
+    })
 }
 
 fn score(value: &Calibration, batch_size: usize) -> f64 {

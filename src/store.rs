@@ -67,6 +67,11 @@ pub struct Coverage {
     pub omissions: usize,
 }
 
+pub struct GenerationProgress {
+    pub completed: usize,
+    pub total: usize,
+}
+
 pub struct Store {
     conn: Connection,
     read_only: bool,
@@ -499,6 +504,46 @@ impl Store {
             .transpose()
     }
 
+    /// Supplement a file-prefix match with its first indexed textual hunk.
+    /// This is source context, not another retrieval score. Matching both sides
+    /// of the change prevents a rename or merge parent from borrowing other code.
+    pub fn supporting_hunk(
+        &self,
+        source: &DocumentRecord,
+        filter: &CandidateFilter,
+        execution: &Execution,
+    ) -> Result<Option<DocumentRecord>> {
+        self.with_execution(execution, || {
+            self.require_scope()?;
+            let (allowed, excluded) = filter_json(filter)?;
+            let mut statement = self.conn.prepare(
+                "SELECT d.record FROM documents d
+                 JOIN query_scope s ON s.oid=d.commit_oid
+                 WHERE d.commit_oid=?1
+                   AND (?2 IS NULL OR d.id IN (SELECT value FROM json_each(?2)))
+                   AND d.id NOT IN (SELECT value FROM json_each(?3))
+                   AND json_extract(d.record,'$.kind')='diff'
+                   AND (json_extract(d.record,'$.old_lines')>0 OR json_extract(d.record,'$.new_lines')>0)
+                 ORDER BY json_extract(d.record,'$.new_start'),json_extract(d.record,'$.old_start'),d.id",
+            )?;
+            let mut rows = statement.query(params![source.commit_oid, allowed, excluded])?;
+            while let Some(row) = rows.next()? {
+                execution.check()?;
+                let document: DocumentRecord = serde_json::from_str(&row.get::<_, String>(0)?)?;
+                if document.parent_index == source.parent_index
+                    && document.parent_oid == source.parent_oid
+                    && document.old_path == source.old_path
+                    && document.new_path == source.new_path
+                    && document.old_blob == source.old_blob
+                    && document.new_blob == source.new_blob
+                {
+                    return Ok(Some(document));
+                }
+            }
+            Ok(None)
+        })
+    }
+
     pub fn counts(&self) -> Result<StoreCounts> {
         Ok(StoreCounts {
             commits: self.count("SELECT COUNT(*) FROM commits")?,
@@ -545,6 +590,52 @@ impl Store {
         let rows = statement.query_map([], |r| r.get::<_, String>(0))?;
         rows.map(|row| serde_json::from_str(&row?).map_err(Into::into))
             .collect()
+    }
+
+    pub fn omission_counts(&self, execution: &Execution) -> Result<Vec<(String, usize)>> {
+        self.with_execution(execution, || {
+            self.require_scope()?;
+            let mut statement = self.conn.prepare(
+                "WITH reasons AS (
+                   SELECT json_extract(o.record,'$.reason') AS reason
+                   FROM omissions o JOIN query_scope s ON s.oid=o.commit_oid
+                 )
+                 SELECT CASE WHEN reason IN (
+                   'binary','excluded','submodule','blob_limit','document_limit',
+                   'patch_limit','message_limit','source_budget','read_budget','source_limit',
+                   'missing_object','missing_parent'
+                 ) THEN reason ELSE 'other' END AS bucket,COUNT(*)
+                 FROM reasons GROUP BY bucket ORDER BY bucket",
+            )?;
+            let rows = statement.query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+            })?;
+            rows.map(|row| {
+                let (reason, count) = row?;
+                Ok((reason, to_usize(count)?))
+            })
+            .collect()
+        })
+    }
+
+    pub fn omission_page(
+        &self,
+        limit: usize,
+        offset: usize,
+        execution: &Execution,
+    ) -> Result<Vec<ExtractionOmission>> {
+        self.with_execution(execution, || {
+            self.require_scope()?;
+            let mut statement = self.conn.prepare(
+                "SELECT o.record FROM omissions o JOIN query_scope s ON s.oid=o.commit_oid
+                 ORDER BY s.position,o.rowid LIMIT ?1 OFFSET ?2",
+            )?;
+            let rows = statement.query_map(params![to_i64(limit)?, to_i64(offset)?], |row| {
+                row.get::<_, String>(0)
+            })?;
+            rows.map(|row| serde_json::from_str(&row?).map_err(Into::into))
+                .collect()
+        })
     }
 
     /// Read path-selection metadata without materializing source text.
@@ -767,6 +858,34 @@ impl Store {
 
     pub fn staging_generation(&self) -> Result<Option<Generation>> {
         self.generation_where("state='staging'")
+    }
+
+    /// Staging totals stop at the frozen cutover watermark; active totals include arrivals.
+    /// Count completed documents rather than vectors because one document may have many chunks.
+    pub fn generation_progress(&self, id: i64, scoped: bool) -> Result<GenerationProgress> {
+        if scoped {
+            self.require_scope()?;
+        }
+        let generation = self.require_generation(id)?;
+        let scope_join = if scoped {
+            "JOIN query_scope s ON s.oid=d.commit_oid"
+        } else {
+            ""
+        };
+        let sql = format!(
+            "SELECT COUNT(e.document_id),COUNT(*) FROM documents d {scope_join}
+             LEFT JOIN embedded_documents e ON e.document_id=d.id AND e.generation_id=?1
+             WHERE (?2='active' OR d.rowid<=?3)"
+        );
+        let (completed, total): (i64, i64) = self.conn.query_row(
+            &sql,
+            params![id, generation.state, generation.watermark],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )?;
+        Ok(GenerationProgress {
+            completed: to_usize(completed)?,
+            total: to_usize(total)?,
+        })
     }
 
     fn generation_where(&self, condition: &str) -> Result<Option<Generation>> {
@@ -1549,6 +1668,11 @@ mod tests {
             .unwrap();
         embed(&mut store, generation.id, &first, vec![3.0, 4.0]);
         let second = ingest(&mut store, "second", "second text");
+        let progress = store.generation_progress(generation.id, false).unwrap();
+        assert_eq!((progress.completed, progress.total), (1, 1));
+        store.set_scope(&["second".into()]).unwrap();
+        let progress = store.generation_progress(generation.id, true).unwrap();
+        assert_eq!((progress.completed, progress.total), (0, 0));
         assert_eq!(
             store
                 .ensure_generation("model-a", &json!({"name":"a"}), false)
@@ -1578,6 +1702,8 @@ mod tests {
             "generation_watermark"
         );
         store.activate_generation(generation.id).unwrap();
+        let progress = store.generation_progress(generation.id, false).unwrap();
+        assert_eq!((progress.completed, progress.total), (1, 2));
         assert_eq!(
             store
                 .pending_documents(generation.id, 20, &Execution::unlimited())
@@ -1963,6 +2089,85 @@ mod tests {
                 .unwrap()
                 .len(),
             2
+        );
+    }
+
+    #[test]
+    fn supporting_hunk_keeps_source_parent_and_document_filters() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut store = Store::open(directory.path().join("index.db")).unwrap();
+        let (commit, mut prefix) = source("merge", "change file metadata");
+        prefix.kind = DocumentKind::Diff;
+        prefix.parent_index = 1;
+        prefix.parent_oid = Some("first-parent".into());
+        prefix.new_path = Some(crate::git::GitPath {
+            display: "code.rs".into(),
+            bytes_hex: "636f64652e7273".into(),
+        });
+        prefix.new_blob = Some("code-blob".into());
+        let mut hunk = prefix.clone();
+        hunk.id = "hunk".into();
+        hunk.new_start = 5;
+        hunk.new_lines = 1;
+        let mut other_parent = hunk.clone();
+        other_parent.id = "other-parent".into();
+        other_parent.parent_index = 2;
+        other_parent.parent_oid = Some("second-parent".into());
+        let mut other_file = hunk.clone();
+        other_file.id = "other-file".into();
+        other_file.new_path = None;
+        let mut other_blob = hunk.clone();
+        other_blob.id = "other-blob".into();
+        other_blob.new_blob = Some("different-blob".into());
+        store
+            .ingest(
+                &[commit],
+                &[
+                    prefix.clone(),
+                    other_parent,
+                    other_file,
+                    other_blob,
+                    hunk.clone(),
+                ],
+                &[],
+            )
+            .unwrap();
+        store.set_scope(&["merge".into()]).unwrap();
+        let execution = Execution::unlimited();
+        assert_eq!(
+            store
+                .supporting_hunk(&prefix, &CandidateFilter::default(), &execution)
+                .unwrap()
+                .unwrap()
+                .id,
+            hunk.id
+        );
+        let excluded = CandidateFilter {
+            excluded_documents: [hunk.id.clone()].into_iter().collect(),
+            ..CandidateFilter::default()
+        };
+        assert!(
+            store
+                .supporting_hunk(&prefix, &excluded, &execution)
+                .unwrap()
+                .is_none()
+        );
+        let allowed = CandidateFilter {
+            allowed_documents: Some([prefix.id.clone()].into_iter().collect()),
+            ..CandidateFilter::default()
+        };
+        assert!(
+            store
+                .supporting_hunk(&prefix, &allowed, &execution)
+                .unwrap()
+                .is_none()
+        );
+        store.set_scope(&["unrelated-branch".into()]).unwrap();
+        assert!(
+            store
+                .supporting_hunk(&prefix, &CandidateFilter::default(), &execution)
+                .unwrap()
+                .is_none()
         );
     }
 

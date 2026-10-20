@@ -1,9 +1,9 @@
 use super::tokenize::HfTokenizer;
-use super::{Device, ModelProfile, Pooling, ResolvedModel, RuntimeOptions};
+use super::{Device, DeviceInfo, ModelProfile, Pooling, ResolvedModel, RuntimeOptions};
 use crate::error::{AppError, Result};
 use crate::execution::Execution;
 use ort::execution_providers::{
-    CPUExecutionProvider, CUDAExecutionProvider, CoreMLExecutionProvider,
+    CPUExecutionProvider, CUDAExecutionProvider, CoreMLExecutionProvider, ExecutionProvider,
 };
 use ort::session::{RunOptions, Session, builder::GraphOptimizationLevel};
 use ort::value::{DynValue, Tensor};
@@ -118,6 +118,44 @@ pub(super) fn initialize(options: &RuntimeOptions) -> Result<()> {
         )),
         Err(error) => Err(AppError::new("runtime_invalid", error.clone())),
     }
+}
+
+pub(super) fn devices(options: &RuntimeOptions) -> Result<Vec<DeviceInfo>> {
+    initialize(options)?;
+    let mut devices = Vec::new();
+    for (device, provider, available) in [
+        (
+            Device::Cpu,
+            "CPUExecutionProvider",
+            CPUExecutionProvider::default().is_available(),
+        ),
+        (
+            Device::CoreMl,
+            "CoreMLExecutionProvider",
+            CoreMLExecutionProvider::default().is_available(),
+        ),
+        (
+            Device::Cuda,
+            "CUDAExecutionProvider",
+            CUDAExecutionProvider::default().is_available(),
+        ),
+    ] {
+        if available.map_err(ort_error)? {
+            devices.push(DeviceInfo {
+                name: provider.into(),
+                device,
+                index: if device == Device::Cuda {
+                    options.device_index
+                } else {
+                    0
+                },
+                memory_bytes: None,
+                compiled: true,
+                qualified: false,
+            });
+        }
+    }
+    Ok(devices)
 }
 
 impl OnnxEncoder {

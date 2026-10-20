@@ -22,8 +22,9 @@ use std::time::Duration;
 
 const PIPE_LIMIT: usize = 256 * 1024 * 1024;
 const COMMIT_LIMIT: usize = 4 * 1024 * 1024;
+const PATH_MATCH_CACHE_BYTES: usize = 4 * 1024 * 1024;
 /// Canonical extraction semantics persisted by the index lifecycle.
-pub const EXTRACTION_VERSION: u32 = 3;
+pub const EXTRACTION_VERSION: u32 = 4;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Repository {
@@ -59,6 +60,13 @@ pub struct ScopeSnapshot {
     pub shallow: bool,
     pub shallow_signature: String,
     pub first_parent: bool,
+}
+
+#[derive(Debug)]
+pub struct FilteredScope {
+    pub oids: Vec<String>,
+    paths: Vec<String>,
+    path_matches: Option<HashSet<String>>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -602,15 +610,21 @@ impl Repository {
         snapshot: &ScopeSnapshot,
         filters: &FilterOptions,
         execution: &Execution,
-    ) -> Result<Vec<String>> {
+    ) -> Result<FilteredScope> {
+        let mut filtered = FilteredScope {
+            oids: Vec::new(),
+            paths: filters.paths.clone(),
+            path_matches: Some(HashSet::new()),
+        };
+        let mut cached_path_bytes = 0usize;
         if filters.paths.is_empty()
             && filters.author.is_none()
             && filters.since.is_none()
             && filters.until.is_none()
         {
-            return Ok(snapshot.oids.clone());
+            filtered.oids = snapshot.oids.clone();
+            return Ok(filtered);
         }
-        let mut eligible = Vec::new();
         for batch in snapshot.oids.chunks(128) {
             let records = self.load_commits(batch, execution)?;
             let author = filters.author.as_ref().map(|s| s.to_lowercase());
@@ -626,19 +640,39 @@ impl Repository {
                 })
                 .collect();
             if filters.paths.is_empty() {
-                eligible.extend(selected.into_iter().map(|c| c.oid));
+                filtered.oids.extend(selected.into_iter().map(|c| c.oid));
             } else {
                 let changes = self.raw_changes(&selected, 1, &filters.paths, execution)?;
-                let matching: HashSet<_> = changes.into_iter().map(|c| c.commit_oid).collect();
-                eligible.extend(
+                let matching: HashSet<_> = changes.iter().map(|c| c.commit_oid.as_str()).collect();
+                filtered.oids.extend(
                     selected
                         .into_iter()
-                        .filter(|c| matching.contains(&c.oid))
+                        .filter(|c| matching.contains(c.oid.as_str()))
                         .map(|c| c.oid),
                 );
+                if let Some(matches) = &mut filtered.path_matches {
+                    for change in &changes {
+                        execution.check()?;
+                        let path_key = path_match_key(
+                            &change.commit_oid,
+                            change.old_path.as_ref(),
+                            change.new_path.as_ref(),
+                        );
+                        let commit_key = path_match_key(&change.commit_oid, None, None);
+                        cached_path_bytes += path_key.len() + commit_key.len();
+                        if cached_path_bytes > PATH_MATCH_CACHE_BYTES {
+                            // Large scopes use bounded Git rescans instead of retaining
+                            // path membership for every changed file in history.
+                            filtered.path_matches = None;
+                            break;
+                        }
+                        matches.insert(path_key);
+                        matches.insert(commit_key);
+                    }
+                }
             }
         }
-        Ok(eligible)
+        Ok(filtered)
     }
 
     /// Apply Git pathspecs to both sides of each canonical change before ranking.
@@ -646,16 +680,17 @@ impl Repository {
     pub fn matching_document_ids(
         &self,
         documents: &[DocumentPaths],
-        paths: &[String],
+        scope: &FilteredScope,
         execution: &Execution,
     ) -> Result<HashSet<String>> {
         execution.check()?;
-        if paths.is_empty() {
+        if scope.paths.is_empty() {
             return Ok(documents
                 .iter()
                 .map(|document| document.id.clone())
                 .collect());
         }
+        let mut allowed = HashSet::new();
         let mut groups = BTreeMap::<usize, HashMap<&str, Vec<&DocumentPaths>>>::new();
         for document in documents {
             execution.check()?;
@@ -664,6 +699,19 @@ impl Repository {
             } else {
                 document.parent_index
             };
+            if parent == 1
+                && let Some(matches) = &scope.path_matches
+            {
+                let (old, new) = if document.kind == DocumentKind::Message {
+                    (None, None)
+                } else {
+                    (document.old_path.as_ref(), document.new_path.as_ref())
+                };
+                if matches.contains(&path_match_key(&document.commit_oid, old, new)) {
+                    allowed.insert(document.id.clone());
+                }
+                continue;
+            }
             groups
                 .entry(parent)
                 .or_default()
@@ -671,14 +719,13 @@ impl Repository {
                 .or_default()
                 .push(document);
         }
-        let mut allowed = HashSet::new();
         for (parent, by_commit) in groups {
             let mut oids: Vec<_> = by_commit.keys().map(|oid| (*oid).to_owned()).collect();
             oids.sort();
             for batch in oids.chunks(128) {
                 execution.check()?;
                 let commits = self.load_commits(batch, execution)?;
-                let changes = self.raw_changes(&commits, parent, paths, execution)?;
+                let changes = self.raw_changes(&commits, parent, &scope.paths, execution)?;
                 let matching_commits: HashSet<_> = changes
                     .iter()
                     .map(|change| change.commit_oid.as_str())
@@ -777,8 +824,6 @@ impl Repository {
                 }
             }
             let mut changes = self.raw_changes(&comparable, parent, paths, execution)?;
-            let mut wanted = BTreeSet::new();
-            let mut source_bytes: HashMap<String, usize> = HashMap::new();
             let all_blobs: Vec<_> = changes
                 .iter()
                 .flat_map(|c| c.old_blob.iter().chain(c.new_blob.iter()))
@@ -809,15 +854,11 @@ impl Repository {
                         "Submodule content belongs to its own repository".into(),
                     ))
                 } else {
-                    let mut bytes = 0usize;
                     let mut failure = None;
                     for oid in change.old_blob.iter().chain(change.new_blob.iter()) {
                         match info.get(oid) {
                             Some(Some((kind, size)))
-                                if kind == "blob" && *size <= options.max_blob_bytes =>
-                            {
-                                bytes = bytes.saturating_add(*size);
-                            }
+                                if kind == "blob" && *size <= options.max_blob_bytes => {}
                             Some(Some((_, size))) => {
                                 failure = Some((
                                     "blob_limit",
@@ -837,20 +878,6 @@ impl Repository {
                             }
                         }
                     }
-                    let used = source_bytes.entry(change.commit_oid.clone()).or_default();
-                    let budget = options
-                        .max_patch_bytes
-                        .saturating_mul(16)
-                        .max(options.max_blob_bytes.saturating_mul(2));
-                    if failure.is_none() && used.saturating_add(bytes) > budget {
-                        failure = Some((
-                            "source_budget",
-                            format!("Commit exceeded its {budget}-byte source extraction budget"),
-                        ));
-                    }
-                    if failure.is_none() {
-                        *used = used.saturating_add(bytes);
-                    }
                     failure
                 };
                 if !is_excluded && prefix.len() <= options.max_document_bytes {
@@ -865,18 +892,14 @@ impl Repository {
                     });
                 } else {
                     readable.insert(i);
-                    wanted.extend(
-                        change
-                            .old_blob
-                            .iter()
-                            .chain(change.new_blob.iter())
-                            .cloned(),
-                    );
                 }
             }
-            let blobs = self.read_objects(
-                &wanted.into_iter().collect::<Vec<_>>(),
-                options.max_blob_bytes,
+            let blobs = self.read_text_sources(
+                &changes,
+                &mut readable,
+                &info,
+                options,
+                &mut result.omissions,
                 execution,
             )?;
             let mut patch_bytes: HashMap<String, usize> = HashMap::new();
@@ -1006,6 +1029,150 @@ impl Repository {
             }
         }
         Ok(result)
+    }
+
+    /// Text limits exclude binary content; the inspection budget bounds all blob reads.
+    fn read_text_sources(
+        &self,
+        changes: &[RawChange],
+        readable: &mut HashSet<usize>,
+        info: &HashMap<String, Option<(String, usize)>>,
+        options: &IndexOptions,
+        omissions: &mut Vec<ExtractionOmission>,
+        execution: &Execution,
+    ) -> Result<HashMap<String, (String, Vec<u8>)>> {
+        let source_budget = options
+            .max_patch_bytes
+            .saturating_mul(16)
+            .max(options.max_blob_bytes.saturating_mul(2));
+        let read_budget = source_budget.saturating_mul(2);
+        let mut source_bytes = HashMap::<&str, usize>::new();
+        let mut read_bytes = HashMap::<&str, usize>::new();
+        let mut blobs = HashMap::new();
+        let mut retained_bytes = 0usize;
+        let mut binary = HashSet::new();
+        let candidates: Vec<_> = (0..changes.len())
+            .filter(|i| readable.contains(i))
+            .collect();
+        let mut reject = |i: usize, reason: &str, detail: String| {
+            let change = &changes[i];
+            readable.remove(&i);
+            omissions.push(ExtractionOmission {
+                commit_oid: change.commit_oid.clone(),
+                path: change.new_path.clone().or(change.old_path.clone()),
+                reason: reason.into(),
+                detail,
+            });
+        };
+        // Keep small changes together without retaining an entire binary-heavy
+        // commit. A window holds at most 8 MiB, or one larger old/new blob pair.
+        // Only accepted text survives, bounded by the per-commit source budget.
+        let mut position = 0;
+        while position < candidates.len() {
+            execution.check()?;
+            let begin = position;
+            let mut window_bytes = 0usize;
+            while position < candidates.len() {
+                let change = &changes[candidates[position]];
+                let bytes = change
+                    .old_blob
+                    .iter()
+                    .chain(change.new_blob.iter())
+                    .map(|oid| info[oid].as_ref().expect("eligible blob").1)
+                    .fold(0usize, usize::saturating_add);
+                if position > begin && window_bytes.saturating_add(bytes) > 8 * 1024 * 1024 {
+                    break;
+                }
+                window_bytes = window_bytes.saturating_add(bytes);
+                position += 1;
+            }
+            let window = &candidates[begin..position];
+            let mut wanted = BTreeSet::new();
+            let mut ready = Vec::new();
+            for &i in window {
+                let change = &changes[i];
+                let oids = || change.old_blob.iter().chain(change.new_blob.iter());
+                let bytes = oids()
+                    .filter(|oid| !blobs.contains_key(*oid) && !wanted.contains(*oid))
+                    .collect::<BTreeSet<_>>()
+                    .into_iter()
+                    .map(|oid| info[oid].as_ref().expect("eligible blob").1)
+                    .fold(0usize, usize::saturating_add);
+                let used = read_bytes.entry(change.commit_oid.as_str()).or_default();
+                let reason = if oids().any(|oid| binary.contains(oid)) {
+                    Some((
+                        "binary",
+                        "Binary or non-UTF-8 blob content was not indexed".into(),
+                    ))
+                } else if used.saturating_add(bytes) > read_budget {
+                    Some((
+                        "read_budget",
+                        format!("Commit exceeded its {read_budget}-byte blob inspection budget"),
+                    ))
+                } else {
+                    *used = used.saturating_add(bytes);
+                    wanted.extend(oids().filter(|oid| !blobs.contains_key(*oid)).cloned());
+                    ready.push(i);
+                    None
+                };
+                if let Some((reason, detail)) = reason {
+                    reject(i, reason, detail);
+                }
+            }
+            let loaded = self.read_objects(
+                &wanted.into_iter().collect::<Vec<_>>(),
+                options.max_blob_bytes,
+                execution,
+            )?;
+            for oid in loaded.keys() {
+                if blob_text(Some(oid), &loaded).is_none() {
+                    binary.insert(oid.clone());
+                }
+            }
+            for i in ready {
+                let change = &changes[i];
+                let oids = || change.old_blob.iter().chain(change.new_blob.iter());
+                let used = source_bytes.entry(change.commit_oid.as_str()).or_default();
+                let bytes = oids()
+                    .map(|oid| info[oid].as_ref().expect("eligible blob").1)
+                    .fold(0usize, usize::saturating_add);
+                let reason = if oids().any(|oid| binary.contains(oid)) {
+                    Some((
+                        "binary",
+                        "Binary or non-UTF-8 blob content was not indexed".into(),
+                    ))
+                } else if used.saturating_add(bytes) > source_budget {
+                    Some((
+                        "source_budget",
+                        format!(
+                            "Commit exceeded its {source_budget}-byte source extraction budget"
+                        ),
+                    ))
+                } else {
+                    *used = used.saturating_add(bytes);
+                    for oid in oids() {
+                        if !blobs.contains_key(oid) {
+                            let blob = &loaded[oid];
+                            retained_bytes = retained_bytes.saturating_add(blob.1.len());
+                            if retained_bytes > PIPE_LIMIT {
+                                return Err(AppError::new(
+                                    "source_limit",
+                                    format!(
+                                        "Retained Git source objects exceeded their {PIPE_LIMIT}-byte read budget"
+                                    ),
+                                ));
+                            }
+                            blobs.insert(oid.clone(), blob.clone());
+                        }
+                    }
+                    None
+                };
+                if let Some((reason, detail)) = reason {
+                    reject(i, reason, detail);
+                }
+            }
+        }
+        Ok(blobs)
     }
 
     pub fn show(
@@ -2058,6 +2225,15 @@ fn reject_grafts(common_dir: &Path) -> Result<()> {
     }
 }
 
+fn path_match_key(oid: &str, old: Option<&GitPath>, new: Option<&GitPath>) -> String {
+    // OIDs and raw-path hex contain no colons, preserving exact source boundaries.
+    format!(
+        "{oid}:{}:{}",
+        old.map_or("", |path| path.bytes_hex.as_str()),
+        new.map_or("", |path| path.bytes_hex.as_str()),
+    )
+}
+
 fn digest(bytes: &[u8]) -> String {
     hex(&Sha256::digest(bytes))
 }
@@ -2250,6 +2426,7 @@ mod tests {
         );
         let execution = Execution::unlimited();
         let repository = Repository::discover(fixture.0.path(), &execution).unwrap();
+        fixture.git(&["update-ref", "refs/heads/main", &tip], None);
         let records = repository.load_commits(&[tip], &execution).unwrap();
         let extracted = repository
             .extract_documents(&records, &IndexOptions::default(), &execution)
@@ -2271,21 +2448,32 @@ mod tests {
             .map(|document| document.id.clone())
             .collect();
         assert_eq!(expected.len(), 2);
+        let select = |pathspecs: Vec<String>| {
+            let scope = repository
+                .resolve_scope(&ScopeOptions::default(), &execution)
+                .unwrap();
+            let filtered = repository
+                .filter_scope(
+                    &scope,
+                    &FilterOptions {
+                        paths: pathspecs,
+                        ..Default::default()
+                    },
+                    &execution,
+                )
+                .unwrap();
+            repository
+                .matching_document_ids(&paths, &filtered, &execution)
+                .unwrap()
+        };
         for pathspecs in [
             vec!["old*".into()],
             vec![":(literal)new\tname".into()],
             vec!["*".into(), ":(exclude)unrelated".into()],
         ] {
-            assert_eq!(
-                repository
-                    .matching_document_ids(&paths, &pathspecs, &execution)
-                    .unwrap(),
-                expected
-            );
+            assert_eq!(select(pathspecs), expected);
         }
-        let only_other = repository
-            .matching_document_ids(&paths, &["unrelated".into()], &execution)
-            .unwrap();
+        let only_other = select(vec!["unrelated".into()]);
         assert!(
             paths
                 .iter()
@@ -2302,19 +2490,10 @@ mod tests {
                 .any(|document| only_other.contains(&document.id)
                     && document.text.contains("+needle"))
         );
-        assert_eq!(
-            repository
-                .matching_document_ids(&paths, &[], &execution)
-                .unwrap()
-                .len(),
-            paths.len()
-        );
-        assert!(
-            repository
-                .matching_document_ids(&paths, &["absent".into()], &execution)
-                .unwrap()
-                .is_empty()
-        );
+        assert_eq!(select(vec![]).len(), paths.len());
+        assert!(select(vec!["absent".into()]).is_empty());
+        fixture.git(&["update-ref", "refs/heads/main", &base], None);
+        assert!(select(vec!["old*".into()]).is_empty());
     }
 
     #[test]
@@ -2387,19 +2566,6 @@ mod tests {
         let rename = &shown.documents[0];
         assert_eq!(rename.old_path.as_ref().unwrap().bytes().unwrap(), old);
         assert_eq!(rename.new_path.as_ref().unwrap().bytes().unwrap(), new);
-        assert_eq!(
-            repository
-                .matching_document_ids(&[DocumentPaths::from(rename)], &["old*".into()], &execution)
-                .unwrap(),
-            HashSet::from([rename.id.clone()])
-        );
-        assert_eq!(
-            repository
-                .validate_documents(&shown.documents, &execution)
-                .unwrap()
-                .valid_ids,
-            vec![rename.id.clone()]
-        );
         let matching = repository
             .filter_scope(
                 &scope,
@@ -2410,8 +2576,21 @@ mod tests {
                 &execution,
             )
             .unwrap();
-        assert!(matching.contains(&left));
-        assert!(!matching.contains(&merge));
+        assert_eq!(
+            repository
+                .matching_document_ids(&[DocumentPaths::from(rename)], &matching, &execution)
+                .unwrap(),
+            HashSet::from([rename.id.clone()])
+        );
+        assert_eq!(
+            repository
+                .validate_documents(&shown.documents, &execution)
+                .unwrap()
+                .valid_ids,
+            vec![rename.id.clone()]
+        );
+        assert!(matching.oids.contains(&left));
+        assert!(!matching.oids.contains(&merge));
 
         let mut forged = rename.clone();
         forged.old_path = Some(GitPath::from_bytes(b"nonexistent"));
@@ -2691,6 +2870,74 @@ mod tests {
         assert_eq!(parse_objects(&output).unwrap()[&oid].1, content);
         output.pop();
         assert!(parse_objects(&output).is_err());
+    }
+
+    #[test]
+    fn binary_inspection_and_text_sources_have_independent_bounded_budgets() {
+        for (binary, unique, count, expected_reason) in [
+            (true, false, 17, None),
+            (true, true, 17, None),
+            (false, false, 17, Some("source_budget")),
+            (true, true, 33, Some("read_budget")),
+        ] {
+            let fixture = Fixture::new();
+            let assets: Vec<_> = (0..count)
+                .map(|i| {
+                    let contents = if binary {
+                        format!("\0{}", if unique { char::from(b'A' + i) } else { 'A' })
+                            .repeat(2048)
+                    } else {
+                        "source!\n".repeat(512)
+                    };
+                    (format!("a{i:02}"), contents)
+                })
+                .collect();
+            let mut files: Vec<_> = assets
+                .iter()
+                .map(|(path, body)| (path.as_bytes(), body.as_str()))
+                .collect();
+            files.push((b"z-source.ts", "export const budgetNeedle = 42;\n"));
+            let oid = fixture.commit(&files, &[], "Add assets and source");
+            let execution = Execution::unlimited();
+            let repository = Repository::discover(fixture.0.path(), &execution).unwrap();
+            let commits = repository.load_commits(&[oid], &execution).unwrap();
+            let extraction = repository
+                .extract_documents(
+                    &commits,
+                    &IndexOptions {
+                        max_blob_bytes: 4096,
+                        max_patch_bytes: 4096,
+                        ..IndexOptions::default()
+                    },
+                    &execution,
+                )
+                .unwrap();
+            let found = extraction.documents.iter().any(|doc| {
+                doc.new_lines != 0 && doc.text.contains("+export const budgetNeedle = 42;")
+            });
+            assert_eq!(found, expected_reason.is_none());
+            if let Some(reason) = expected_reason {
+                assert!(
+                    extraction.omissions.iter().any(|omission| {
+                        omission.reason == reason
+                            && omission
+                                .path
+                                .as_ref()
+                                .is_some_and(|path| path.display == "z-source.ts")
+                    }),
+                    "binary={binary}, omissions={:?}",
+                    extraction.omissions
+                );
+            } else {
+                assert_eq!(extraction.omissions.len(), count as usize);
+                assert!(
+                    extraction
+                        .omissions
+                        .iter()
+                        .all(|omission| omission.reason == "binary")
+                );
+            }
+        }
     }
 
     #[test]

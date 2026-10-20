@@ -83,6 +83,44 @@ fn auto_device_requires_every_query_and_document_sample_to_match() {
 }
 
 #[test]
+fn auto_device_selects_the_fastest_measured_workload() {
+    let measured = |device, startup_ms, query_ms, batch_ms| Calibration {
+        device,
+        startup_ms,
+        query_ms,
+        batch_ms,
+        batch_size: 8,
+    };
+    let mut measurements = [
+        measured(Device::Cpu, 10.0, 90.0, 4.0),
+        measured(Device::CoreMl, 50.0, 49.0, 3.0),
+        measured(Device::Metal, 96.0, 2.0, 1.0),
+        measured(Device::Cuda, 20.0, 77.0, 5.0),
+    ];
+    for _ in 0..2 {
+        assert_eq!(
+            fastest_calibration(&measurements, 1).unwrap().device,
+            Device::Cuda
+        );
+        assert_eq!(
+            fastest_calibration(&measurements, 8).unwrap().device,
+            Device::Metal
+        );
+        measurements.reverse();
+    }
+    measurements[0] = measured(Device::Cpu, 1.0, 1.0, 1.0);
+    for batch_size in [1, 8] {
+        assert_eq!(
+            fastest_calibration(&measurements, batch_size)
+                .unwrap()
+                .device,
+            Device::Cpu
+        );
+    }
+    assert!(fastest_calibration(&[], 1).is_none());
+}
+
+#[test]
 fn document_identity_excludes_query_and_execution_settings() {
     let mut profile = profile("minilm").unwrap();
     let original = hub::fingerprint(&profile, &BTreeMap::new()).unwrap();
@@ -308,6 +346,17 @@ fn cached_smoke(model: &str, device: Device) {
                 <= 64
         );
     }
+}
+
+#[test]
+#[ignore = "requires explicitly provisioned cached CodeRank FP16; never downloads"]
+fn cached_coderank_smoke() {
+    let device = if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
+        Device::Metal
+    } else {
+        Device::Cpu
+    };
+    cached_smoke("coderank", device);
 }
 
 #[test]
