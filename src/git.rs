@@ -22,6 +22,7 @@ use std::time::Duration;
 
 const PIPE_LIMIT: usize = 256 * 1024 * 1024;
 const COMMIT_LIMIT: usize = 4 * 1024 * 1024;
+const PATH_MATCH_CACHE_BYTES: usize = 4 * 1024 * 1024;
 /// Canonical extraction semantics persisted by the index lifecycle.
 pub const EXTRACTION_VERSION: u32 = 4;
 
@@ -65,7 +66,7 @@ pub struct ScopeSnapshot {
 pub struct FilteredScope {
     pub oids: Vec<String>,
     paths: Vec<String>,
-    changes: Vec<RawChange>,
+    path_matches: Option<HashSet<String>>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -613,8 +614,9 @@ impl Repository {
         let mut filtered = FilteredScope {
             oids: Vec::new(),
             paths: filters.paths.clone(),
-            changes: Vec::new(),
+            path_matches: Some(HashSet::new()),
         };
+        let mut cached_path_bytes = 0usize;
         if filters.paths.is_empty()
             && filters.author.is_none()
             && filters.since.is_none()
@@ -648,7 +650,26 @@ impl Repository {
                         .filter(|c| matching.contains(c.oid.as_str()))
                         .map(|c| c.oid),
                 );
-                filtered.changes.extend(changes);
+                if let Some(matches) = &mut filtered.path_matches {
+                    for change in &changes {
+                        execution.check()?;
+                        let path_key = path_match_key(
+                            &change.commit_oid,
+                            change.old_path.as_ref(),
+                            change.new_path.as_ref(),
+                        );
+                        let commit_key = path_match_key(&change.commit_oid, None, None);
+                        cached_path_bytes += path_key.len() + commit_key.len();
+                        if cached_path_bytes > PATH_MATCH_CACHE_BYTES {
+                            // Large scopes use bounded Git rescans instead of retaining
+                            // path membership for every changed file in history.
+                            filtered.path_matches = None;
+                            break;
+                        }
+                        matches.insert(path_key);
+                        matches.insert(commit_key);
+                    }
+                }
             }
         }
         Ok(filtered)
@@ -669,6 +690,7 @@ impl Repository {
                 .map(|document| document.id.clone())
                 .collect());
         }
+        let mut allowed = HashSet::new();
         let mut groups = BTreeMap::<usize, HashMap<&str, Vec<&DocumentPaths>>>::new();
         for document in documents {
             execution.check()?;
@@ -677,6 +699,19 @@ impl Repository {
             } else {
                 document.parent_index
             };
+            if parent == 1
+                && let Some(matches) = &scope.path_matches
+            {
+                let (old, new) = if document.kind == DocumentKind::Message {
+                    (None, None)
+                } else {
+                    (document.old_path.as_ref(), document.new_path.as_ref())
+                };
+                if matches.contains(&path_match_key(&document.commit_oid, old, new)) {
+                    allowed.insert(document.id.clone());
+                }
+                continue;
+            }
             groups
                 .entry(parent)
                 .or_default()
@@ -684,24 +719,13 @@ impl Repository {
                 .or_default()
                 .push(document);
         }
-        let mut allowed = HashSet::new();
         for (parent, by_commit) in groups {
             let mut oids: Vec<_> = by_commit.keys().map(|oid| (*oid).to_owned()).collect();
             oids.sort();
-            // Reuse the full first-parent membership once; only uncached
-            // parents need bounded Git batches.
-            let batch_size = if parent == 1 { oids.len().max(1) } else { 128 };
-            for batch in oids.chunks(batch_size) {
+            for batch in oids.chunks(128) {
                 execution.check()?;
-                // First-parent membership was resolved for this search's exact
-                // immutable OIDs and Git pathspecs while filtering its scope.
-                let scanned = if parent == 1 {
-                    None
-                } else {
-                    let commits = self.load_commits(batch, execution)?;
-                    Some(self.raw_changes(&commits, parent, &scope.paths, execution)?)
-                };
-                let changes = scanned.as_deref().unwrap_or(&scope.changes);
+                let commits = self.load_commits(batch, execution)?;
+                let changes = self.raw_changes(&commits, parent, &scope.paths, execution)?;
                 let matching_commits: HashSet<_> = changes
                     .iter()
                     .map(|change| change.commit_oid.as_str())
@@ -2199,6 +2223,15 @@ fn reject_grafts(common_dir: &Path) -> Result<()> {
         Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e.into()),
         _ => Ok(()),
     }
+}
+
+fn path_match_key(oid: &str, old: Option<&GitPath>, new: Option<&GitPath>) -> String {
+    // OIDs and raw-path hex contain no colons, preserving exact source boundaries.
+    format!(
+        "{oid}:{}:{}",
+        old.map_or("", |path| path.bytes_hex.as_str()),
+        new.map_or("", |path| path.bytes_hex.as_str()),
+    )
 }
 
 fn digest(bytes: &[u8]) -> String {
