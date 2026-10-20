@@ -2,7 +2,7 @@
 
 Find past changes and investigate regression candidates in local Git history. NaLCoS searches commit messages and patch evidence, then returns the commits and changed code for you or your coding agent to inspect.
 
-**Version 2 is an alpha Rust CLI.** Fresh `nalcos init` uses MiniLM INT8 and measures compatible devices to select the fastest for each workload. This is the alpha product default chosen for its small download and fast local indexing; broader retrieval and release qualification remain pending. See [benchmark methodology and results](docs/benchmarks.md).
+**Version 2 is an alpha Rust CLI.** Fresh `nalcos init` uses CodeRankEmbed 137M FP16 and measures compatible devices to select the fastest for each workload. This code retrieval model uses a pinned 274 MB GGUF artifact; broader retrieval and release qualification remain pending. See [benchmark methodology and results](docs/benchmarks.md).
 
 ## Install
 
@@ -44,7 +44,7 @@ The first search creates a local index and performs a bounded incremental update
 
 Use `sync` for an explicit update, or `--freshness wait` when the query must wait for indexing. Run `nalcos init` to install the default embedding model and enable semantic indexing. Choose another model with `init --model`, `sync --model`, or a configuration profile. Model selection and supported formats are described in [configuration](docs/configuration.md).
 
-To initialize MiniLM INT8 and search semantically:
+To initialize CodeRank FP16 and search semantically:
 
 ```sh
 nalcos init
@@ -79,7 +79,7 @@ Ranking identifies changes worth inspecting. Verify the behavior with the patch,
 
 | Command | Purpose |
 | --- | --- |
-| `init` | Select an embedding model and initialize its index. Fresh setup defaults to MiniLM INT8 with automatic device selection; existing model selections persist. |
+| `init` | Select an embedding model and initialize its index. Fresh setup defaults to CodeRank FP16 with automatic device selection; existing model selections persist. |
 | `sync` | Update the requested history scope and embeddings. Add `--watch` to keep updating in a foreground process. |
 | `search QUERY` | Retrieve ranked commit and patch evidence. |
 | `show COMMIT` | Read a commit's patch, or expand an exact result with `--evidence ID`. |
@@ -152,11 +152,11 @@ cargo clippy --locked --all-targets -- -D warnings
 cargo test --locked --all-targets
 ```
 
-CPU CI checks build and behavior. The optional Metal smoke test requires Apple Silicon and the pinned EmbeddingGemma GGUF snapshot in the shared cache; it reports a skip when those prerequisites are unavailable and never downloads a model. To run that test after explicitly installing its assets:
+CPU CI checks build and behavior. The optional CodeRank smoke uses Metal on Apple Silicon and CPU elsewhere. It requires the pinned FP16 GGUF snapshot in the shared cache and never downloads a model. To run it after installing its assets:
 
 ```sh
 NALCOS_RUN_MODEL_TESTS=1 cargo test --locked --lib \
-  embedding::tests::cached_embeddinggemma_metal_smoke -- --ignored --exact --nocapture
+  embedding::tests::cached_coderank_smoke -- --ignored --exact --nocapture
 ```
 
 Native cached-model CPU and Metal smoke checks have passed on Apple Silicon; [native runtime validation](docs/native-runtime.md) records the exact evidence and unresolved reference-parity differences. See [CPU and Metal comparisons](docs/configuration.md#compare-cpu-and-metal) for explicit device probes and end-to-end timing. CUDA remains unqualified in this alpha; optional build features do not qualify CUDA or Vulkan releases. Model quality and product qualification remain pending, including the two-week dogfood evaluation.

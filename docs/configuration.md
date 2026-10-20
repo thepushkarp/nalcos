@@ -1,6 +1,6 @@
 # Configuration
 
-Fresh `nalcos init` defaults to MiniLM INT8 with automatic device selection. Lexical search and fresh plain `sync` can bootstrap an index without a model. `init` and explicit model changes may download required assets; search never installs a model implicitly. The alpha model default prioritizes download size and indexing speed; it is not a claim that the broader qualification gates have passed.
+Fresh `nalcos init` defaults to CodeRankEmbed 137M FP16 with automatic device selection. Lexical search and fresh plain `sync` can bootstrap an index without a model. `init` and explicit model changes may download required assets; search never installs a model implicitly. The alpha model default balances code retrieval and local indexing speed; it is not a claim that the broader qualification gates have passed.
 
 ## Configuration and data locations
 
@@ -10,7 +10,7 @@ Configuration files use `version = 1`. Unknown fields and unsupported versions a
 
 ```sh
 nalcos --config examples/config.toml status
-nalcos --config examples/config.toml init --model profile:minilm
+nalcos --config examples/config.toml init --model profile:coderank
 ```
 
 `init` and `sync` choose a model in this order:
@@ -18,7 +18,7 @@ nalcos --config examples/config.toml init --model profile:minilm
 1. An explicit `--model`.
 2. A nonempty `default_model` whose value changed since the last applied setup.
 3. The persisted pending selection, if a replacement generation is being built; otherwise the active selection.
-4. For `init` only, the built-in `minilm-int8` profile when no selection exists.
+4. For `init` only, the built-in `coderank` profile when no selection exists.
 
 A CLI model choice persists across later syncs. An unchanged configuration default cannot switch it back. Removing `default_model` also leaves the persisted selection in place. Edits to the selected named profile are applied by `init` or `sync`; `search` continues using the active generation until setup applies those edits.
 
@@ -36,10 +36,11 @@ Identical document content can reuse active-model vectors before obsolete associ
 
 ## Select a model
 
-The following recipes are registered. `minilm-int8` is the alpha default; other recipes remain explicit choices:
+The following recipes are registered. `coderank` is the alpha default; other recipes remain explicit choices:
 
 | Model ID | Alias | Backend and registered artifact |
 | --- | --- | --- |
+| `handwoven8588/CodeRankEmbed-GGUF` | `coderank` | GGUF FP16, `CodeRankEmbed-f16.gguf` |
 | `sentence-transformers/multi-qa-MiniLM-L6-cos-v1` | `minilm-int8` | ONNX INT8, `onnx/model_qint8_arm64.onnx` on ARM64 or `onnx/model_quint8_avx2.onnx` on AVX2 x86_64 |
 | `sentence-transformers/multi-qa-MiniLM-L6-cos-v1` | `minilm` | ONNX, `onnx/model.onnx` |
 | `jinaai/jina-embeddings-v2-base-code` | `jina-code`, `jina` | ONNX, `onnx/model.onnx` |
@@ -47,7 +48,9 @@ The following recipes are registered. `minilm-int8` is the alpha default; other 
 | `ggml-org/embeddinggemma-300M-GGUF` | `embeddinggemma`, `gemma` | GGUF, `embeddinggemma-300M-Q8_0.gguf` |
 | `Qwen/Qwen3-Embedding-0.6B-GGUF` | `qwen3` | GGUF, `Qwen3-Embedding-0.6B-Q8_0.gguf` |
 
-The INT8 default pins revision `b207367332321f8e44f96e224ef15bc607f4dbf0`, 384 dimensions, mean pooling, and a 512-token input limit. Its platform-specific artifact is resolved during setup and persisted in the generation. Unsupported CPUs receive an actionable error rather than a silent precision change. The `minilm` alias and bare MiniLM HF ID retain the FP32 recipe.
+The CodeRank default pins revision `14be4104a35a5f4e32e6e225955ccf271fb5b956` of the community GGUF conversion of [nomic-ai/CodeRankEmbed](https://huggingface.co/nomic-ai/CodeRankEmbed). It uses CLS pooling, 768 dimensions, a 512-token input limit, and the query prefix `Represent this query for searching relevant code: `; documents have no prefix. The FP16 artifact is approximately 274 MB. CPU/Metal parity has passed on Apple M2; parity with the original model remains unqualified.
+
+`minilm-int8` pins revision `b207367332321f8e44f96e224ef15bc607f4dbf0`, 384 dimensions, mean pooling, and a 512-token input limit. Its platform-specific artifact is resolved during setup and persisted in the generation. Unsupported CPUs receive an actionable error rather than a silent precision change. The `minilm` alias and bare MiniLM HF ID retain the FP32 recipe.
 
 Each registered recipe pins a model revision and defines its dimensions, token limit, pooling, and query/document formatting. A bare HF ID must have a known recipe. Other repositories require a custom `[profiles.NAME]` section; NaLCoS cannot infer an arbitrary model's embedding contract from its repository name.
 
@@ -162,7 +165,7 @@ Profiles live under `[profiles.NAME]` and are selected with `--model profile:NAM
 | `api_key_env` | Name of the environment variable holding an API credential. |
 | `device` | Profile device, default `auto`; used when the workload setting is `auto` and no CLI override is supplied. |
 
-The [complete native example](../examples/config.toml) pins the MiniLM recipe. Device placement and credential-variable names are operational settings. The document-vector fingerprint covers the document embedding contract and resolved file contents; a query-prefix-only change does not require recomputing document vectors. Applying that change with `sync` still probes the encoder and, for API profiles, checks the provider's identity. Pending documents are embedded normally.
+The [complete native example](../examples/config.toml) pins the CodeRank recipe. Device placement and credential-variable names are operational settings. The document-vector fingerprint covers the document embedding contract and resolved file contents; a query-prefix-only change does not require recomputing document vectors. Applying that change with `sync` still probes the encoder and, for API profiles, checks the provider's identity. Pending documents are embedded normally.
 
 ### API embedding profiles
 

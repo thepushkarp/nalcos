@@ -28,7 +28,7 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub enum Command {
-    /// Install MiniLM INT8 (or the selected model), select its fastest device, and index history.
+    /// Install CodeRank FP16 (or the selected model), select its fastest device, and index history.
     Init(InitArgs),
     /// Reconcile history, resume indexing, or explicitly change embedding models.
     Sync(SyncArgs),
@@ -56,7 +56,7 @@ pub struct ScopeArgs {
 pub struct ModelArgs {
     #[arg(
         long,
-        help = "Hugging Face model ID, preset (e.g. minilm-int8), or profile:NAME"
+        help = "Hugging Face model ID, preset (e.g. coderank), or profile:NAME"
     )]
     pub model: Option<String>,
     #[arg(long, help = "Resolve an explicit model revision during setup")]

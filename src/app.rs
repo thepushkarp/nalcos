@@ -673,7 +673,7 @@ fn sync(
         && selection_args.model.is_none()
         && config.default_model.is_none()
     {
-        selection_args.model = Some("minilm-int8".into());
+        selection_args.model = Some("coderank".into());
     }
     let (profile, selector, requested_profile) = selected_profile(
         &selection_args,

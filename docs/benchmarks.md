@@ -1,8 +1,9 @@
 # Embedding and search benchmarks
 
-The alpha default is **MiniLM INT8 with automatic device selection**, chosen for its
-22 MiB weights and fast local indexing. This is a product choice for the alpha, not a claim that the model
-passed broader quality, licensing, portability, or product qualification gates.
+The alpha default is **CodeRankEmbed 137M FP16 with automatic device selection**,
+using a pinned 274 MB GGUF conversion for local code retrieval. This is a product
+choice for the alpha, not a claim that the model passed broader quality, licensing,
+portability, or product qualification gates.
 Profiles remain configurable; explicit setup downloads models into the shared
 Hugging Face cache. This repository does not distribute weights.
 
@@ -18,7 +19,7 @@ independent held-out questions.
 | Model / runtime | Weights MiB | Documents/s | Warm query p50 ms | Recall@10 | MRR |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | MiniLM FP32 / ONNX CPU | 86.2 | 42.06 | 2.35 | 10/12 | .5810 |
-| **MiniLM INT8 / ONNX CPU** | **22.0** | **81.70** | **1.14** | **11/12** | **.6250** |
+| MiniLM INT8 / ONNX CPU | 22.0 | 81.70 | 1.14 | 11/12 | .6250 |
 | BGE-small FP32 / ONNX CPU | 126.9 | 19.43 | 5.95 | 10/12 | .5580 |
 | Jina code INT8 / ONNX CPU, 1024 tokens | 154.4 | 9.68 | 7.15 | 12/12 | .7014 |
 | EmbeddingGemma Q8 / llama.cpp CPU | 318.1 | 6.70 | 13.54 | 12/12 | .6508 |

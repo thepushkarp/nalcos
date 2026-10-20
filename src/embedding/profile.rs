@@ -264,6 +264,15 @@ fn known_profiles() -> Vec<ModelProfile> {
             Pooling::Mean,
         ),
         local_profile(
+            "handwoven8588/CodeRankEmbed-GGUF",
+            "14be4104a35a5f4e32e6e225955ccf271fb5b956",
+            "CodeRankEmbed-f16.gguf",
+            Backend::Gguf,
+            768,
+            512,
+            Pooling::Cls,
+        ),
+        local_profile(
             "jinaai/jina-embeddings-v2-base-code",
             "516f4baf13dec4ddddda8631e019b5737c8bc250",
             "onnx/model.onnx",
@@ -312,6 +321,9 @@ fn local_profile(
     pooling: Pooling,
 ) -> ModelProfile {
     let (query_prefix, document_prefix) = match id {
+        "handwoven8588/CodeRankEmbed-GGUF" => {
+            ("Represent this query for searching relevant code: ", "")
+        }
         "BAAI/bge-small-en-v1.5" => (
             "Represent this sentence for searching relevant passages: ",
             "",
@@ -353,6 +365,7 @@ pub fn profile(id: &str) -> Result<ModelProfile> {
         return Ok(selected);
     }
     let canonical = match id {
+        "coderank" => "handwoven8588/CodeRankEmbed-GGUF",
         "minilm" => "sentence-transformers/multi-qa-MiniLM-L6-cos-v1",
         "jina-code" | "jina" => "jinaai/jina-embeddings-v2-base-code",
         "bge-small" => "BAAI/bge-small-en-v1.5",

@@ -349,6 +349,17 @@ fn cached_smoke(model: &str, device: Device) {
 }
 
 #[test]
+#[ignore = "requires explicitly provisioned cached CodeRank FP16; never downloads"]
+fn cached_coderank_smoke() {
+    let device = if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
+        Device::Metal
+    } else {
+        Device::Cpu
+    };
+    cached_smoke("coderank", device);
+}
+
+#[test]
 #[ignore = "requires explicitly provisioned cached MiniLM and ONNX Runtime; never downloads"]
 fn cached_minilm_cpu_smoke() {
     cached_smoke("minilm", Device::Cpu);

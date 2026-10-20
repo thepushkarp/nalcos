@@ -778,33 +778,20 @@ fn setup_defaults_are_explicit_and_dry_runs_do_not_create_files() {
     assert!(sync["model"].is_null());
     let output = repository.run(&["init", "--dry-run"]);
     let init = parse_json(&output);
-    if init["error"]["code"] == "unsupported_cpu" && !cfg!(target_arch = "aarch64") {
-        #[cfg(target_arch = "x86_64")]
-        assert!(!std::is_x86_feature_detected!("avx2"));
-        assert_eq!(output.status.code(), Some(1));
-        assert!(!repository.data.exists());
-        assert!(!repository.hf_home.exists());
-        return;
-    }
     assert_success(&output);
-    assert_eq!(
-        init["model"],
-        "sentence-transformers/multi-qa-MiniLM-L6-cos-v1"
-    );
+    assert_eq!(init["model"], "handwoven8588/CodeRankEmbed-GGUF");
     assert_eq!(init["model_profile"]["device"], "auto");
     assert_eq!(
         init["model_profile"]["revision"],
-        "b207367332321f8e44f96e224ef15bc607f4dbf0"
+        "14be4104a35a5f4e32e6e225955ccf271fb5b956"
     );
-    #[cfg(target_arch = "aarch64")]
+    assert_eq!(init["model_profile"]["artifact"], "CodeRankEmbed-f16.gguf");
+    assert_eq!(init["model_profile"]["dimensions"], 768);
+    assert_eq!(init["model_profile"]["max_tokens"], 512);
+    assert_eq!(init["model_profile"]["pooling"], "cls");
     assert_eq!(
-        init["model_profile"]["artifact"],
-        "onnx/model_qint8_arm64.onnx"
-    );
-    #[cfg(target_arch = "x86_64")]
-    assert_eq!(
-        init["model_profile"]["artifact"],
-        "onnx/model_quint8_avx2.onnx"
+        init["model_profile"]["query_prefix"],
+        "Represent this query for searching relevant code: "
     );
     let explicit = repository.json(&["init", "--model", "minilm", "--dry-run"]);
     assert_eq!(explicit["model_profile"]["artifact"], "onnx/model.onnx");
