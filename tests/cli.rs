@@ -1334,6 +1334,98 @@ fn provider_model_changes_reembed_retained_history_but_query_prefix_changes_do_n
 }
 
 #[test]
+fn initial_embedding_progress_is_retained_visible_and_resumable() {
+    let repository = Repository::new();
+    let provider = MockProvider::new();
+    repository.configure_provider(&provider, "mock-v1", "");
+    repository.populate_provider_history();
+    provider.fail_after_documents("mock-v1", 16);
+    let failed = repository.run_provider(&["init", "--model", "profile:mock"]);
+    assert_eq!(parse_json(&failed)["error"]["code"], "provider_http_error");
+
+    let status = repository.json(&["status"]);
+    assert_eq!(status["readiness"], "lexical_only");
+    assert!(status["active_generation"].is_null());
+    assert_eq!(status["embedding_coverage"]["indexed"], 0);
+    let completed = status["staging_progress"]["completed"].as_u64().unwrap();
+    let total = status["staging_progress"]["total"].as_u64().unwrap();
+    assert!(completed > 0 && completed < total);
+    assert_eq!(status["staging_progress"]["resume_command"], "nalcos sync");
+
+    for args in [
+        vec![
+            "search",
+            "cobalt",
+            "--mode",
+            "semantic",
+            "--freshness",
+            "cached",
+        ],
+        vec!["status", "--check"],
+    ] {
+        let unavailable = repository.run_provider(&args);
+        let error = parse_json(&unavailable);
+        assert_eq!(error["error"]["code"], "semantic_unavailable");
+        assert!(
+            error["error"]["action"]
+                .as_str()
+                .unwrap()
+                .contains("nalcos sync to resume")
+        );
+    }
+
+    repository.configure_provider(&provider, "mock-v2", "");
+    assert!(repository.json(&["status"])["staging_progress"]["resume_command"].is_null());
+    let unavailable = repository.run_provider(&[
+        "search",
+        "cobalt",
+        "--mode",
+        "semantic",
+        "--freshness",
+        "cached",
+    ]);
+    assert!(
+        !parse_json(&unavailable)["error"]["action"]
+            .as_str()
+            .unwrap()
+            .contains("resume")
+    );
+    repository.configure_provider(&provider, "mock-v1", "");
+
+    provider.recover();
+    let resumed = repository.run_provider(&["sync"]);
+    assert_success(&resumed);
+    let stderr = String::from_utf8_lossy(&resumed.stderr);
+    assert!(stderr.contains(&format!(
+        "{completed}/{total} documents completed ({completed} retained)"
+    )));
+    assert!(stderr.contains("Embedding model: mock-v1"));
+    assert!(stderr.contains("Indexing provider: remote (OpenAi, provider-managed)"));
+    assert!(!stderr.contains("Indexing device: cpu"));
+    let resumed = parse_json(&resumed);
+    assert_eq!(resumed["documents_embedded"], total - completed);
+    assert_eq!(resumed["indexing_runtime"]["provider"], "OpenAi");
+    assert_eq!(resumed["embedding_coverage"]["complete"], true);
+    assert!(repository.json(&["status"])["staging_progress"].is_null());
+
+    provider.clear_requests();
+    for args in [
+        vec!["sync"],
+        vec!["sync", "--dry-run"],
+        vec!["init", "--dry-run"],
+    ] {
+        let output = repository.run_provider(&args);
+        assert_success(&output);
+        assert!(parse_json(&output)["indexing_runtime"].is_null());
+        assert!(!String::from_utf8_lossy(&output.stderr).contains("Indexing provider:"));
+    }
+    assert!(
+        provider.requests().is_empty(),
+        "display must not load or probe an idle encoder"
+    );
+}
+
+#[test]
 fn failed_provider_migration_preserves_active_generation_resumes_and_detects_alias_drift() {
     let repository = Repository::new();
     let provider = MockProvider::new();
@@ -1373,6 +1465,16 @@ fn failed_provider_migration_preserves_active_generation_resumes_and_detects_ali
     assert_ne!(staging_generation, first_generation);
     assert_eq!(interrupted["active_generation"]["id"], first_generation);
     assert_eq!(interrupted["embedding_coverage"]["complete"], true);
+    assert!(
+        interrupted["staging_progress"]["completed"]
+            .as_u64()
+            .unwrap()
+            > 0
+    );
+    assert_eq!(
+        interrupted["staging_progress"]["total"],
+        full_document_count
+    );
     let old_generation_search = repository.provider_json(&[
         "search",
         "cobalt symptom",

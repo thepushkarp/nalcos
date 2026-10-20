@@ -1,4 +1,7 @@
-use crate::error::Result;
+use crate::{
+    embedding::{Backend, ModelProfile, RuntimeInfo},
+    error::Result,
+};
 use serde_json::Value;
 use std::io::{self, Write};
 
@@ -96,6 +99,16 @@ pub fn emit(value: &Value, json: bool) -> Result<()> {
                 "Embeddings: {}/{} documents",
                 value["embedding_coverage"]["indexed"], value["embedding_coverage"]["total"]
             )?;
+            if value["staging_progress"].is_object() {
+                writeln!(
+                    out,
+                    "Pending generation: {}/{} documents completed (across retained history)",
+                    value["staging_progress"]["completed"], value["staging_progress"]["total"]
+                )?;
+                if let Some(command) = value["staging_progress"]["resume_command"].as_str() {
+                    writeln!(out, "Resume with: {command}")?;
+                }
+            }
             if let Some(profile) = value["active_generation"]["model"].as_str() {
                 writeln!(out, "Model: {profile}")?;
             }
@@ -125,6 +138,10 @@ pub fn emit(value: &Value, json: bool) -> Result<()> {
                     value["embedding_coverage"]["indexed"],
                     value["embedding_coverage"]["total"]
                 )?;
+                if let Some(runtime) = value["indexing_runtime"].as_object() {
+                    let info: RuntimeInfo = serde_json::from_value(Value::Object(runtime.clone()))?;
+                    writeln!(out, "Final indexing device: {}", runtime_device(&info))?;
+                }
             }
         }
         _ => {
@@ -145,6 +162,60 @@ pub fn emit(value: &Value, json: bool) -> Result<()> {
                 warning.as_str().unwrap_or("incomplete coverage")
             );
         }
+    }
+    Ok(())
+}
+
+fn runtime_device(info: &RuntimeInfo) -> String {
+    if matches!(info.provider.as_str(), "OpenAi" | "Ollama") {
+        return format!("remote ({}, provider-managed)", info.provider);
+    }
+    let backend = match info.provider.as_str() {
+        "Onnx" => "ONNX Runtime",
+        "Gguf" => "GGUF / llama.cpp",
+        other => other,
+    };
+    let device = info.selected_device.to_string();
+    if info.device_name.is_empty() || info.device_name.eq_ignore_ascii_case(&device) {
+        format!("{device} ({backend})")
+    } else {
+        format!("{device} ({backend}; {})", info.device_name)
+    }
+}
+
+/// Only runtime metadata from an encoder doing indexing work is passed here.
+pub fn indexing_runtime(
+    model: &ModelProfile,
+    current: &RuntimeInfo,
+    previous: Option<&RuntimeInfo>,
+) -> Result<()> {
+    write_indexing_runtime(&mut io::stderr().lock(), model, current, previous)
+}
+
+fn write_indexing_runtime(
+    out: &mut impl Write,
+    model: &ModelProfile,
+    current: &RuntimeInfo,
+    previous: Option<&RuntimeInfo>,
+) -> Result<()> {
+    if previous.is_none() {
+        writeln!(out, "Embedding model: {}", model.id)?;
+        let kind = if matches!(model.backend, Backend::OpenAi | Backend::Ollama) {
+            "provider"
+        } else {
+            "device"
+        };
+        writeln!(out, "Indexing {kind}: {}", runtime_device(current))?;
+    } else if previous.is_some_and(|previous| {
+        previous.selected_device != current.selected_device
+            || previous.device_name != current.device_name
+            || previous.provider != current.provider
+    }) {
+        writeln!(out, "Indexing device changed: {}", runtime_device(current))?;
+    }
+    let reported = previous.map_or(0, |info| info.fallback_reasons.len());
+    for reason in current.fallback_reasons.iter().skip(reported) {
+        writeln!(out, "Indexing runtime: {reason}")?;
     }
     Ok(())
 }
@@ -192,4 +263,42 @@ pub fn truncate_utf8(text: &str, limit: usize) -> (&str, bool) {
         end -= 1;
     }
     (&text[..end], true)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::embedding::{Device, profile};
+
+    #[test]
+    fn indexing_messages_use_selected_runtime_and_report_transitions_once() {
+        let model = profile("minilm-int8").unwrap();
+        let mut info = RuntimeInfo {
+            requested_device: Device::Auto,
+            selected_device: Device::Metal,
+            provider: "Gguf".into(),
+            runtime_version: "test".into(),
+            device_name: "Example GPU".into(),
+            fallback_reasons: vec![],
+            calibration: vec![],
+            qualified: false,
+            batch_size: 8,
+        };
+        let mut out = Vec::new();
+        write_indexing_runtime(&mut out, &model, &info, None).unwrap();
+        let initial = String::from_utf8(out.clone()).unwrap();
+        assert!(initial.contains("metal (GGUF / llama.cpp; Example GPU)"));
+        let previous = info.clone();
+        info.selected_device = Device::Cpu;
+        info.device_name = "cpu".into();
+        info.fallback_reasons
+            .push("Accelerator allocation failed; CPU selected".into());
+        write_indexing_runtime(&mut out, &model, &info, Some(&previous)).unwrap();
+        let reported_len = out.len();
+        write_indexing_runtime(&mut out, &model, &info, Some(&info)).unwrap();
+        assert_eq!(out.len(), reported_len, "unchanged runtime must stay quiet");
+        let rendered = String::from_utf8(out).unwrap();
+        assert!(rendered.contains("Indexing device changed: cpu (GGUF / llama.cpp)"));
+        assert_eq!(rendered.matches("Accelerator allocation failed").count(), 1);
+    }
 }

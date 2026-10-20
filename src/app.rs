@@ -202,6 +202,49 @@ fn generation_view(generation: Option<&Generation>) -> Result<Value> {
     )
 }
 
+fn staging_progress(
+    store: &Store,
+    config: &Config,
+    generation: Option<&Generation>,
+) -> Result<Value> {
+    let Some(generation) = generation else {
+        return Ok(Value::Null);
+    };
+    let progress = store.generation_progress(generation.id, false)?;
+    Ok(json!({
+        "generation_id": generation.id,
+        "completed": progress.completed,
+        "total": progress.total,
+        "remaining": progress.total.saturating_sub(progress.completed),
+        "scope": "generation",
+        "resume_command": staging_compatible(config, generation)?.then_some("nalcos sync"),
+    }))
+}
+
+fn staging_compatible(config: &Config, generation: &Generation) -> Result<bool> {
+    let saved = snapshot(generation)?;
+    let desired = selected_profile(&ModelArgs::default(), config, Some(generation), true)?.0;
+    Ok(
+        saved.chunk_overlap_tokens == config.index.chunk_overlap_tokens
+            && same_document_profile(&desired, &Some(saved.resolved.profile)),
+    )
+}
+
+fn semantic_unavailable_with_staging(
+    config: &Config,
+    generation: Option<&Generation>,
+) -> Result<AppError> {
+    if let Some(generation) = generation
+        && staging_compatible(config, generation)?
+    {
+        return Ok(semantic_unavailable().action(format!(
+            "Run nalcos sync to resume embedding generation {}, or use --mode lexical",
+            generation.id
+        )));
+    }
+    Ok(semantic_unavailable())
+}
+
 fn selected_profile(
     args: &ModelArgs,
     config: &Config,
@@ -452,16 +495,28 @@ fn fill_embeddings(
     encoder: &mut Encoder,
     overlap: usize,
     scoped: bool,
+    report_runtime: bool,
     execution: &Execution,
 ) -> Result<usize> {
     let mut completed = 0;
     let mut progress = Instant::now();
-    let max_tokens = snapshot(generation)?.resolved.profile.max_tokens;
+    let model = snapshot(generation)?.resolved.profile;
+    let max_tokens = model.max_tokens;
     if overlap >= max_tokens {
         return Err(AppError::new(
             "invalid_config",
             "index.chunk_overlap_tokens must be smaller than the model's token budget",
         ));
+    }
+    let retained = store.generation_progress(generation.id, scoped)?;
+    let report_runtime = report_runtime && retained.completed < retained.total;
+    let mut reported_runtime = encoder.info().clone();
+    if report_runtime {
+        output::indexing_runtime(&model, encoder.info(), None)?;
+        eprintln!(
+            "Indexing embeddings: {}/{} documents completed ({} retained)",
+            retained.completed, retained.total, retained.completed
+        );
     }
     loop {
         execution.check()?;
@@ -492,10 +547,16 @@ fn fill_embeddings(
             documents.push((document.id, chunks));
         }
         let vectors = if texts.is_empty() {
-            vec![]
+            Ok(vec![])
         } else {
-            encoder.encode(&texts, InputKind::Document, execution)?
+            encoder.encode(&texts, InputKind::Document, execution)
         };
+        if report_runtime {
+            // Runtime fallback can happen inside a batch, including a failed batch.
+            output::indexing_runtime(&model, encoder.info(), Some(&reported_runtime))?;
+            reported_runtime = encoder.info().clone();
+        }
+        let vectors = vectors?;
         if vectors.len() != texts.len() {
             return Err(AppError::new(
                 "embedding_count_mismatch",
@@ -517,7 +578,11 @@ fn fill_embeddings(
             completed += 1;
         }
         if progress.elapsed() >= Duration::from_secs(2) {
-            eprintln!("Indexing embeddings: {completed} documents completed");
+            eprintln!(
+                "Indexing embeddings: {}/{} documents completed",
+                retained.completed + completed,
+                retained.total
+            );
             progress = Instant::now();
         }
     }
@@ -729,6 +794,7 @@ fn sync(
     }
     let mut documents_embedded = 0;
     let mut runtime = Value::Null;
+    let mut indexing_runtime = Value::Null;
     if let Some(resolved) = resolved {
         let fingerprint = document_fingerprint(&resolved, policy.chunk_overlap_tokens);
         let mut saved = ModelSnapshot {
@@ -798,9 +864,13 @@ fn sync(
                 &mut encoder,
                 policy.chunk_overlap_tokens,
                 false,
+                true,
                 execution,
             )?;
             runtime = serde_json::to_value(encoder.info())?;
+            if pending {
+                indexing_runtime = runtime.clone();
+            }
             saved.runtime = Some(runtime.clone());
             drop(encoder);
             if apply_config {
@@ -845,8 +915,17 @@ fn sync(
                 &mut encoder,
                 policy.chunk_overlap_tokens,
                 false,
+                true,
                 execution,
             )?;
+            indexing_runtime = serde_json::to_value(encoder.info())?;
+            saved.runtime = Some(indexing_runtime.clone());
+            store.update_generation_model(generation.id, &serde_json::to_value(&saved)?)?;
+            if runtime.get("index").is_some() {
+                runtime["index"] = indexing_runtime.clone();
+            } else {
+                runtime = indexing_runtime.clone();
+            }
         }
         store.cleanup_retired()?;
     }
@@ -876,7 +955,7 @@ fn sync(
         );
     }
     Ok(
-        json!({"schema_version":1,"command":if initialization {"init"} else {"sync"},"dry_run":false,"repository":repository_view(repo),"scope":scope_view(&scope)?,"commits_added":commits_added,"commits_pruned":commits_pruned,"documents_embedded":documents_embedded,"source_refresh_required":false,"history_coverage":history,"embedding_coverage":embedding,"active_generation":generation_view(active.as_ref())?,"staging_generation":generation_view(store.staging_generation()?.as_ref())?,"runtime":runtime,"warnings":warnings}),
+        json!({"schema_version":1,"command":if initialization {"init"} else {"sync"},"dry_run":false,"repository":repository_view(repo),"scope":scope_view(&scope)?,"commits_added":commits_added,"commits_pruned":commits_pruned,"documents_embedded":documents_embedded,"source_refresh_required":false,"history_coverage":history,"embedding_coverage":embedding,"active_generation":generation_view(active.as_ref())?,"staging_generation":generation_view(store.staging_generation()?.as_ref())?,"runtime":runtime,"indexing_runtime":indexing_runtime,"warnings":warnings}),
     )
 }
 
@@ -979,6 +1058,7 @@ fn refresh_search(
             &mut encoder,
             saved.chunk_overlap_tokens,
             true,
+            false,
             execution,
         )?;
     }
@@ -1104,7 +1184,15 @@ fn search(
             None
         } else {
             let encoded = (|| -> Result<Vec<f32>> {
-                let generation = active.as_ref().ok_or_else(semantic_unavailable)?;
+                let generation = match active.as_ref() {
+                    Some(generation) => generation,
+                    None => {
+                        return Err(semantic_unavailable_with_staging(
+                            config,
+                            store.staging_generation()?.as_ref(),
+                        )?);
+                    }
+                };
                 let saved = snapshot(generation)?;
                 check_offline(&saved.resolved, cli.offline)?;
                 let mut encoder = Encoder::load(
@@ -1318,7 +1406,7 @@ fn semantic_unavailable() -> AppError {
         "semantic_unavailable",
         "No active embedding generation is available",
     )
-    .action("Run nalcos init to install MiniLM INT8, select --model HF_ID, or use --mode lexical")
+    .action("Run nalcos init to configure an embedding model, select --model HF_ID, or use --mode lexical")
 }
 
 fn repository_changed() -> AppError {
@@ -1605,14 +1693,17 @@ fn status(
     execution: &Execution,
 ) -> Result<Value> {
     let scope = repo.resolve_scope(&scope_options(args), execution)?;
-    let (coverage, active, staging, counts, source_refresh_required) = if path.exists() {
+    let (coverage, active, staging, progress, counts, source_refresh_required) = if path.exists() {
         let mut store = Store::read_only(path)?;
         store.set_scope(&scope.oids)?;
         store.begin_snapshot()?;
+        let staging = store.staging_generation()?;
+        let progress = staging_progress(&store, config, staging.as_ref())?;
         (
             store.scope_coverage()?,
             store.active_generation()?,
-            store.staging_generation()?,
+            staging,
+            progress,
             serde_json::to_value(store.counts()?)?,
             source_refresh_required(&store)?,
         )
@@ -1624,6 +1715,7 @@ fn status(
             },
             None,
             None,
+            Value::Null,
             Value::Null,
             false,
         )
@@ -1644,7 +1736,10 @@ fn status(
     };
     let mut probe = Value::Null;
     if check {
-        let generation = active.as_ref().ok_or_else(semantic_unavailable)?;
+        let generation = match active.as_ref() {
+            Some(generation) => generation,
+            None => return Err(semantic_unavailable_with_staging(config, staging.as_ref())?),
+        };
         let saved = snapshot(generation)?;
         check_offline(&saved.resolved, cli.offline)?;
         let mut encoder = Encoder::load(
@@ -1684,7 +1779,7 @@ fn status(
         );
     }
     Ok(
-        json!({"schema_version":1,"command":"status","repository":repository_view(repo),"scope":scope_view(&scope)?,"readiness":readiness,"source_refresh_required":source_refresh_required,"index_path":path,"storage_bytes":if path.exists() {std::fs::metadata(path)?.len()} else {0},"counts":counts,"history_coverage":history,"embedding_coverage":embedding,"active_generation":generation_view(active.as_ref())?,"staging_generation":generation_view(staging.as_ref())?,"desired_profile":desired,"effective_config":config,"runtime":active.as_ref().map(snapshot).transpose()?.and_then(|s| s.runtime),"check":probe,"warnings":warnings,"release_qualification":"pending"}),
+        json!({"schema_version":1,"command":"status","repository":repository_view(repo),"scope":scope_view(&scope)?,"readiness":readiness,"source_refresh_required":source_refresh_required,"index_path":path,"storage_bytes":if path.exists() {std::fs::metadata(path)?.len()} else {0},"counts":counts,"history_coverage":history,"embedding_coverage":embedding,"active_generation":generation_view(active.as_ref())?,"staging_generation":generation_view(staging.as_ref())?,"staging_progress":progress,"desired_profile":desired,"effective_config":config,"runtime":active.as_ref().map(snapshot).transpose()?.and_then(|s| s.runtime),"check":probe,"warnings":warnings,"release_qualification":"pending"}),
     )
 }
 

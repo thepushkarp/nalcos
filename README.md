@@ -140,6 +140,8 @@ Sync retains indexed history reachable from current refs, worktree HEADs, and th
 
 Model choices persist. Plain `sync` resumes a pending model replacement or updates the active model; an unchanged configuration default cannot undo an explicit CLI choice. Searches use the active generation while `init` or `sync` applies model/profile changes. Ordinary syncs keep the resolved HF revision pinned; request a revision explicitly to upgrade it. Model artifacts use the shared Hugging Face cache rather than repository-local copies. API embedding profiles send selected text to the configured endpoint; `--offline` blocks provider calls, including localhost servers.
 
+`status` shows retained progress for a pending generation separately from searchable embeddings. During embedding work, `init` and `sync` report the actual indexing device or remote provider; JSON exposes it as `indexing_runtime`.
+
 See the [configuration reference](docs/configuration.md) and [example configuration](examples/config.toml).
 
 ## Development and validation

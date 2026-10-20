@@ -67,6 +67,11 @@ pub struct Coverage {
     pub omissions: usize,
 }
 
+pub struct GenerationProgress {
+    pub completed: usize,
+    pub total: usize,
+}
+
 pub struct Store {
     conn: Connection,
     read_only: bool,
@@ -807,6 +812,34 @@ impl Store {
 
     pub fn staging_generation(&self) -> Result<Option<Generation>> {
         self.generation_where("state='staging'")
+    }
+
+    /// Staging totals stop at the frozen cutover watermark; active totals include arrivals.
+    /// Count completed documents rather than vectors because one document may have many chunks.
+    pub fn generation_progress(&self, id: i64, scoped: bool) -> Result<GenerationProgress> {
+        if scoped {
+            self.require_scope()?;
+        }
+        let generation = self.require_generation(id)?;
+        let scope_join = if scoped {
+            "JOIN query_scope s ON s.oid=d.commit_oid"
+        } else {
+            ""
+        };
+        let sql = format!(
+            "SELECT COUNT(e.document_id),COUNT(*) FROM documents d {scope_join}
+             LEFT JOIN embedded_documents e ON e.document_id=d.id AND e.generation_id=?1
+             WHERE (?2='active' OR d.rowid<=?3)"
+        );
+        let (completed, total): (i64, i64) = self.conn.query_row(
+            &sql,
+            params![id, generation.state, generation.watermark],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )?;
+        Ok(GenerationProgress {
+            completed: to_usize(completed)?,
+            total: to_usize(total)?,
+        })
     }
 
     fn generation_where(&self, condition: &str) -> Result<Option<Generation>> {
@@ -1589,6 +1622,11 @@ mod tests {
             .unwrap();
         embed(&mut store, generation.id, &first, vec![3.0, 4.0]);
         let second = ingest(&mut store, "second", "second text");
+        let progress = store.generation_progress(generation.id, false).unwrap();
+        assert_eq!((progress.completed, progress.total), (1, 1));
+        store.set_scope(&["second".into()]).unwrap();
+        let progress = store.generation_progress(generation.id, true).unwrap();
+        assert_eq!((progress.completed, progress.total), (0, 0));
         assert_eq!(
             store
                 .ensure_generation("model-a", &json!({"name":"a"}), false)
@@ -1618,6 +1656,8 @@ mod tests {
             "generation_watermark"
         );
         store.activate_generation(generation.id).unwrap();
+        let progress = store.generation_progress(generation.id, false).unwrap();
+        assert_eq!((progress.completed, progress.total), (1, 2));
         assert_eq!(
             store
                 .pending_documents(generation.id, 20, &Execution::unlimited())
