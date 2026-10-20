@@ -32,7 +32,7 @@ nalcos show COMMIT_SHA
 
 `init` installs CodeRankEmbed FP16 (274 MB) for a fresh index and indexes local history. It measures compatible devices separately for indexing and queries, selects the fastest, and reports the device in use.
 
-Existing indexes keep their selected model. To switch, run `nalcos sync --model coderank --device auto`.
+Existing indexes keep their selected model. To switch, run `nalcos sync --model handwoven8588/CodeRankEmbed-GGUF --device auto`.
 
 To search without a model:
 
