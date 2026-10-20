@@ -733,32 +733,63 @@ pub(crate) fn atomic_write(path: &Path, bytes: &[u8]) -> Result<()> {
 mod tests {
     use super::*;
     use std::net::TcpListener;
-    use std::sync::{Arc, atomic::AtomicBool};
+    use std::sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    };
 
     #[test]
     fn artifact_body_uses_the_remaining_command_budget() {
-        for timeout in [None, Some(Duration::from_millis(100))] {
+        for timeout in [None, Some(Duration::ZERO), Some(Duration::from_millis(100))] {
             let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+            listener.set_nonblocking(true).unwrap();
             let address = listener.local_addr().unwrap();
+            let cancelled = Arc::new(AtomicBool::new(false));
+            let stop = Arc::clone(&cancelled);
             let server = std::thread::spawn(move || {
-                let (mut stream, _) = listener.accept().unwrap();
-                let mut request = [0; 1];
-                stream.read_exact(&mut request).unwrap();
+                let mut stream = loop {
+                    if stop.load(Ordering::Relaxed) {
+                        return;
+                    }
+                    match listener.accept() {
+                        Ok((stream, _)) => break stream,
+                        Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                            std::thread::sleep(Duration::from_millis(5));
+                        }
+                        Err(error) => panic!("Accept fixture request: {error}"),
+                    }
+                };
                 stream
-                    .write_all(
-                        b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\na",
-                    )
+                    .set_read_timeout(Some(Duration::from_secs(5)))
                     .unwrap();
-                std::thread::sleep(Duration::from_millis(250));
-                // A deadline may close the client before the last byte is sent.
-                if let Err(error) = stream.write_all(b"b") {
-                    assert!(matches!(
-                        error.kind(),
-                        std::io::ErrorKind::BrokenPipe | std::io::ErrorKind::ConnectionReset
-                    ));
+                let mut request = [0; 1];
+                if let Err(error) = stream.read_exact(&mut request) {
+                    assert!(timeout.is_some() && error.kind() == std::io::ErrorKind::UnexpectedEof);
+                    return;
+                }
+                for (delay, bytes) in [
+                    (
+                        Duration::ZERO,
+                        b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\na"
+                            .as_slice(),
+                    ),
+                    (Duration::from_millis(250), b"b".as_slice()),
+                ] {
+                    std::thread::sleep(delay);
+                    if let Err(error) = stream.write_all(bytes) {
+                        assert!(
+                            timeout.is_some()
+                                && matches!(
+                                    error.kind(),
+                                    std::io::ErrorKind::BrokenPipe
+                                        | std::io::ErrorKind::ConnectionReset
+                                )
+                        );
+                        return;
+                    }
                 }
             });
-            let execution = Execution::new(timeout, Arc::new(AtomicBool::new(false)));
+            let execution = Execution::new(timeout, Arc::clone(&cancelled));
             let directory = tempfile::tempdir().unwrap();
             let target = directory.path().join("artifact");
             let result = download_artifact(
@@ -768,6 +799,7 @@ mod tests {
                 || Ok(client(&execution)?.get(format!("http://{address}"))),
                 &execution,
             );
+            cancelled.store(true, Ordering::Relaxed);
             if timeout.is_some() {
                 assert_eq!(result.unwrap_err().code, "timeout");
                 assert!(!target.exists());

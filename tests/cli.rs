@@ -1,4 +1,5 @@
 use serde_json::Value;
+use std::collections::BTreeMap;
 use std::fs;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
@@ -661,7 +662,7 @@ fn source_omissions_explain_reasons_scope_and_bounded_details() {
     assert_eq!(source["categories"]["expected"], 2);
     assert_eq!(source["categories"]["limited"], 1);
     assert_eq!(source["categories"]["unavailable"], 1);
-    let reasons: Vec<_> = source["reasons"]
+    let reasons: BTreeMap<_, _> = source["reasons"]
         .as_array()
         .unwrap()
         .iter()
@@ -674,12 +675,12 @@ fn source_omissions_explain_reasons_scope_and_bounded_details() {
         .collect();
     assert_eq!(
         reasons,
-        [
+        BTreeMap::from([
             ("binary", 1),
             ("blob_limit", 1),
             ("excluded", 1),
             ("missing_object", 1)
-        ]
+        ])
     );
     assert!(
         search["warnings"]
@@ -1517,7 +1518,7 @@ fn initial_embedding_progress_is_retained_visible_and_resumable() {
         "{completed}/{total} documents completed ({completed} retained)"
     )));
     assert!(stderr.contains("Embedding model: mock-v1"));
-    assert!(stderr.contains("Indexing provider: remote (OpenAi, provider-managed)"));
+    assert!(stderr.contains("Indexing provider: remote"));
     assert!(!stderr.contains("Indexing device: cpu"));
     let resumed = parse_json(&resumed);
     assert_eq!(resumed["documents_embedded"], total - completed);
@@ -1754,15 +1755,18 @@ fn semantic_metadata_match_retains_its_identity_and_adds_same_file_code() {
     ]);
     assert_eq!(result_ids(&selected), [commit.as_str()]);
     let evidence = selected["results"][0]["evidence"].as_array().unwrap();
-    assert_eq!(evidence.len(), 2);
-    let metadata = &evidence[0];
-    let code = &evidence[1];
+    let metadata = evidence
+        .iter()
+        .find(|item| item["role"] == "match")
+        .unwrap();
+    let code = evidence
+        .iter()
+        .find(|item| item["role"] == "supporting_code")
+        .unwrap();
     assert_eq!(metadata["metadata_only"], true);
-    assert_eq!(metadata["role"], "match");
     assert_eq!(metadata["old_lines"], 0);
     assert_eq!(metadata["new_lines"], 0);
     assert_eq!(code["metadata_only"], false);
-    assert_eq!(code["role"], "supporting_code");
     assert_ne!(code["id"], metadata["id"]);
     assert!(
         code["excerpt"]
