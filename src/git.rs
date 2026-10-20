@@ -61,6 +61,13 @@ pub struct ScopeSnapshot {
     pub first_parent: bool,
 }
 
+#[derive(Debug)]
+pub struct FilteredScope {
+    pub oids: Vec<String>,
+    paths: Vec<String>,
+    changes: Vec<RawChange>,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct FilterOptions {
     pub paths: Vec<String>,
@@ -602,15 +609,20 @@ impl Repository {
         snapshot: &ScopeSnapshot,
         filters: &FilterOptions,
         execution: &Execution,
-    ) -> Result<Vec<String>> {
+    ) -> Result<FilteredScope> {
+        let mut filtered = FilteredScope {
+            oids: Vec::new(),
+            paths: filters.paths.clone(),
+            changes: Vec::new(),
+        };
         if filters.paths.is_empty()
             && filters.author.is_none()
             && filters.since.is_none()
             && filters.until.is_none()
         {
-            return Ok(snapshot.oids.clone());
+            filtered.oids = snapshot.oids.clone();
+            return Ok(filtered);
         }
-        let mut eligible = Vec::new();
         for batch in snapshot.oids.chunks(128) {
             let records = self.load_commits(batch, execution)?;
             let author = filters.author.as_ref().map(|s| s.to_lowercase());
@@ -626,19 +638,20 @@ impl Repository {
                 })
                 .collect();
             if filters.paths.is_empty() {
-                eligible.extend(selected.into_iter().map(|c| c.oid));
+                filtered.oids.extend(selected.into_iter().map(|c| c.oid));
             } else {
                 let changes = self.raw_changes(&selected, 1, &filters.paths, execution)?;
-                let matching: HashSet<_> = changes.into_iter().map(|c| c.commit_oid).collect();
-                eligible.extend(
+                let matching: HashSet<_> = changes.iter().map(|c| c.commit_oid.as_str()).collect();
+                filtered.oids.extend(
                     selected
                         .into_iter()
-                        .filter(|c| matching.contains(&c.oid))
+                        .filter(|c| matching.contains(c.oid.as_str()))
                         .map(|c| c.oid),
                 );
+                filtered.changes.extend(changes);
             }
         }
-        Ok(eligible)
+        Ok(filtered)
     }
 
     /// Apply Git pathspecs to both sides of each canonical change before ranking.
@@ -646,11 +659,11 @@ impl Repository {
     pub fn matching_document_ids(
         &self,
         documents: &[DocumentPaths],
-        paths: &[String],
+        scope: &FilteredScope,
         execution: &Execution,
     ) -> Result<HashSet<String>> {
         execution.check()?;
-        if paths.is_empty() {
+        if scope.paths.is_empty() {
             return Ok(documents
                 .iter()
                 .map(|document| document.id.clone())
@@ -675,10 +688,20 @@ impl Repository {
         for (parent, by_commit) in groups {
             let mut oids: Vec<_> = by_commit.keys().map(|oid| (*oid).to_owned()).collect();
             oids.sort();
-            for batch in oids.chunks(128) {
+            // Reuse the full first-parent membership once; only uncached
+            // parents need bounded Git batches.
+            let batch_size = if parent == 1 { oids.len().max(1) } else { 128 };
+            for batch in oids.chunks(batch_size) {
                 execution.check()?;
-                let commits = self.load_commits(batch, execution)?;
-                let changes = self.raw_changes(&commits, parent, paths, execution)?;
+                // First-parent membership was resolved for this search's exact
+                // immutable OIDs and Git pathspecs while filtering its scope.
+                let scanned = if parent == 1 {
+                    None
+                } else {
+                    let commits = self.load_commits(batch, execution)?;
+                    Some(self.raw_changes(&commits, parent, &scope.paths, execution)?)
+                };
+                let changes = scanned.as_deref().unwrap_or(&scope.changes);
                 let matching_commits: HashSet<_> = changes
                     .iter()
                     .map(|change| change.commit_oid.as_str())
@@ -2370,6 +2393,7 @@ mod tests {
         );
         let execution = Execution::unlimited();
         let repository = Repository::discover(fixture.0.path(), &execution).unwrap();
+        fixture.git(&["update-ref", "refs/heads/main", &tip], None);
         let records = repository.load_commits(&[tip], &execution).unwrap();
         let extracted = repository
             .extract_documents(&records, &IndexOptions::default(), &execution)
@@ -2391,21 +2415,32 @@ mod tests {
             .map(|document| document.id.clone())
             .collect();
         assert_eq!(expected.len(), 2);
+        let select = |pathspecs: Vec<String>| {
+            let scope = repository
+                .resolve_scope(&ScopeOptions::default(), &execution)
+                .unwrap();
+            let filtered = repository
+                .filter_scope(
+                    &scope,
+                    &FilterOptions {
+                        paths: pathspecs,
+                        ..Default::default()
+                    },
+                    &execution,
+                )
+                .unwrap();
+            repository
+                .matching_document_ids(&paths, &filtered, &execution)
+                .unwrap()
+        };
         for pathspecs in [
             vec!["old*".into()],
             vec![":(literal)new\tname".into()],
             vec!["*".into(), ":(exclude)unrelated".into()],
         ] {
-            assert_eq!(
-                repository
-                    .matching_document_ids(&paths, &pathspecs, &execution)
-                    .unwrap(),
-                expected
-            );
+            assert_eq!(select(pathspecs), expected);
         }
-        let only_other = repository
-            .matching_document_ids(&paths, &["unrelated".into()], &execution)
-            .unwrap();
+        let only_other = select(vec!["unrelated".into()]);
         assert!(
             paths
                 .iter()
@@ -2422,19 +2457,10 @@ mod tests {
                 .any(|document| only_other.contains(&document.id)
                     && document.text.contains("+needle"))
         );
-        assert_eq!(
-            repository
-                .matching_document_ids(&paths, &[], &execution)
-                .unwrap()
-                .len(),
-            paths.len()
-        );
-        assert!(
-            repository
-                .matching_document_ids(&paths, &["absent".into()], &execution)
-                .unwrap()
-                .is_empty()
-        );
+        assert_eq!(select(vec![]).len(), paths.len());
+        assert!(select(vec!["absent".into()]).is_empty());
+        fixture.git(&["update-ref", "refs/heads/main", &base], None);
+        assert!(select(vec!["old*".into()]).is_empty());
     }
 
     #[test]
@@ -2507,19 +2533,6 @@ mod tests {
         let rename = &shown.documents[0];
         assert_eq!(rename.old_path.as_ref().unwrap().bytes().unwrap(), old);
         assert_eq!(rename.new_path.as_ref().unwrap().bytes().unwrap(), new);
-        assert_eq!(
-            repository
-                .matching_document_ids(&[DocumentPaths::from(rename)], &["old*".into()], &execution)
-                .unwrap(),
-            HashSet::from([rename.id.clone()])
-        );
-        assert_eq!(
-            repository
-                .validate_documents(&shown.documents, &execution)
-                .unwrap()
-                .valid_ids,
-            vec![rename.id.clone()]
-        );
         let matching = repository
             .filter_scope(
                 &scope,
@@ -2530,8 +2543,21 @@ mod tests {
                 &execution,
             )
             .unwrap();
-        assert!(matching.contains(&left));
-        assert!(!matching.contains(&merge));
+        assert_eq!(
+            repository
+                .matching_document_ids(&[DocumentPaths::from(rename)], &matching, &execution)
+                .unwrap(),
+            HashSet::from([rename.id.clone()])
+        );
+        assert_eq!(
+            repository
+                .validate_documents(&shown.documents, &execution)
+                .unwrap()
+                .valid_ids,
+            vec![rename.id.clone()]
+        );
+        assert!(matching.oids.contains(&left));
+        assert!(!matching.oids.contains(&merge));
 
         let mut forged = rename.clone();
         forged.old_path = Some(GitPath::from_bytes(b"nonexistent"));

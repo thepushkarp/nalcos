@@ -1235,7 +1235,8 @@ fn search(
         };
         let scope = repo.resolve_scope(&scope_options, execution)?;
         trace("Git scope");
-        let eligible = repo.filter_scope(&scope, &filter_options, execution)?;
+        let filtered = repo.filter_scope(&scope, &filter_options, execution)?;
+        let eligible = &filtered.oids;
         trace("history filters");
         let mut warnings = Vec::new();
         if scope.shallow {
@@ -1255,7 +1256,7 @@ fn search(
                 config,
                 repo,
                 path,
-                &eligible,
+                eligible,
                 args.mode,
                 args.freshness == Freshness::Wait,
                 &indexing_execution,
@@ -1299,7 +1300,7 @@ fn search(
         }
         let mut store = Store::read_only(path)?;
         trace("refresh and index open");
-        store.set_scope(&eligible)?;
+        store.set_scope(eligible)?;
         store.begin_snapshot()?;
         trace("index scope");
         let source_refresh_required = source_refresh_required(&store)?;
@@ -1362,9 +1363,10 @@ fn search(
         if !args.paths.is_empty() {
             candidate_filter.allowed_documents = Some(repo.matching_document_ids(
                 &store.document_paths_in_scope(execution)?,
-                &args.paths,
+                &filtered,
                 execution,
             )?);
+            trace("document path filters");
         }
         let mut ranked = loop {
             execution.check()?;
