@@ -1,9 +1,8 @@
 # Embedding and search benchmarks
 
 The alpha default is **CodeRankEmbed 137M FP16 with automatic device selection**,
-using a pinned 274 MB GGUF conversion for local code retrieval. This is a product
-choice for the alpha, not a claim that the model passed broader quality, licensing,
-portability, or product qualification gates.
+using a pinned 274 MB GGUF conversion for local code retrieval. Broader retrieval
+and product qualification remain pending.
 Profiles remain configurable; explicit setup downloads models into the shared
 Hugging Face cache. This repository does not distribute weights.
 

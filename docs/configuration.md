@@ -1,6 +1,6 @@
 # Configuration
 
-Fresh `nalcos init` defaults to CodeRankEmbed 137M FP16 with automatic device selection. Lexical search and fresh plain `sync` can bootstrap an index without a model. `init` and explicit model changes may download required assets; search never installs a model implicitly. The alpha model default balances code retrieval and local indexing speed; it is not a claim that the broader qualification gates have passed.
+Fresh `nalcos init` defaults to CodeRankEmbed 137M FP16 with automatic device selection. Lexical search and fresh plain `sync` can bootstrap an index without a model. `init` and explicit model changes may download required assets; search never installs a model implicitly.
 
 ## Configuration and data locations
 
