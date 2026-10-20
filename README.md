@@ -15,7 +15,7 @@ brew install thepushkarp/tap/nalcos
 Install the Rust alpha from [crates.io](https://crates.io/crates/nalcos):
 
 ```sh
-cargo install nalcos --version 2.0.0-alpha.2 --locked
+cargo install nalcos --version 2.0.0-alpha.3 --locked
 ```
 
 Cargo installs require Rust 1.88 or newer, Git 2.45 or newer, a C/C++ compiler, and CMake. To build this checkout:

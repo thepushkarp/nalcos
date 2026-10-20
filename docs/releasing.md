@@ -17,7 +17,7 @@ An initial publication requires a maintainer API token. Trusted publishing requi
    ```
 
 2. Sign in to crates.io with the maintainer's GitHub account and verify its email address. Create an API token authorized to create and publish `nalcos`, then authenticate locally using `cargo login`. Do not paste the token into an issue, workflow file, or chat.
-3. Publish the reviewed checkout using `cargo publish --locked`. Verify the version at <https://crates.io/crates/nalcos> and install it in a temporary location using `cargo install nalcos --version 2.0.0-alpha.2 --locked --root TEMP_DIRECTORY`. Check the installed binary's `--version` and `--help`.
+3. Publish the reviewed checkout using `cargo publish --locked`. Verify the version at <https://crates.io/crates/nalcos> and install it in a temporary location using `cargo install nalcos --version 2.0.0-alpha.3 --locked --root TEMP_DIRECTORY`. Check the installed binary's `--version` and `--help`.
 4. On the crate's Settings → Trusted Publishing page, configure GitHub owner `thepushkarp`, repository `nalcos`, and workflow filename `release.yml`, with no environment. The workflow uses `rust-lang/crates-io-auth-action` to obtain a temporary publish token. Revoke the bootstrap API token after setup.
 
 The first publication requires an API token; trusted publishing requires an existing crate. See the [crates.io trusted publishing guide](https://crates.io/docs/trusted-publishing).

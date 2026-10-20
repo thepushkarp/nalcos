@@ -1,9 +1,9 @@
 class Nalcos < Formula
   desc "Search local Git history in natural language"
   homepage "https://github.com/thepushkarp/nalcos"
-  version "2.0.0-alpha.2"
+  version "2.0.0-alpha.3"
   url "https://github.com/thepushkarp/nalcos/releases/download/v#{version}/nalcos-v#{version}-aarch64-apple-darwin.tar.gz"
-  sha256 "056e99da98374a0b4bd715e12fb0b1bedea7ca8c62a2d9ce669218ce1f009aa0"
+  sha256 "5a6905cf069aa5f43cc9049e1718940508dc903e777596a3d8d43a3ee38adec6"
   license "MIT"
 
   depends_on :macos
