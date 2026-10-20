@@ -873,7 +873,7 @@ fn legacy_source_refresh_is_explicit_retryable_and_preserves_embeddings() {
     assert!(!initial_version.is_empty());
     connection
         .execute(
-            "DELETE FROM metadata WHERE key='canonical_extraction_version'",
+            "UPDATE metadata SET value='3' WHERE key='canonical_extraction_version'",
             [],
         )
         .unwrap();

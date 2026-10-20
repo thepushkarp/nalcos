@@ -91,6 +91,8 @@ Blob and patch limits must be positive; the document limit must be at least `256
 
 Exclusions and size limits affect coverage. Inspect reported omissions before interpreting absent results. A search's repeatable `--path` accepts Git pathspecs and narrows that query; it is not a persistent indexing exclusion. Diff evidence must match the old or new path. Commit-message evidence remains eligible when the commit's first-parent changes touch a matching path; unrelated file diffs from the same commit are excluded.
 
+Binary content does not consume the text-source budget. Blob inspection has a separate bounded read budget; exhausted commits report `read_budget` omissions. Run `sync` when `source_refresh_required` is reported to refresh cached extraction while reusing unchanged vectors.
+
 ## Runtime settings
 
 | Setting | Default | Meaning |
