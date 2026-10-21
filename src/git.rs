@@ -314,9 +314,9 @@ impl Repository {
             1024,
         )?;
         if !probe.success {
-            // Git reports failed discovery only through its fatal message. A
-            // translated message keeps the generic error rather than guessing,
-            // because other fatal errors (such as safe.directory) need other fixes.
+            // Git reports failed discovery only through its fatal message (untranslated
+            // because git_output sets LC_ALL=C). Other fatal errors, such as
+            // safe.directory, keep the generic error because they need other fixes.
             if String::from_utf8_lossy(&probe.stderr).contains("not a git repository") {
                 return Err(AppError::new(
                     "not_a_repository",
@@ -1583,6 +1583,9 @@ fn git_output<S: AsRef<OsStr>>(
         .env("GIT_NO_REPLACE_OBJECTS", "1")
         .env("GIT_NO_LAZY_FETCH", "1")
         .env("GIT_TERMINAL_PROMPT", "0")
+        // Output is parsed as bytes, so the locale only changes diagnostics. Untranslated
+        // messages keep error classification (such as not_a_repository) locale-independent.
+        .env("LC_ALL", "C")
         .stdin(if input.is_some() {
             Stdio::piped()
         } else {

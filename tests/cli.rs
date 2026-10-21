@@ -968,14 +968,23 @@ fn invalid_model_selection_leaves_a_fresh_index_uninitialized() {
 fn directory_outside_git_is_invalid_input_with_guidance() {
     let repository = Repository::new();
     let outside = tempfile::tempdir().expect("create non-repository directory");
-    let output = repository.run_at(outside.path(), &["status"]);
-    assert_eq!(output.status.code(), Some(2));
-    let error = &parse_json(&output)["error"];
-    assert_eq!(error["code"], "not_a_repository");
-    assert_eq!(
-        error["action"],
-        "Run inside a Git checkout or pass --repo PATH"
-    );
+    // A translated Git message must not change the classification.
+    for locale in ["C", "de_DE.UTF-8"] {
+        let output = repository
+            .command_at(outside.path())
+            .env("LC_ALL", locale)
+            .env("LANG", locale)
+            .args(["--offline", "status"])
+            .output()
+            .expect("execute NaLCoS");
+        assert_eq!(output.status.code(), Some(2), "locale {locale}");
+        let error = &parse_json(&output)["error"];
+        assert_eq!(error["code"], "not_a_repository", "locale {locale}");
+        assert_eq!(
+            error["action"],
+            "Run inside a Git checkout or pass --repo PATH"
+        );
+    }
     assert!(!repository.data.exists());
 }
 
