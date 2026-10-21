@@ -243,7 +243,6 @@ def main():
                     command += ["--device", args.device]
                 command += [
                     "search",
-                    query["query"],
                     "--mode",
                     mode,
                     "--freshness",
@@ -253,6 +252,10 @@ def main():
                     str(args.limit),
                     "--max-bytes",
                     str(args.max_bytes),
+                    # Queries may start with "-" (e.g. a CLI flag name); "--" keeps
+                    # them from being parsed as options.
+                    "--",
+                    query["query"],
                 ]
                 env = {**os.environ, **GIT_ENV, "NALCOS_DATA_DIR": repo["data_dir"]}
                 key = f"{index:03}-{mode}-{repeat:02}"
