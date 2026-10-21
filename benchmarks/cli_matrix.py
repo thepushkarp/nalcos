@@ -38,6 +38,20 @@ def latency_summary(rows):
     }
 
 
+def scope_arguments(query):
+    """Regression rows search their frozen good..bad window, a subset of the indexed
+    history; range rows were labeled within an index built for that range only."""
+    if query.get("task") == "regression":
+        return ["--range", f"{query['good']}..{query['bad']}"]
+    if query.get("scope_range"):
+        return ["--range", query["scope_range"]]
+    return ["--ref", query["snapshot"]]
+
+
+def scope_tip(query):
+    return query["bad"] if query.get("task") == "regression" else query["snapshot"]
+
+
 def adapt_response(query, requested_mode, payload, returncode):
     reasons = []
     if returncode != 0:
@@ -51,7 +65,7 @@ def adapt_response(query, requested_mode, payload, returncode):
     if requested_mode != "lexical" and embedding.get("complete") is not True:
         reasons.append("embedding_incomplete")
     scope = payload.get("scope", {})
-    if query["snapshot"] not in {r.get("oid") for r in scope.get("roots", [])}:
+    if scope_tip(query) not in {r.get("oid") for r in scope.get("roots", [])}:
         reasons.append("snapshot_mismatch")
     if scope.get("shallow") is not False:
         reasons.append("shallow_or_unknown_history")
@@ -181,10 +195,6 @@ def main():
     if len(ids) != len(set(ids)):
         parser.error("duplicate query ids")
     for query in queries:
-        if query.get("task", "find") != "find":
-            parser.error(
-                "this adapter currently supports find tasks only; regression range indexing must be explicit"
-            )
         key = query.get("repo_key")
         if not isinstance(key, str) or not key:
             parser.error(
@@ -238,13 +248,7 @@ def main():
                     mode,
                     "--freshness",
                     "cached",
-                    # Range rows were labeled within an index built for that range only;
-                    # searching full ancestry would score commits the index never embedded.
-                    *(
-                        ["--range", query["scope_range"]]
-                        if query.get("scope_range")
-                        else ["--ref", query["snapshot"]]
-                    ),
+                    *scope_arguments(query),
                     "--limit",
                     str(args.limit),
                     "--max-bytes",

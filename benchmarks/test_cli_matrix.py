@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from cli_matrix import adapt_response, check_encoder_consistency
+from cli_matrix import adapt_response, check_encoder_consistency, scope_arguments
 from evaluate import metrics
 from test_evaluate import query
 from test_index_matrix import BENCHMARKS, executable
@@ -29,6 +29,24 @@ class CoverageTests(unittest.TestCase):
         row = adapt_response(self.query, "lexical", self.payload, 0)
         self.assertTrue(row["complete"])
         self.assertFalse(row["abstained"])
+
+    def test_regression_rows_search_their_window_and_expect_bad_as_root(self):
+        regression = {
+            **self.query,
+            "task": "regression",
+            "good": "c" * 40,
+            "bad": "d" * 40,
+        }
+        self.assertEqual(
+            scope_arguments(regression), ["--range", "c" * 40 + ".." + "d" * 40]
+        )
+        self.assertEqual(scope_arguments(self.query), ["--ref", "a" * 40])
+        self.assertIn(
+            "snapshot_mismatch",
+            adapt_response(regression, "lexical", self.payload, 0)["incomplete_reasons"],
+        )
+        self.payload["scope"]["roots"] = [{"oid": "d" * 40}]
+        self.assertTrue(adapt_response(regression, "lexical", self.payload, 0)["complete"])
 
     def test_semantic_fallback_and_partial_history_are_incomplete(self):
         self.payload["history_coverage"]["complete"] = False
