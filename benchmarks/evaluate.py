@@ -14,6 +14,17 @@ import statistics
 from pathlib import Path
 
 OID = re.compile(r"[0-9a-f]{40}(?:[0-9a-f]{24})?\Z")
+# `vocabulary` uses the project's own terms; `negative` marks unanswerable rows.
+QUERY_KINDS = {
+    "natural",
+    "paraphrase",
+    "vocabulary",
+    "symbol",
+    "path",
+    "mixed",
+    "regression",
+    "negative",
+}
 POLICY = {
     "max_weight_bytes": 500 * 1024 * 1024,
     "recall10_tolerance": 0.05,
@@ -51,6 +62,39 @@ def validate_manifest(rows):
         for field in ("repo", "query"):
             if not isinstance(row.get(field), str) or not row[field].strip():
                 raise ValueError(f"{identifier}: {field} must be a nonempty string")
+        for field in ("repo_key", "family", "notes", "supporting_hunk_contains"):
+            if field in row and (
+                not isinstance(row[field], str)
+                or (field != "notes" and not row[field].strip())
+            ):
+                raise ValueError(
+                    f"{identifier}: {field} must be a string"
+                    + ("" if field == "notes" else " and nonempty")
+                )
+        if "query_kind" in row and (
+            not isinstance(row["query_kind"], str)
+            or row["query_kind"] not in QUERY_KINDS
+        ):
+            raise ValueError(f"{identifier}: invalid query_kind")
+        if "scope_range" in row and (
+            not isinstance(row["scope_range"], str)
+            or len(row["scope_range"].split("..")) != 2
+            or not all(OID.fullmatch(oid) for oid in row["scope_range"].split(".."))
+            or row["scope_range"].split("..")[1] != row.get("snapshot")
+        ):
+            raise ValueError(
+                f"{identifier}: scope_range must be full ids A..B ending at the snapshot"
+            )
+        if "gold_paths" in row and (
+            not isinstance(row["gold_paths"], list)
+            or any(
+                not isinstance(path, str) or not path.strip()
+                for path in row["gold_paths"]
+            )
+        ):
+            raise ValueError(
+                f"{identifier}: gold_paths must be a list of nonempty strings"
+            )
         if not OID.fullmatch(row.get("snapshot", "")):
             raise ValueError(f"{identifier}: snapshot must be a full Git object id")
         if row.get("split") not in {"exploratory", "development", "heldout"}:
@@ -123,23 +167,77 @@ def metrics(manifest, rankings, split=None):
             raise ValueError(f"{identifier}: abstained must be boolean")
         if row["abstained"] and commits:
             raise ValueError(f"{identifier}: abstained response contains candidates")
+        if "evidence" in row:
+            evidence = row["evidence"]
+            if not isinstance(evidence, list) or any(
+                not isinstance(item, dict)
+                or item.get("commit") not in commits
+                or not isinstance(item.get("paths"), list)
+                or any(not isinstance(path, str) or not path for path in item["paths"])
+                or not isinstance(item.get("excerpt"), str)
+                for item in evidence
+            ):
+                raise ValueError(
+                    f"{identifier}: evidence must contain ranked commit, paths list, and excerpt string"
+                )
         by_id[identifier] = row
+    evidence_available = any("evidence" in by_id.get(q["id"], {}) for q in queries)
+    report = score_queries(queries, by_id, split, evidence_available)
+    report["per_query_kind"] = {
+        kind: score_queries(
+            [q for q in queries if q.get("query_kind", "unspecified") == kind],
+            by_id,
+            split,
+            evidence_available,
+        )
+        for kind in sorted({q.get("query_kind", "unspecified") for q in queries})
+    }
+    return report
+
+
+def score_queries(queries, by_id, split, evidence_available):
     positives = [q for q in queries if q["answerable"] is True]
     negatives = [q for q in queries if q["answerable"] is False]
     unjudged = [q for q in queries if q["answerable"] is None]
     recall = {k: 0.0 for k in (1, 5, 10)}
     hit = {k: 0 for k in recall}
     rr = 0.0
+    ndcg = 0.0
+    path_queries = [q for q in positives if q.get("gold_paths")]
+    hunk_queries = [q for q in positives if q.get("supporting_hunk_contains")]
+    path_hits = {k: 0 for k in recall}
+    hunk_hits = {k: 0 for k in recall}
     details = []
     for query in positives:
         ranked = by_id.get(query["id"], {}).get("commits", [])
         gold = set(query["gold_commits"])
         rank = next((i for i, oid in enumerate(ranked, 1) if oid in gold), None)
         rr += 1 / rank if rank else 0
+        dcg = sum(
+            1 / math.log2(i + 1) for i, oid in enumerate(ranked[:10], 1) if oid in gold
+        )
+        ideal = sum(1 / math.log2(i + 1) for i in range(1, min(10, len(gold)) + 1))
+        ndcg += dcg / ideal
+        evidence = by_id.get(query["id"], {}).get("evidence", [])
         for k in recall:
             found = len(gold.intersection(ranked[:k]))
             recall[k] += found / len(gold)
             hit[k] += int(found > 0)
+            relevant = [
+                e for e in evidence if e["commit"] in gold.intersection(ranked[:k])
+            ]
+            matching_paths = [
+                e
+                for e in relevant
+                if set(e["paths"]).intersection(query.get("gold_paths", []))
+            ]
+            path_hits[k] += bool(matching_paths)
+            # Path and hunk must agree on one evidence item when path labels exist.
+            hunk_evidence = matching_paths if query.get("gold_paths") else relevant
+            needle = query.get("supporting_hunk_contains")
+            hunk_hits[k] += bool(needle) and any(
+                needle in e["excerpt"] for e in hunk_evidence
+            )
         details.append({"query_id": query["id"], "first_relevant_rank": rank})
     count = len(positives)
     complete = sum(by_id.get(q["id"], {}).get("complete") is True for q in queries)
@@ -157,6 +255,24 @@ def metrics(manifest, rankings, split=None):
         "recall": {str(k): recall[k] / count if count else None for k in recall},
         "hit_rate": {str(k): hit[k] / count if count else None for k in hit},
         "mrr": rr / count if count else None,
+        "ndcg@10": ndcg / count if count else None,
+        "path_hit": {
+            str(k): path_hits[k] / len(path_queries)
+            if evidence_available and path_queries
+            else None
+            for k in recall
+        },
+        "hunk_hit": {
+            str(k): hunk_hits[k] / len(hunk_queries)
+            if evidence_available and hunk_queries
+            else None
+            for k in recall
+        },
+        "path_labeled_questions": len(path_queries),
+        "hunk_labeled_questions": len(hunk_queries),
+        "evidence_responses": sum(
+            "evidence" in by_id.get(q["id"], {}) for q in queries
+        ),
         "negative_correct_abstentions": sum(
             by_id.get(q["id"], {}).get("complete") is True
             and by_id[q["id"]]["abstained"]

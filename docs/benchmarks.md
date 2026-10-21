@@ -158,6 +158,100 @@ vectors. Default scale output goes into ignored `benchmarks/output/`.
 Each harness exposes `--help`; complete commands and schema contracts are preserved
 in the archive's `docs/benchmarks.md`.
 
+## Round 2 harness
+
+```sh
+# Clones already contain the full snapshots in benchmarks/repos.json.
+# Every indexing repeat has fresh data/runtime directories; HF cache is shared.
+python3 benchmarks/index_matrix.py \
+  --binary target/release/nalcos --repos benchmarks/repos.json \
+  --clones /tmp/nalcos-clones --devices cpu metal auto --repeats 3 \
+  --timeout 3600 --model coderank --offline --output /tmp/nalcos-index-matrix
+
+# Repository mappings select existing indexes; search never indexes or downloads.
+cat > /tmp/nalcos-local-repositories.json <<'JSON'
+{
+  "etymology": {
+    "path": "/tmp/nalcos-clones/etymology",
+    "config": "/tmp/nalcos-index-matrix/config.toml",
+    "data_dir": "/tmp/nalcos-index-matrix/etymology/auto/semantic-full/0/data"
+  },
+  "nalcos": {
+    "path": "/tmp/nalcos-clones/nalcos",
+    "config": "/tmp/nalcos-index-matrix/config.toml",
+    "data_dir": "/tmp/nalcos-index-matrix/nalcos/auto/semantic-full/0/data"
+  }
+}
+JSON
+python3 benchmarks/cli_matrix.py \
+  --binary target/release/nalcos --manifest benchmarks/fixtures/hybrid/queries.jsonl \
+  --repositories /tmp/nalcos-local-repositories.json --device auto --repeats 3 \
+  --output /tmp/nalcos-query-matrix
+
+# Repeat 0 is cold, later repeats are warm; caches are not flushed.
+# Each repeat is scored separately, including query-kind, nDCG and evidence metrics.
+# Evidence rows contain commit, paths (old/new path displays), and excerpt per hunk.
+# Path/hunk rates use positively labeled questions with the respective annotation.
+# Hunk matches also require the labeled path when supplied; absent evidence scores
+# as a miss once evidence is supplied for the cohort, otherwise rates are null.
+for rankings in /tmp/nalcos-query-matrix/*.rankings.jsonl; do
+  python3 benchmarks/evaluate.py metrics \
+    --manifest benchmarks/fixtures/hybrid/queries.jsonl --rankings "$rankings" \
+    --output "${rankings%.rankings.jsonl}.metrics.json"
+done
+
+# CODERANK_INDEX names a separately prepared active native CodeRank GGUF index.
+# Synthetic vectors measure scan cost only; query encoding uses cached artifacts.
+python3 benchmarks/scale.py --binary target/release/nalcos \
+  --work /tmp/nalcos-scale-100k --commits 100000 --index-only
+python3 benchmarks/vector_scale.py --profile coderank --dimensions 768 \
+  --model-id handwoven8588/CodeRankEmbed-GGUF --backend gguf --device cpu \
+  --fixture /tmp/nalcos-scale-100k --model-index "$CODERANK_INDEX" \
+  --work /tmp/nalcos-vector-100k --binary target/release/nalcos \
+  --output /tmp/nalcos-vector-100k.json
+# Default profile is 384-D MiniLM ONNX CPU; its measurement needs cached ORT.
+python3 benchmarks/vector_scale.py --profile minilm \
+  --fixture /tmp/nalcos-scale-100k --model-index "$MINILM_INDEX" \
+  --ort-library "$NALCOS_ORT_LIBRARY" --work /tmp/nalcos-minilm-100k \
+  --binary target/release/nalcos --output /tmp/nalcos-minilm-100k.json
+
+# Tasks JSONL: id, repo_key, prompt, gold_commits (full OIDs), answer_type
+# (find|absence|explain). Absence has an empty gold_commits list.
+# NALCOS_SKILL is the skill directory containing SKILL.md.
+# Planning is the default; only --run starts agents and spends tokens.
+python3 benchmarks/agent_trials.py --tasks /tmp/nalcos-agent-tasks.jsonl \
+  --repos benchmarks/repos.json --clones /tmp/nalcos-clones \
+  --skill "$NALCOS_SKILL" --binary target/release/nalcos \
+  --agents claude codex --conditions git_rg nalcos_git_rg \
+  --budget-seconds 300 --budget-tokens 20000 --order counterbalanced \
+  --output /tmp/nalcos-agent-trials --dry-run
+python3 benchmarks/agent_trials.py --tasks /tmp/nalcos-agent-tasks.jsonl \
+  --repos benchmarks/repos.json --clones /tmp/nalcos-clones \
+  --skill "$NALCOS_SKILL" --binary target/release/nalcos \
+  --agents claude codex --claude-model "$CLAUDE_MODEL" --codex-model "$CODEX_MODEL" \
+  --budget-seconds 300 --budget-tokens 20000 --max-turns 20 \
+  --order counterbalanced --output /tmp/nalcos-agent-trials --run
+
+# Wall deadlines kill the trial process group. Token limits are prompt requests
+# plus posthoc usage checks; overruns fail. Unknown usage is marked incomplete.
+# outcome is completed|timeout|failed; review_status starts as pending_review.
+# Give reviewers only answers.jsonl. Free-form answer text can reveal tool names.
+python3 benchmarks/agent_trials.py --blind-export /tmp/nalcos-agent-trials \
+  --output /tmp/nalcos-blind-review
+# Reviews JSONL: review_id, passed, blind_to_condition, reviewer_id, references,
+# verified_commits (full OIDs), optional absence_reviewed boolean.
+python3 benchmarks/agent_trials.py --import-reviews /tmp/nalcos-reviews.jsonl \
+  --trials /tmp/nalcos-agent-trials --output /tmp/nalcos-reviewed-trials
+for agent in claude codex; do
+  python3 benchmarks/workflows.py \
+    --manifest /tmp/nalcos-reviewed-trials/manifest.jsonl \
+    --trials "/tmp/nalcos-reviewed-trials/$agent/trials.jsonl" \
+    --output "/tmp/nalcos-reviewed-trials/$agent/workflow.json"
+done
+
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s benchmarks -p 'test_*.py'
+```
+
 ## Remaining qualification
 
 The strict evaluator remains available:

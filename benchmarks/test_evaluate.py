@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import math
 import tempfile
 import unittest
 from pathlib import Path
@@ -63,6 +64,75 @@ def declaration(rows, **extra):
 
 
 class EvaluationTests(unittest.TestCase):
+    def test_ndcg_binary_multi_gold_and_query_kinds(self):
+        questions = [
+            query("natural", gold=["b" * 40, "c" * 40], query_kind="natural"),
+            query("plain"),
+        ]
+        result = metrics(
+            questions, [ranking("natural", ["d" * 40, "b" * 40, "c" * 40])]
+        )
+        expected = (1 / math.log2(3) + 1 / math.log2(4)) / (1 + 1 / math.log2(3))
+        self.assertAlmostEqual(result["ndcg@10"], expected / 2)
+        self.assertEqual(result["per_query_kind"]["unspecified"]["mrr"], 0)
+        self.assertEqual(result["per_query_kind"]["natural"]["recall"]["5"], 1)
+        self.assertEqual(result["mrr"], 0.25)
+
+    def test_evidence_needs_gold_commit_and_matching_path_and_hunk(self):
+        question = query(gold_paths=["old.rs"], supporting_hunk_contains="needle")
+        row = ranking(commits=["c" * 40, "b" * 40])
+        row["evidence"] = [
+            {"commit": "c" * 40, "paths": ["old.rs"], "excerpt": "needle"},
+            {"commit": "b" * 40, "paths": ["old.rs", "new.rs"], "excerpt": "other"},
+            {"commit": "b" * 40, "paths": ["wrong.rs"], "excerpt": "needle"},
+        ]
+        result = metrics([question], [row])
+        self.assertEqual(result["path_hit"], {"1": 0, "5": 1, "10": 1})
+        self.assertEqual(result["hunk_hit"]["10"], 0)
+        row["evidence"][1]["excerpt"] = "prefix needle suffix"
+        self.assertEqual(metrics([question], [row])["hunk_hit"]["5"], 1)
+        self.assertIsNone(metrics([question], [ranking()])["path_hit"]["10"])
+        missing = query(
+            "missing", gold_paths=["old.rs"], supporting_hunk_contains="needle"
+        )
+        self.assertEqual(metrics([question, missing], [row])["hunk_hit"]["10"], 0.5)
+
+    def test_optional_manifest_fields_and_malformed_evidence(self):
+        validate_manifest(
+            [
+                query(
+                    repo_key="repo",
+                    query_kind="regression",
+                    family="one",
+                    notes="",
+                    gold_paths=[],
+                    supporting_hunk_contains="x",
+                )
+            ]
+        )
+        for field, value in (
+            ("repo_key", 1),
+            ("query_kind", []),
+            ("query_kind", "other"),
+            ("gold_paths", "file"),
+            ("gold_paths", [None]),
+            ("supporting_hunk_contains", ""),
+            ("family", []),
+            ("notes", {}),
+        ):
+            with (
+                self.subTest(field=field, value=value),
+                self.assertRaisesRegex(ValueError, field),
+            ):
+                validate_manifest([query(**{field: value})])
+        for evidence in (
+            None,
+            [{}],
+            [{"commit": "b" * 40, "paths": [1], "excerpt": "x"}],
+        ):
+            with self.assertRaisesRegex(ValueError, "evidence"):
+                metrics([query()], [ranking() | {"evidence": evidence}])
+
     def test_multi_gold_recall_differs_from_hit_rate(self):
         result = metrics(
             [query(gold=["b" * 40, "c" * 40])], [ranking(commits=["d" * 40, "b" * 40])]

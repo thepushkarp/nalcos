@@ -2,8 +2,8 @@
 """Measure exact-vector CLI scale using explicitly synthetic document vectors.
 
 An existing scale.py fixture is copied into a separate disposable index. Dense,
-deterministic 384-dimensional vectors are installed there in resumable batches.
-They do not represent document meaning. A cached native MiniLM model encodes the
+deterministic vectors are installed there in resumable batches.
+They do not represent document meaning. A cached native reference model encodes the
 queries, so latency includes real model startup, exact retrieval, live Git scope,
 source verification, and JSON output. No retrieval-quality metric is valid here.
 The canonical fixture and model-reference index are opened read-only.
@@ -22,20 +22,38 @@ import subprocess
 import time
 from contextlib import closing
 from datetime import datetime, timezone
+from functools import cache
 from pathlib import Path
 
 from scale import CHANGES, DOMAINS, digest, emit, git, host
 
 DIMENSIONS = 384
-ALGORITHM = "shake256-document-id-rademacher-384-v1"
 MODEL_ID = "sentence-transformers/multi-qa-MiniLM-L6-cos-v1"
 PURPOSE = "SYNTHETIC VECTORS: exact-vector scale only; no retrieval-quality evidence"
-SCALE = 1 / math.sqrt(DIMENSIONS)
-PACKER = struct.Struct("<" + "f" * DIMENSIONS)
+PROFILES = {
+    "minilm": {"dimensions": DIMENSIONS, "model_id": MODEL_ID, "backend": "onnx"},
+    "coderank": {
+        "dimensions": 768,
+        "model_id": "handwoven8588/CodeRankEmbed-GGUF",
+        "backend": "gguf",
+    },
+}
+
+
+@cache
+def vector_shape(dimensions):
+    return (
+        f"shake256-document-id-rademacher-{dimensions}-v1",
+        1 / math.sqrt(dimensions),
+        struct.Struct("<" + "f" * dimensions),
+    )
 
 
 def read_only(path):
-    return sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True)
+    try:
+        return sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True)
+    except sqlite3.Error as error:
+        raise RuntimeError(f"read index {path}: {error}") from error
 
 
 def write_json(path, payload):
@@ -44,11 +62,12 @@ def write_json(path, payload):
     temporary.replace(path)
 
 
-def synthetic_vector(document_id):
-    signs = hashlib.shake_256(ALGORITHM.encode() + b"\0" + document_id.encode()).digest(
-        DIMENSIONS
+def synthetic_vector(document_id, dimensions=DIMENSIONS):
+    algorithm, scale, packer = vector_shape(dimensions)
+    signs = hashlib.shake_256(algorithm.encode() + b"\0" + document_id.encode()).digest(
+        dimensions
     )
-    return PACKER.pack(*(SCALE if byte & 1 else -SCALE for byte in signs))
+    return packer.pack(*(scale if byte & 1 else -scale for byte in signs))
 
 
 def runtime_conditions():
@@ -118,32 +137,36 @@ def fixture_state(fixture):
     return source, manifest, documents
 
 
-def model_state(path):
+def model_state(path, dimensions=DIMENSIONS, model_id=MODEL_ID, backend="onnx"):
     with closing(read_only(path)) as conn:
         row = conn.execute(
             "SELECT fingerprint,model,dimensions FROM generations WHERE state='active'"
         ).fetchone()
     if row is None:
         raise RuntimeError("model-reference index has no active generation")
-    fingerprint, encoded, dimensions = row
+    fingerprint, encoded, stored_dimensions = row
     model = json.loads(encoded)
     profile = model["resolved"]["profile"]
     if (
-        profile["id"] != MODEL_ID
-        or profile["backend"] != "onnx"
-        or dimensions != DIMENSIONS
-        or profile["dimensions"] != DIMENSIONS
+        profile["id"] != model_id
+        or profile["backend"] != backend
+        or stored_dimensions != dimensions
+        or profile["dimensions"] != dimensions
         or profile.get("endpoint") is not None
         or profile.get("api_key_env") is not None
     ):
-        raise RuntimeError("reference must be a cached native 384-D MiniLM generation")
+        raise RuntimeError(
+            f"reference {path} must have active native {model_id} / {backend} / {dimensions}-D generation"
+        )
     for file in model["resolved"]["files"].values():
         if not Path(file["path"]).is_file():
-            raise RuntimeError("reference model artifact is not locally available")
+            raise RuntimeError(
+                f"reference {path}: model artifact {file['path']} is not locally available"
+            )
     descriptor_hash = hashlib.sha256(encoded.encode()).hexdigest()
     model["benchmark_vectors"] = {
         "synthetic": True,
-        "algorithm": ALGORITHM,
+        "algorithm": vector_shape(dimensions)[0],
         "purpose": PURPOSE,
     }
     return fingerprint, model, descriptor_hash
@@ -153,7 +176,11 @@ def prepare(args):
     fixture = args.fixture.resolve()
     work = args.work.resolve()
     source, manifest, documents = fixture_state(fixture)
-    reference_fingerprint, model, descriptor_hash = model_state(args.model_index)
+    dimensions = args.dimensions
+    algorithm, _, packer = vector_shape(dimensions)
+    reference_fingerprint, model, descriptor_hash = model_state(
+        args.model_index, dimensions, args.model_id, args.backend
+    )
     if (
         work.is_relative_to(fixture)
         or source.is_relative_to(work)
@@ -164,8 +191,8 @@ def prepare(args):
     identity = {
         "schema_version": 1,
         "purpose": PURPOSE,
-        "algorithm": ALGORITHM,
-        "dimensions": DIMENSIONS,
+        "algorithm": algorithm,
+        "dimensions": dimensions,
         "fixture_head": manifest["head"],
         "commits": manifest["commits"],
         "documents": documents,
@@ -237,7 +264,7 @@ def prepare(args):
                 cursor = conn.execute(
                     "INSERT INTO generations(fingerprint,model,dimensions,watermark,state,created_at,allow_prior_reuse) "
                     "VALUES(?,?,?,(SELECT MAX(rowid) FROM documents),'staging',?,0)",
-                    (fingerprint, json.dumps(model), DIMENSIONS, int(time.time())),
+                    (fingerprint, json.dumps(model), dimensions, int(time.time())),
                 )
                 generation_id = cursor.lastrowid
                 conn.execute(
@@ -272,8 +299,8 @@ def prepare(args):
                     0,
                     0,
                     length,
-                    DIMENSIONS,
-                    synthetic_vector(doc_id),
+                    dimensions,
+                    synthetic_vector(doc_id, dimensions),
                 )
                 for _, doc_id, length in pending
                 if length
@@ -303,7 +330,7 @@ def prepare(args):
         vectors, invalid = conn.execute(
             "SELECT COUNT(*),COALESCE(SUM(dimensions<>? OR length(vector)<>?),0) "
             "FROM embeddings WHERE generation_id=?",
-            (DIMENSIONS, PACKER.size, generation_id),
+            (dimensions, packer.size, generation_id),
         ).fetchone()
         if completed != documents or vectors != nonempty or invalid:
             raise RuntimeError("synthetic vector coverage or shape is incomplete")
@@ -313,7 +340,7 @@ def prepare(args):
         ).fetchone()
         norm_error = 0.0
         if sample:
-            norm_error = abs(sum(v * v for v in PACKER.unpack(sample[0])) - 1)
+            norm_error = abs(sum(v * v for v in packer.unpack(sample[0])) - 1)
             if norm_error > 1e-5:
                 raise RuntimeError(
                     "synthetic vectors are not normalized within tolerance"
@@ -329,7 +356,7 @@ def prepare(args):
             generation_fingerprint=fingerprint,
             completed_documents=completed,
             vectors=vectors,
-            vector_bytes=vectors * PACKER.size,
+            vector_bytes=vectors * packer.size,
             normalized_vector_squared_norm_error=norm_error,
             resumed_from_documents=resumed_from,
             latest_population_seconds=time.perf_counter() - started,
@@ -339,7 +366,7 @@ def prepare(args):
     finally:
         conn.close()
     (work / "config.toml").write_text(
-        'version = 1\n[runtime]\nquery_device = "cpu"\nindex_device = "cpu"\nthreads = 4\n'
+        f"version = 1\n[runtime]\nquery_device = {json.dumps(args.device)}\nindex_device = {json.dumps(args.device)}\nthreads = 4\n"
     )
     emit("synthetic_vectors_ready", documents=documents, vectors=receipt["vectors"])
     return receipt
@@ -358,18 +385,35 @@ def measure(args, receipt):
         raise RuntimeError(
             "measurement output exists; preserve it and choose a new output filename"
         )
-    if not args.ort_library.is_file():
-        raise RuntimeError("the explicit cached ONNX Runtime library is missing")
+    encoder = receipt["identity"]["query_encoder"]
+    if any(
+        encoder[key] != getattr(args, field)
+        for key, field in [
+            ("id", "model_id"),
+            ("dimensions", "dimensions"),
+            ("backend", "backend"),
+        ]
+    ):
+        raise RuntimeError(
+            f"measurement profile differs from {work / 'preparation.json'}"
+        )
+    if args.backend == "onnx" and (
+        args.ort_library is None or not args.ort_library.is_file()
+    ):
+        raise RuntimeError(
+            "ONNX measurement requires --ort-library pointing to a cached runtime"
+        )
     fixture_state(fixture)
     binary_hash = digest(binary)
     conditions = runtime_conditions()
     env = {
         **os.environ,
         "NALCOS_DATA_DIR": str(work / "data"),
-        "NALCOS_ORT_LIBRARY": str(args.ort_library.resolve()),
         "GIT_NO_LAZY_FETCH": "1",
         "GIT_NO_REPLACE_OBJECTS": "1",
     }
+    if args.backend == "onnx":
+        env["NALCOS_ORT_LIBRARY"] = str(args.ort_library.resolve())
     raw.mkdir()
     records = []
     for number in range(args.queries):
@@ -386,6 +430,8 @@ def measure(args, receipt):
             str(work / "config.toml"),
             "--json",
             "--offline",
+            "--device",
+            args.device,
             "--timeout",
             "60s",
             "search",
@@ -424,8 +470,12 @@ def measure(args, receipt):
             or payload["embedding_coverage"]["complete"] is not True
             or payload["embedding_coverage"]["indexed"]
             != receipt["identity"]["documents"]
-            or runtime.get("selected_device") != "cpu"
-            or "ONNX Runtime 1.23.2" not in runtime.get("runtime_version", "")
+            or (args.device != "auto" and runtime.get("selected_device") != args.device)
+            or runtime.get("provider") != {"onnx": "Onnx", "gguf": "Gguf"}[args.backend]
+            or (
+                args.profile == "minilm"
+                and "ONNX Runtime 1.23.2" not in runtime.get("runtime_version", "")
+            )
             or not evidence
             or not all(item["verified"] for item in evidence)
         ):
@@ -455,11 +505,13 @@ def measure(args, receipt):
         "host": host(),
         "runtime_conditions_at_start": conditions,
         "binary_sha256": binary_hash,
-        "runtime_library_sha256": digest(args.ort_library),
+        "runtime_library_sha256": digest(args.ort_library)
+        if args.backend == "onnx"
+        else None,
         "corpus": receipt["fixture"],
         "vectors": {
-            "algorithm": ALGORITHM,
-            "dimensions": DIMENSIONS,
+            "algorithm": receipt["identity"]["algorithm"],
+            "dimensions": receipt["identity"]["dimensions"],
             "count": receipt["vectors"],
             "bytes": receipt["vector_bytes"],
             "chunks_per_nonempty_document": 1,
@@ -517,17 +569,21 @@ def main():
         "--model-index",
         type=Path,
         required=True,
-        help="Read-only reference with active native MiniLM",
+        help="Read-only reference with an active native generation matching the selected profile",
     )
     parser.add_argument(
         "--ort-library",
         type=Path,
-        required=True,
         help="Cached ONNX Runtime 1.23.2 library",
     )
     parser.add_argument("--binary", type=Path, default=Path("target/release/nalcos"))
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--queries", type=int, default=20)
+    parser.add_argument("--profile", choices=list(PROFILES), default="minilm")
+    parser.add_argument("--dimensions", type=int)
+    parser.add_argument("--model-id")
+    parser.add_argument("--backend", choices=["onnx", "gguf"])
+    parser.add_argument("--device", default="cpu")
     parser.add_argument("--freshness", choices=["cached", "auto"], default="cached")
     parser.add_argument("--resume", action="store_true")
     phase = parser.add_mutually_exclusive_group()
@@ -538,14 +594,30 @@ def main():
         default="No deliberate competing benchmark; ordinary host activity was not controlled",
     )
     args = parser.parse_args()
-    if args.queries < 2:
-        parser.error("at least two queries are required")
-    if args.measure_only:
-        receipt = json.loads((args.work / "preparation.json").read_text())
-    else:
-        receipt = prepare(args)
-    if not args.prepare_only:
-        measure(args, receipt)
+    for field, value in PROFILES[args.profile].items():
+        if getattr(args, field) is None:
+            setattr(args, field, value)
+    if args.queries < 2 or args.dimensions < 1:
+        parser.error("at least two queries and positive dimensions are required")
+    if args.profile == "minilm" and (args.device != "cpu" or args.backend != "onnx"):
+        parser.error("minilm profile requires ONNX CPU; choose coderank for GGUF")
+    try:
+        if args.measure_only:
+            receipt = json.loads((args.work / "preparation.json").read_text())
+        else:
+            receipt = prepare(args)
+        if not args.prepare_only:
+            measure(args, receipt)
+    except (
+        OSError,
+        ValueError,
+        TypeError,
+        KeyError,
+        RuntimeError,
+        sqlite3.Error,
+        subprocess.SubprocessError,
+    ) as error:
+        parser.exit(2, f"vector scale failed: {error}\n")
 
 
 if __name__ == "__main__":
