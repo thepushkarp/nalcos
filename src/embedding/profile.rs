@@ -364,19 +364,34 @@ pub fn profile(id: &str) -> Result<ModelProfile> {
         selected.artifact = minilm_int8_artifact()?.into();
         return Ok(selected);
     }
-    let canonical = match id {
-        "coderank" => "handwoven8588/CodeRankEmbed-GGUF",
-        "minilm" => "sentence-transformers/multi-qa-MiniLM-L6-cos-v1",
-        "jina-code" | "jina" => "jinaai/jina-embeddings-v2-base-code",
-        "bge-small" => "BAAI/bge-small-en-v1.5",
-        "embeddinggemma" | "gemma" => "ggml-org/embeddinggemma-300M-GGUF",
-        "qwen3" => "Qwen/Qwen3-Embedding-0.6B-GGUF",
-        other => other,
-    };
+    let canonical = ALIASES
+        .iter()
+        .find(|(alias, _)| *alias == id)
+        .map_or(id, |(_, canonical)| canonical);
     known_profiles().into_iter().find(|p| p.id == canonical).ok_or_else(|| {
-        AppError::new("unknown_model", format!("No embedding contract is registered for '{id}'; provide a custom profile with backend, artifact, dimensions, tokenizer, pooling and prefixes"))
+        let aliases = ALIASES
+            .iter()
+            .map(|(alias, _)| *alias)
+            .chain(["minilm-int8"])
+            .collect::<Vec<_>>()
+            .join(", ");
+        AppError::new("unknown_model", format!("No embedding contract is registered for '{id}'"))
+            .action(format!("Pass a registered alias ({aliases}) or its Hugging Face ID, or define [profiles.NAME] with backend, artifact, dimensions, tokenizer, pooling and prefixes and pass --model profile:NAME"))
     })
 }
+
+/// Short names accepted wherever a registered model ID is. `minilm-int8` is
+/// resolved separately because its artifact depends on the CPU architecture.
+const ALIASES: &[(&str, &str)] = &[
+    ("coderank", "handwoven8588/CodeRankEmbed-GGUF"),
+    ("minilm", "sentence-transformers/multi-qa-MiniLM-L6-cos-v1"),
+    ("jina-code", "jinaai/jina-embeddings-v2-base-code"),
+    ("jina", "jinaai/jina-embeddings-v2-base-code"),
+    ("bge-small", "BAAI/bge-small-en-v1.5"),
+    ("embeddinggemma", "ggml-org/embeddinggemma-300M-GGUF"),
+    ("gemma", "ggml-org/embeddinggemma-300M-GGUF"),
+    ("qwen3", "Qwen/Qwen3-Embedding-0.6B-GGUF"),
+];
 
 fn minilm_int8_artifact() -> Result<&'static str> {
     #[cfg(target_arch = "aarch64")]

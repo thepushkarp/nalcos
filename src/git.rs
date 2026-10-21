@@ -306,13 +306,27 @@ impl Repository {
             )
             .action("Install Git 2.45 or later and ensure it is first on PATH"));
         }
-        let bare = text_output(git(
+        let probe = git_output(
             &cwd,
             &["rev-parse", "--is-bare-repository"],
             None,
             execution,
             1024,
-        )?)? == "true";
+        )?;
+        if !probe.success {
+            // Git reports failed discovery only through its fatal message. A
+            // translated message keeps the generic error rather than guessing,
+            // because other fatal errors (such as safe.directory) need other fixes.
+            if String::from_utf8_lossy(&probe.stderr).contains("not a git repository") {
+                return Err(AppError::new(
+                    "not_a_repository",
+                    format!("{} is not inside a Git repository", cwd.display()),
+                )
+                .action("Run inside a Git checkout or pass --repo PATH"));
+            }
+            return Err(git_error("read repository", &probe.stderr));
+        }
+        let bare = text_output(probe.stdout)? == "true";
         let common = git(
             &cwd,
             &["rev-parse", "--path-format=absolute", "--git-common-dir"],

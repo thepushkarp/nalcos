@@ -31,7 +31,8 @@ impl AppError {
 
     pub fn exit_code(&self) -> i32 {
         match self.code.as_str() {
-            "invalid_input" | "invalid_config" | "unsupported_schema" => 2,
+            "invalid_input" | "invalid_config" | "unsupported_schema" | "unknown_model"
+            | "not_a_repository" => 2,
             "timeout" => 124,
             "interrupted" => 130,
             _ => 1,

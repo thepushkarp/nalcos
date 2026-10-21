@@ -12,7 +12,7 @@ categories = ["command-line-utilities", "development-tools"]
 publish = ["crates-io"]
 include = [
     "/Cargo.toml", "/Cargo.lock", "/src/**", "/tests/**", "/examples/**",
-    "/README.md", "/LICENSE", "/docs/**",
+    "/README.md", "/LICENSE", "/docs/**", "/skills/**", "/.claude-plugin/**",
     "/benchmarks/**/*.py", "/benchmarks/**/*.json", "/benchmarks/**/*.jsonl",
 ]
 

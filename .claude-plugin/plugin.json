@@ -1,0 +1,11 @@
+{
+  "name": "nalcos",
+  "description": "Search local Git history in natural language and confirm ranked commits with source-verified patch evidence.",
+  "author": {
+    "name": "Pushkar Patel"
+  },
+  "homepage": "https://github.com/thepushkarp/nalcos",
+  "repository": "https://github.com/thepushkarp/nalcos",
+  "license": "MIT",
+  "keywords": ["git", "history", "search", "regression"]
+}
