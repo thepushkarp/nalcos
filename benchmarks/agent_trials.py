@@ -71,7 +71,9 @@ READ_ONLY_GIT = (
     "describe",
     "status",
 )
-PROTOCOL = "Use only local Git history, rg, and file-reading tools available in this repository. Do not use the network, other repositories, or delegate to other agents. Do not modify repository files. Cite full commit IDs, paths, and supporting hunks; for absence, describe the history and searches covered."
+# Tool-neutral on purpose: naming specific tools steers agents away from others
+# that are installed, which would bias the with/without-NaLCoS comparison.
+PROTOCOL = "Answer from this repository's local history using the tools available to you. Do not use the network, other repositories, or delegate to other agents. Do not modify repository files. Cite full commit IDs, paths, and supporting hunks; for absence, describe the history and searches covered."
 
 
 def task_manifest(tasks, repositories):
