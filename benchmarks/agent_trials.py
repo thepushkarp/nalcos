@@ -55,11 +55,12 @@ TRIAL_GIT_ENV = {
     "GIT_CONFIG_KEY_1": "core.fsmonitor",
     "GIT_CONFIG_VALUE_1": "false",
 }
+# `git grep` is excluded because -O/--open-files-in-pager runs a command; agents
+# search file contents with the Grep tool and rg instead.
 READ_ONLY_GIT = (
     "log",
     "show",
     "diff",
-    "grep",
     "blame",
     "rev-list",
     "rev-parse",
@@ -413,6 +414,37 @@ def collect_trial(plan, args, manifest):
     return row
 
 
+def real_git():
+    path = shutil.which("git")
+    if path is None:
+        raise ValueError("prepare trial git guard: git was not found on PATH")
+    return Path(path).resolve()
+
+
+def write_git_guard(tools, git):
+    """Shadow git on the trial PATH. Prefix permissions such as Bash(git log *)
+    still admit options that write files (--output) or run commands (-c, -O,
+    --exec-path, external diff drivers), so the guard rejects those and any
+    subcommand outside READ_ONLY_GIT before handing off to the real git."""
+    guard = tools / "git"
+    guard.write_text(
+        "#!/bin/sh\n"
+        f'case "$1" in {"|".join(READ_ONLY_GIT)}) ;; *)\n'
+        '  echo "git ${1:-} is not available in this trial" >&2; exit 126 ;;\n'
+        "esac\n"
+        'for arg in "$@"; do\n'
+        '  case "$arg" in\n'
+        "    --output|--output=*|-O*|--open-files-in-pager*|--ext-diff|--textconv|"
+        "--exec-path*|-c|--config-env*)\n"
+        '      echo "git option $arg is not available in this trial" >&2; exit 126 ;;\n'
+        "  esac\n"
+        "done\n"
+        f'exec "{git}" "$@"\n'
+    )
+    guard.chmod(0o755)
+    return guard
+
+
 def collect_worktree_trial(plan, args, directory, repository):
     query, agent, condition = plan["query"], plan["agent"], plan["condition"]
     for root in (".claude", ".agents"):
@@ -441,6 +473,7 @@ def collect_worktree_trial(plan, args, directory, repository):
         settings.write_text("{}\n")
     tools = directory / "bin"
     tools.mkdir()
+    write_git_guard(tools, real_git())
     if condition == "nalcos_git_rg":
         (tools / "nalcos").symlink_to(args.binary.resolve())
     else:

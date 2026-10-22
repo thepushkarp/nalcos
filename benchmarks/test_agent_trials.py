@@ -19,8 +19,10 @@ from agent_trials import (
     copy_directory,
     import_reviews,
     parse_agent_output,
+    real_git,
     task_manifest,
     trial_environment,
+    write_git_guard,
 )
 from evaluate import read_jsonl
 from test_index_matrix import BENCHMARKS, executable, local_repo, repo_manifest
@@ -37,11 +39,11 @@ class AgentTrialTests(unittest.TestCase):
             self.assertEqual(command[command.index("--max-turns") + 1], "7")
             allowed = command[command.index("--allowed-tools") + 1]
             self.assertNotIn("Bash(git *)", allowed)
+            self.assertNotIn("Bash(git grep", allowed)
             for name in (
                 "log",
                 "show",
                 "diff",
-                "grep",
                 "blame",
                 "rev-list",
                 "rev-parse",
@@ -70,6 +72,30 @@ class AgentTrialTests(unittest.TestCase):
         self.assertIn('approval_policy="never"', command)
         self.assertEqual(command[command.index("--sandbox") + 1], "read-only")
         self.assertEqual(command[-2:], ["--model", "pinned-model"])
+
+    def test_git_guard_rejects_writing_and_exec_options(self):
+        with tempfile.TemporaryDirectory() as directory:
+            work = Path(directory)
+            repo = work / "repo"
+            subprocess.run(["git", "init", "-q", str(repo)], check=True)
+            guard = write_git_guard(work, real_git())
+            run = lambda *args: subprocess.run(
+                [str(guard), *args], cwd=repo, capture_output=True, text=True
+            )
+            self.assertEqual(run("rev-parse", "--is-inside-work-tree").stdout, "true\n")
+            target = work / "written"
+            for args in (
+                ("grep", "-Otouch", "x"),
+                ("-c", "core.pager=touch", "log"),
+                ("log", f"--output={target}"),
+                ("diff", "--ext-diff"),
+                ("log", "--exec-path=/tmp"),
+                ("config", "alias.x", "!touch"),
+            ):
+                result = run(*args)
+                self.assertEqual(result.returncode, 126, args)
+                self.assertIn("not available in this trial", result.stderr)
+            self.assertFalse(target.exists())
 
     def test_environment_keeps_only_matching_agent_credentials(self):
         planted = {
@@ -353,7 +379,11 @@ class AgentTrialTests(unittest.TestCase):
                     assert key not in os.environ, key
                 assert os.environ["HF_HOME"] == "/shared/hf"
                 assert os.environ["HF_HUB_CACHE"] == "/shared/hf/hub"
-                assert subprocess.check_output(["git", "config", "core.hooksPath"], text=True).strip() == os.devnull
+                guard = subprocess.run(["git", "config", "core.hooksPath"], capture_output=True, text=True)
+                assert guard.returncode == 126 and "not available in this trial" in guard.stderr
+                # The guard's last line execs the real git; use it to inspect trial config.
+                real = subprocess.check_output(["sh", "-c", "tail -1 \\"$(command -v git)\\""], text=True).split('"')[1]
+                assert subprocess.check_output([real, "config", "core.hooksPath"], text=True).strip() == os.devnull
                 for key, value in {"GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": os.devnull, "GIT_TERMINAL_PROMPT": "0", "GIT_PAGER": "cat", "PAGER": "cat"}.items():
                     assert os.environ[key] == value
                 data, runtime = Path(os.environ["NALCOS_DATA_DIR"]), Path(os.environ["NALCOS_RUNTIME_CACHE"])
