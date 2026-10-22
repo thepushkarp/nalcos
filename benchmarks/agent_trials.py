@@ -155,7 +155,7 @@ def agent_command(agent, executable, prompt, condition, max_turns=20, model=None
             '{"disableAllHooks":true,"enabledPlugins":{}}',
             "--strict-mcp-config",
             "--mcp-config",
-            "{}",
+            '{"mcpServers":{}}',
         ]
     else:
         command = [
@@ -168,6 +168,10 @@ def agent_command(agent, executable, prompt, condition, max_turns=20, model=None
             "--ignore-user-config",
             "-c",
             'approval_policy="never"',
+            # Ignoring user config also drops its credential store; "auto" uses the
+            # keyring when present instead of requiring $CODEX_HOME/auth.json.
+            "-c",
+            'cli_auth_credentials_store="auto"',
             prompt,
         ]
     if model:

@@ -70,6 +70,7 @@ class AgentTrialTests(unittest.TestCase):
         self.assertIn("--ephemeral", command)
         self.assertIn("--ignore-user-config", command)
         self.assertIn('approval_policy="never"', command)
+        self.assertIn('cli_auth_credentials_store="auto"', command)
         self.assertEqual(command[command.index("--sandbox") + 1], "read-only")
         self.assertEqual(command[-2:], ["--model", "pinned-model"])
 
