@@ -12,8 +12,10 @@ import hashlib
 import json
 import math
 import os
+import re
 import shutil
 import subprocess
+import sys
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -25,6 +27,49 @@ from workflows import evaluate_trials
 
 CONDITIONS = ["git_rg", "nalcos_git_rg"]
 AGENTS = ["claude", "codex"]
+ENVIRONMENT = (
+    "PATH",
+    "HOME",
+    "USER",
+    "LOGNAME",
+    "SHELL",
+    "TMPDIR",
+    "LANG",
+    "LC_ALL",
+    "LC_CTYPE",
+    "TERM",
+)
+TRIAL_GIT_ENV = {
+    **GIT_ENV,
+    "GIT_CONFIG_NOSYSTEM": "1",
+    "GIT_CONFIG_GLOBAL": os.devnull,
+    "GIT_TERMINAL_PROMPT": "0",
+    "GIT_PAGER": "cat",
+    "PAGER": "cat",
+    "GIT_LFS_SKIP_SMUDGE": "1",
+    # Environment config applies to checkout and every agent Git invocation,
+    # without changing the linked worktree's shared repository configuration.
+    "GIT_CONFIG_COUNT": "2",
+    "GIT_CONFIG_KEY_0": "core.hooksPath",
+    "GIT_CONFIG_VALUE_0": os.devnull,
+    "GIT_CONFIG_KEY_1": "core.fsmonitor",
+    "GIT_CONFIG_VALUE_1": "false",
+}
+READ_ONLY_GIT = (
+    "log",
+    "show",
+    "diff",
+    "grep",
+    "blame",
+    "rev-list",
+    "rev-parse",
+    "merge-base",
+    "cat-file",
+    "ls-files",
+    "ls-tree",
+    "describe",
+    "status",
+)
 PROTOCOL = "Use only local Git history, rg, and file-reading tools available in this repository. Do not use the network, other repositories, or delegate to other agents. Do not modify repository files. Cite full commit IDs, paths, and supporting hunks; for absence, describe the history and searches covered."
 
 
@@ -69,7 +114,20 @@ def trial_prompt(query, budget_seconds, budget_tokens):
 
 def agent_command(agent, executable, prompt, condition, max_turns=20, model=None):
     if agent == "claude":
-        allowed = ["Read", "Grep", "Glob", "Bash(git *)", "Bash(rg *)"]
+        allowed = ["Read", "Grep", "Glob", "Bash(rg *)"]
+        allowed += [f"Bash(git {name} *)" for name in READ_ONLY_GIT]
+        allowed += [
+            f"Bash(git {name})"
+            for name in (
+                "log",
+                "show",
+                "diff",
+                "rev-parse",
+                "ls-files",
+                "describe",
+                "status",
+            )
+        ]
         if condition == "nalcos_git_rg":
             allowed += ["Bash(nalcos *)", "Skill(nalcos)"]
         command = [
@@ -78,8 +136,11 @@ def agent_command(agent, executable, prompt, condition, max_turns=20, model=None
             prompt,
             "--output-format",
             "json",
+            "--verbose",
             "--allowed-tools",
             ",".join(allowed),
+            "--disallowed-tools",
+            "Write,Edit,NotebookEdit,WebFetch,WebSearch",
             "--tools",
             "Read,Grep,Glob,Bash,Skill",
             "--max-turns",
@@ -88,7 +149,9 @@ def agent_command(agent, executable, prompt, condition, max_turns=20, model=None
             "dontAsk",
             "--no-session-persistence",
             "--setting-sources",
-            "",
+            "project",
+            "--settings",
+            '{"disableAllHooks":true,"enabledPlugins":{}}',
             "--strict-mcp-config",
             "--mcp-config",
             "{}",
@@ -146,9 +209,52 @@ def planned_trials(manifest, args):
     return planned
 
 
+def skill_used(agent, events, complete):
+    """Report observed skill invocation/reads, not mere availability or claims."""
+    observed = False
+    for event in events:
+        for field in ("skills_used", "tools_used"):
+            used = event.get(field)
+            if isinstance(used, list):
+                observed = True
+                if "nalcos" in used or "Skill(nalcos)" in used:
+                    return True
+        for block in event.get("message", {}).get("content", []):
+            if not isinstance(block, dict) or block.get("type") != "tool_use":
+                continue
+            inputs = block.get("input", {})
+            if block.get("name") == "Skill" and inputs.get("skill") == "nalcos":
+                return True
+            if block.get("name") == "Read" and re.search(
+                r"\.(?:agents|claude)/skills/nalcos/SKILL\.md$",
+                inputs.get("file_path", ""),
+            ):
+                return True
+        item = event.get("item", {})
+        if (
+            agent == "codex"
+            and event.get("type") == "item.completed"
+            and item.get("type") == "command_execution"
+            and item.get("exit_code") == 0
+            and re.search(r"\b(cat|head|sed)\b", item.get("command", ""))
+            and re.search(
+                r"\.(?:agents|claude)/skills/nalcos/SKILL\.md(?:\s|['\"]|$)",
+                item.get("command", ""),
+            )
+        ):
+            return True
+    return False if complete or observed else "unknown"
+
+
 def parse_agent_output(agent, text):
     if agent == "claude":
         payload = json.loads(text)
+        # --verbose --output-format json includes assistant tool calls and the
+        # final result. Accept result-only JSON from older captured trials too.
+        events = payload if isinstance(payload, list) else [payload]
+        results = [e for e in events if e.get("type") == "result"]
+        complete = isinstance(payload, list) and bool(results)
+        payload = results[-1] if results else events[-1]
         usage = payload.get("usage")
         answer = payload.get("result", "")
         fields = (
@@ -161,6 +267,7 @@ def parse_agent_output(agent, text):
         failed = payload.get("is_error") is True
     else:
         events = [json.loads(line) for line in text.splitlines() if line.strip()]
+        complete = any(e.get("type") == "turn.completed" for e in events)
         usages = [e.get("usage") for e in events if e.get("type") == "turn.completed"]
         answers = [
             e["item"].get("text", "")
@@ -191,49 +298,123 @@ def parse_agent_output(agent, text):
         "usage": usages,
         "final_answer": answer,
         "agent_failed": failed,
+        "skill_used": skill_used(agent, events, complete),
     }
 
 
-def scratch_clone(source, destination, snapshot):
-    env = {
-        **os.environ,
-        **GIT_ENV,
-        "GIT_LFS_SKIP_SMUDGE": "1",
-        "GIT_CONFIG_NOSYSTEM": "1",
-        "GIT_CONFIG_GLOBAL": os.devnull,
+def trial_environment(agent=None):
+    env = {key: os.environ[key] for key in ENVIRONMENT if key in os.environ}
+    credentials = {
+        "claude": ("ANTHROPIC_API_KEY",),
+        "codex": ("OPENAI_API_KEY", "CODEX_HOME"),
     }
-    commands = [
+    for key in credentials.get(agent, ()):
+        if key in os.environ:
+            env[key] = os.environ[key]
+    return env | TRIAL_GIT_ENV
+
+
+def checked_command(command, operation):
+    process = subprocess.run(
+        command, env=trial_environment(), capture_output=True, text=True, check=False
+    )
+    if process.returncode:
+        raise ValueError(f"{operation}: {command}: {process.stderr.strip()}")
+
+
+def copy_directory(source, destination):
+    source = source.resolve()
+    if not source.is_dir() or destination.resolve().is_relative_to(source):
+        raise ValueError(
+            f"copy trial directory {source} to {destination}: expected an existing source outside the trial"
+        )
+    checked_command(
         [
-            "git",
-            "clone",
-            "--quiet",
-            "--no-hardlinks",
-            "--no-checkout",
-            "--",
+            "cp",
+            "-cR" if sys.platform == "darwin" else "-R",
             str(source),
             str(destination),
         ],
-        ["git", "-C", str(destination), "checkout", "--quiet", "--detach", snapshot],
-        ["git", "-C", str(destination), "remote", "remove", "origin"],
-    ]
-    for command in commands:
-        process = subprocess.run(
-            command, env=env, capture_output=True, text=True, check=False
+        f"copy trial directory {source} to {destination}",
+    )
+    # A copied symlink could let agent writes reach the source index or cache.
+    if any(path.is_symlink() for path in destination.rglob("*")):
+        raise ValueError(
+            f"copy trial directory {source}: symlinks are unsafe for writable trial data"
         )
-        if process.returncode:
-            raise ValueError(
-                f"prepare scratch clone {source} at {snapshot}: {command}: {process.stderr.strip()}"
-            )
+
+
+def directory_size(directory):
+    return sum(path.stat().st_size for path in directory.rglob("*") if path.is_file())
 
 
 def collect_trial(plan, args, manifest):
-    query, agent, condition = plan["query"], plan["agent"], plan["condition"]
+    query = plan["query"]
     directory = Path(plan["directory"])
     directory.mkdir(parents=True)
-    repository = directory / "repository"
-    scratch_clone(
-        (args.clones / query["repo_key"]).resolve(), repository, query["snapshot"]
-    )
+    repository = directory / "repo"
+    source = (args.clones / query["repo_key"]).resolve()
+    row = None
+    cleanup_errors = []
+    try:
+        checked_command(
+            [
+                "git",
+                "-C",
+                str(source),
+                "worktree",
+                "add",
+                "--detach",
+                str(repository),
+                query["snapshot"],
+            ],
+            f"prepare trial worktree {repository} at {query['snapshot']}",
+        )
+        row = collect_worktree_trial(plan, args, directory, repository)
+    finally:
+        if row is not None:
+            row["data_size_bytes"] = None
+        try:
+            if row is not None:
+                row["data_size_bytes"] = directory_size(directory / "data")
+        except OSError as error:
+            cleanup_errors.append(f"measure trial data {directory / 'data'}: {error}")
+        for name in ("data", "runtime"):
+            try:
+                path = directory / name
+                if path.is_symlink():
+                    path.unlink()
+                elif path.exists():
+                    shutil.rmtree(path)
+            except OSError as error:
+                cleanup_errors.append(f"remove trial {path}: {error}")
+        for command in (
+            [
+                "git",
+                "-C",
+                str(source),
+                "worktree",
+                "remove",
+                "--force",
+                str(repository),
+            ],
+            ["git", "-C", str(source), "worktree", "prune"],
+        ):
+            try:
+                checked_command(command, f"clean trial worktree {repository}")
+            except (OSError, ValueError) as error:
+                cleanup_errors.append(str(error))
+        for error in cleanup_errors:
+            print(f"trial cleanup failed: {error}", file=sys.stderr, flush=True)
+    row["cleanup_errors"] = cleanup_errors
+    if cleanup_errors:
+        row["outcome"] = "failed"
+    evaluate_trials(manifest, [row])
+    return row
+
+
+def collect_worktree_trial(plan, args, directory, repository):
+    query, agent, condition = plan["query"], plan["agent"], plan["condition"]
     for root in (".claude", ".agents"):
         destination = repository / root / "skills" / "nalcos"
         if (
@@ -241,10 +422,23 @@ def collect_trial(plan, args, manifest):
             or destination.exists()
         ):
             raise ValueError(
-                f"prepare trial skill {destination}: expected an absent path inside scratch clone"
+                f"prepare trial skill {destination}: expected an absent path inside trial worktree"
             )
         if condition == "nalcos_git_rg":
             shutil.copytree(args.skill, destination)
+        else:
+            # Claude can fall back to the main checkout's skills when this
+            # directory is absent in a linked worktree.
+            destination.parent.mkdir(parents=True, exist_ok=True)
+    if agent == "claude":
+        settings = repository / ".claude" / "settings.json"
+        if not settings.resolve().is_relative_to(repository.resolve()):
+            raise ValueError(
+                f"prepare trial settings {settings}: expected a path inside trial worktree"
+            )
+        # Project skill discovery needs the project settings source enabled.
+        # Do not let checked-in permissions, env, or plugins broaden this trial.
+        settings.write_text("{}\n")
     tools = directory / "bin"
     tools.mkdir()
     if condition == "nalcos_git_rg":
@@ -255,13 +449,24 @@ def collect_trial(plan, args, manifest):
             "#!/bin/sh\necho 'nalcos is unavailable in this trial' >&2\nexit 127\n"
         )
         (tools / "nalcos").chmod(0o755)
+    data, runtime = directory / "data", directory / "runtime"
+    if condition == "nalcos_git_rg":
+        copy_directory(args.index_data[query["repo_key"]], data)
+    else:
+        data.mkdir()
+    if condition == "nalcos_git_rg" and args.runtime_cache:
+        copy_directory(args.runtime_cache, runtime)
+    else:
+        runtime.mkdir()
     env = {
-        **os.environ,
-        **GIT_ENV,
-        "PATH": str(tools) + os.pathsep + os.environ.get("PATH", ""),
+        **trial_environment(agent),
+        "PATH": str(tools) + os.pathsep + os.environ.get("PATH", os.defpath),
         "NALCOS_DATA_DIR": str(directory / "data"),
         "NALCOS_RUNTIME_CACHE": str(directory / "runtime"),
     }
+    for key in ("HF_HUB_CACHE", "HF_HOME"):
+        if key in os.environ:
+            env[key] = os.environ[key]
     config = directory / "nalcos.toml"
     config.write_text("version = 1\n")
     env["NALCOS_CONFIG"] = str(config)
@@ -293,11 +498,17 @@ def collect_trial(plan, args, manifest):
         timeout=args.budget_seconds,
         cwd=repository,
     )
-    parsed = {"tokens_used": 0, "usage": [], "final_answer": "", "agent_failed": True}
+    parsed = {
+        "tokens_used": 0,
+        "usage": [],
+        "final_answer": "",
+        "agent_failed": True,
+        "skill_used": "unknown",
+    }
     parse_error = None
     try:
         parsed = parse_agent_output(agent, transcript.read_text())
-    except (ValueError, TypeError, KeyError, AttributeError) as error:
+    except (ValueError, TypeError, KeyError, AttributeError, IndexError) as error:
         parse_error = f"parse {agent} transcript {transcript}: {error}"
     outcome = "timeout" if measured["timed_out"] else "completed"
     if outcome != "timeout" and (
@@ -332,7 +543,6 @@ def collect_trial(plan, args, manifest):
         "command": command,
         "token_budget_enforcement": "prompt limit and posthoc usage check; no CLI hard total-token cap",
     }
-    evaluate_trials(manifest, [row])
     return row
 
 
@@ -458,6 +668,11 @@ def run(args):
         return 0
     if args.tasks is None or args.clones is None:
         raise ValueError("trial planning requires --tasks and --clones")
+    if args.run and "nalcos_git_rg" in args.conditions and args.indexes is None:
+        raise ValueError(
+            "--run with nalcos_git_rg requires --indexes PATH: JSON mapping "
+            "repo_key to the prebuilt NALCOS_DATA_DIR for the source clone"
+        )
     if "nalcos_git_rg" in args.conditions and (
         args.skill is None
         or not (args.skill / "SKILL.md").is_file()
@@ -469,6 +684,31 @@ def run(args):
         )
     repositories = load_repositories(args.repos)
     manifest = task_manifest(read_jsonl(args.tasks), repositories)
+    args.index_data = {}
+    if args.indexes is not None:
+        indexes = json.loads(args.indexes.read_text())
+        if not isinstance(indexes, dict):
+            raise ValueError(
+                f"--indexes {args.indexes}: expected a repo_key to data-directory mapping"
+            )
+        for key in {q["repo_key"] for q in manifest}:
+            value = indexes.get(key)
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(
+                    f"--indexes {args.indexes}: missing data directory for repo_key {key!r}"
+                )
+            path = Path(value)
+            if not path.is_absolute():
+                path = args.indexes.resolve().parent / path
+            if not path.is_dir():
+                raise ValueError(
+                    f"--indexes {args.indexes}: {key}: data directory {path} does not exist"
+                )
+            args.index_data[key] = path.resolve()
+    if args.runtime_cache is not None and not args.runtime_cache.is_dir():
+        raise ValueError(
+            f"--runtime-cache {args.runtime_cache}: expected a prebuilt runtime cache directory"
+        )
     for key in {q["repo_key"] for q in manifest}:
         validate_clone(args.clones / key, repositories[key])
     planned = planned_trials(manifest, args)
@@ -510,6 +750,16 @@ def main():
     )
     parser.add_argument("--repos", type=Path, default=Path("benchmarks/repos.json"))
     parser.add_argument("--clones", type=Path)
+    parser.add_argument(
+        "--indexes",
+        type=Path,
+        help="JSON mapping repo_key to prebuilt NALCOS_DATA_DIR; required for nalcos_git_rg --run",
+    )
+    parser.add_argument(
+        "--runtime-cache",
+        type=Path,
+        help="Copy a prebuilt NALCOS_RUNTIME_CACHE per NaLCoS trial; default is an empty trial directory",
+    )
     parser.add_argument(
         "--conditions", nargs="+", choices=CONDITIONS, default=CONDITIONS
     )

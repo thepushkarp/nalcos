@@ -160,6 +160,49 @@ in the archive's `docs/benchmarks.md`.
 
 ## Round 2 harness
 
+`agent_trials.py` uses detached linked worktrees of the source clones, preserving
+the canonical Git common-directory identity used by prebuilt NaLCoS indexes.
+For `nalcos_git_rg --run`, `--indexes` must name a JSON object mapping each task's
+`repo_key` to its prebuilt `NALCOS_DATA_DIR` (relative paths resolve beside the
+JSON file). Each trial copies that directory using `cp -cR` on macOS (APFS copy
+on write) or `cp -R` elsewhere. `--runtime-cache` similarly seeds a private
+`NALCOS_RUNTIME_CACHE`; its default is an empty per-trial directory. Writable
+copies containing symlinks are rejected. Host `HF_HOME` and `HF_HUB_CACHE` are
+shared when set. The runner records final logical `data_size_bytes`, removes
+data/runtime copies, and forcibly removes and prunes the worktree in `finally`,
+including on failure. Cleanup errors are reported and fail a collected trial.
+
+Agent environments contain only basic process variables, runner-selected Git,
+NaLCoS and HF variables, and matching-agent credentials: `ANTHROPIC_API_KEY` for
+Claude, `OPENAI_API_KEY`/`CODEX_HOME` for Codex. `HOME` preserves normal file or
+macOS Keychain authentication. Git ignores system/global config, disables
+credential prompts and pagers, and uses environment config to disable hooks and
+filesystem monitors without editing the source clone's shared config. Claude
+allows only the listed history-reading Git subcommands, rg and reading tools;
+the NaLCoS arm also allows `nalcos` and `Skill(nalcos)`. Write, Edit,
+NotebookEdit, WebFetch and WebSearch are explicitly denied.
+
+The NaLCoS skill is installed at `.claude/skills/nalcos` and
+`.agents/skills/nalcos` only inside the temporary worktree. Claude uses
+`--setting-sources project`, since an empty source list can suppress project
+skills; user/local settings and user skills are excluded, hooks are disabled,
+and the disposable worktree's `.claude/settings.json` is cleared to prevent
+project permissions, environment settings or plugins from broadening access.
+`--strict-mcp-config --mcp-config '{}'` excludes external MCP servers.
+Verbose JSON preserves skill invocations for review. Codex retains
+`--sandbox read-only`, `approval_policy="never"`, `--ephemeral` and
+`--ignore-user-config`: the last flag skips `$CODEX_HOME/config.toml`, while
+repository skill discovery uses `.agents/skills`. These flags were checked with
+Claude 2.1.306 and Codex 0.163.0 help; skill discovery follows the official
+[Claude skill docs](https://code.claude.com/docs/en/skills) and
+[Codex skill docs](https://developers.openai.com/codex/skills).
+Codex 0.163.0's [skill-root resolver](https://github.com/openai/codex/blob/rust-v0.163.0/codex-rs/ext/skills/src/host_roots.rs)
+scans repository `.agents/skills` independently of the ignored user config.
+Authenticated agent execution is not part of the fake-only tests.
+Each row records `skill_used` as `true` for observed skill invocation/reads,
+`false` for a complete trace without that evidence, or `"unknown"` when the
+trace lacks usage evidence. Merely listing a skill as available does not count.
+
 ```sh
 # Clones already contain the full snapshots in benchmarks/repos.json.
 # Every indexing repeat has fresh data/runtime directories; HF cache is shared.
@@ -218,6 +261,13 @@ python3 benchmarks/vector_scale.py --profile minilm \
 # Tasks JSONL: id, repo_key, prompt, gold_commits (full OIDs), answer_type
 # (find|absence|explain). Absence has an empty gold_commits list.
 # NALCOS_SKILL is the skill directory containing SKILL.md.
+# Indexes must have been built against these exact source clones.
+cat > /tmp/nalcos-agent-indexes.json <<'JSON'
+{
+  "etymology": "/tmp/nalcos-index-matrix/etymology/auto/semantic-full/0/data",
+  "nalcos": "/tmp/nalcos-index-matrix/nalcos/auto/semantic-full/0/data"
+}
+JSON
 # Planning is the default; only --run starts agents and spends tokens.
 python3 benchmarks/agent_trials.py --tasks /tmp/nalcos-agent-tasks.jsonl \
   --repos benchmarks/repos.json --clones /tmp/nalcos-clones \
@@ -229,6 +279,7 @@ python3 benchmarks/agent_trials.py --tasks /tmp/nalcos-agent-tasks.jsonl \
   --repos benchmarks/repos.json --clones /tmp/nalcos-clones \
   --skill "$NALCOS_SKILL" --binary target/release/nalcos \
   --agents claude codex --claude-model "$CLAUDE_MODEL" --codex-model "$CODEX_MODEL" \
+  --indexes /tmp/nalcos-agent-indexes.json --runtime-cache "$NALCOS_RUNTIME_CACHE" \
   --budget-seconds 300 --budget-tokens 20000 --max-turns 20 \
   --order counterbalanced --output /tmp/nalcos-agent-trials --run
 
