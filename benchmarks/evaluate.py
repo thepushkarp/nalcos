@@ -9,6 +9,7 @@ import argparse
 import hashlib
 import json
 import math
+import random
 import re
 import statistics
 from pathlib import Path
@@ -24,6 +25,10 @@ QUERY_KINDS = {
     "mixed",
     "regression",
     "negative",
+}
+POOLED_KINDS = {
+    "exact_term": {"vocabulary", "symbol", "path", "mixed", "regression"},
+    "prose": {"natural", "paraphrase"},
 }
 POLICY = {
     "max_weight_bytes": 500 * 1024 * 1024,
@@ -125,14 +130,8 @@ def validate_manifest(rows):
     return rows
 
 
-def metrics(manifest, rankings, split=None):
-    """Macro recall counts all labeled relevant commits; hit rate counts any gold.
-
-    Negatives have no reciprocal rank. Missing/partial responses are reported
-    separately and cannot be treated as successful abstentions.
-    """
-    validate_manifest(manifest)
-    queries = [q for q in manifest if split is None or q["split"] == split]
+def validate_rankings(manifest, rankings):
+    """Index responses against a validated manifest, checking every supplied row."""
     by_id = {}
     known = {q["id"]: q for q in manifest}
     for row in rankings:
@@ -181,6 +180,18 @@ def metrics(manifest, rankings, split=None):
                     f"{identifier}: evidence must contain ranked commit, paths list, and excerpt string"
                 )
         by_id[identifier] = row
+    return by_id
+
+
+def metrics(manifest, rankings, split=None):
+    """Macro recall counts all labeled relevant commits; hit rate counts any gold.
+
+    Negatives have no reciprocal rank. Missing/partial responses are reported
+    separately and cannot be treated as successful abstentions.
+    """
+    validate_manifest(manifest)
+    queries = [q for q in manifest if split is None or q["split"] == split]
+    by_id = validate_rankings(manifest, rankings)
     evidence_available = any("evidence" in by_id.get(q["id"], {}) for q in queries)
     report = score_queries(queries, by_id, split, evidence_available)
     report["per_query_kind"] = {
@@ -191,6 +202,15 @@ def metrics(manifest, rankings, split=None):
             evidence_available,
         )
         for kind in sorted({q.get("query_kind", "unspecified") for q in queries})
+    }
+    report["pooled"] = {
+        name: score_queries(
+            [q for q in queries if q.get("query_kind") in kinds],
+            by_id,
+            split,
+            evidence_available,
+        )
+        for name, kinds in POOLED_KINDS.items()
     }
     return report
 
@@ -254,6 +274,7 @@ def score_queries(queries, by_id, split, evidence_available):
         "coverage_complete": bool(queries) and complete == len(queries),
         "recall": {str(k): recall[k] / count if count else None for k in recall},
         "hit_rate": {str(k): hit[k] / count if count else None for k in hit},
+        "hit_rate_counts": {str(k): {"hits": hit[k], "n": count} for k in hit},
         "mrr": rr / count if count else None,
         "ndcg@10": ndcg / count if count else None,
         "path_hit": {
@@ -268,6 +289,12 @@ def score_queries(queries, by_id, split, evidence_available):
             else None
             for k in recall
         },
+        "path_hit_counts": {
+            str(k): {"hits": path_hits[k], "n": len(path_queries)} for k in recall
+        },
+        "hunk_hit_counts": {
+            str(k): {"hits": hunk_hits[k], "n": len(hunk_queries)} for k in recall
+        },
         "path_labeled_questions": len(path_queries),
         "hunk_labeled_questions": len(hunk_queries),
         "evidence_responses": sum(
@@ -280,6 +307,225 @@ def score_queries(queries, by_id, split, evidence_available):
         ),
         "details": details,
     }
+
+
+def percentile_interval(samples):
+    """Central 95% percentile interval with linear interpolation at the bounds."""
+    if not samples:
+        return None
+    ordered = sorted(samples)
+    bounds = []
+    for fraction in (0.025, 0.975):
+        position = (len(ordered) - 1) * fraction
+        low, high = math.floor(position), math.ceil(position)
+        bounds.append(ordered[low] + (ordered[high] - ordered[low]) * (position - low))
+    return bounds
+
+
+def comparison_summary(rows, bootstrap, rng):
+    """Bootstrap paired query deltas; keep kind sizes fixed for the macro mean."""
+    n = len(rows)
+    by_kind = {}
+    for row in rows:
+        by_kind.setdefault(row["query_kind"], []).append(row)
+    mrr_samples, hit_samples, macro_samples = [], [], []
+    for _ in range(bootstrap if n else 0):
+        sample = rng.choices(rows, k=n)
+        mrr_samples.append(sum(row["delta_mrr"] for row in sample) / n)
+        hit_samples.append(sum(row["delta_hit@10"] for row in sample) / n)
+        if len(by_kind) == 1:
+            macro_samples.append(hit_samples[-1])
+        else:
+            macro_samples.append(
+                sum(
+                    sum(row["delta_hit@10"] for row in rng.choices(kind, k=len(kind)))
+                    / len(kind)
+                    for kind in by_kind.values()
+                )
+                / len(by_kind)
+            )
+    gained = sum(row["delta_hit@10"] == 1 for row in rows)
+    lost = sum(row["delta_hit@10"] == -1 for row in rows)
+    return {
+        "n": n,
+        "wins": sum(row["outcome"] == "win" for row in rows),
+        "losses": sum(row["outcome"] == "loss" for row in rows),
+        "ties": sum(row["outcome"] == "tie" for row in rows),
+        "hit@10": {"gained": gained, "lost": lost, "net": gained - lost},
+        "delta_mrr": sum(row["delta_mrr"] for row in rows) / n if n else None,
+        "delta_hit@10": (gained - lost) / n if n else None,
+        "delta_macro_hit@10": (
+            sum(
+                sum(row["delta_hit@10"] for row in kind) / len(kind)
+                for kind in by_kind.values()
+            )
+            / len(by_kind)
+            if n
+            else None
+        ),
+        "ci95": {
+            name: percentile_interval(samples)
+            for name, samples in (
+                ("delta_mrr", mrr_samples),
+                ("delta_hit@10", hit_samples),
+                ("delta_macro_hit@10", macro_samples),
+            )
+        },
+    }
+
+
+def compare(manifest, baseline, candidate, split=None, bootstrap=2000, seed=0):
+    """Compare identical query cohorts using truncated ranks and paired deltas.
+
+    File-level manifest hashes are checked by the CLI against matrix summaries.
+    Only paired, labeled positives enter rank metrics; a correct negative requires
+    a complete response with an explicit abstention, as in metrics().
+    """
+    if type(bootstrap) is not int or bootstrap < 1:
+        raise ValueError("bootstrap must be a positive integer")
+    if type(seed) is not int:
+        raise ValueError("seed must be an integer")
+    validate_manifest(manifest)
+    baseline = validate_rankings(manifest, baseline)
+    candidate = validate_rankings(manifest, candidate)
+    if baseline.keys() != candidate.keys():
+        raise ValueError(
+            f"ranking query ids differ: baseline missing {sorted(candidate.keys() - baseline.keys())}; "
+            f"candidate missing {sorted(baseline.keys() - candidate.keys())}"
+        )
+    for name, rankings in (("baseline", baseline), ("candidate", candidate)):
+        for identifier, row in rankings.items():
+            limit = row.get("rank_limit")
+            if type(limit) is not int or limit < 1 or len(row["commits"]) > limit:
+                raise ValueError(
+                    f"{name} {identifier}: rank_limit must be a positive integer covering all commits"
+                )
+    queries = [
+        q
+        for q in sorted(manifest, key=lambda q: q["id"])
+        if q["id"] in baseline and (split is None or q["split"] == split)
+    ]
+    details, negatives = [], []
+    for query in queries:
+        a, b = baseline[query["id"]], candidate[query["id"]]
+        if query["answerable"] is False:
+            negatives.append(
+                {
+                    "query_id": query["id"],
+                    "baseline_correct_abstention": a["complete"] and a["abstained"],
+                    "candidate_correct_abstention": b["complete"] and b["abstained"],
+                }
+            )
+        if query["answerable"] is not True:
+            continue
+        gold = set(query["gold_commits"])
+        a_rank, b_rank = (
+            next((i for i, oid in enumerate(row["commits"], 1) if oid in gold), None)
+            for row in (a, b)
+        )
+        a_order = a_rank if a_rank is not None else a["rank_limit"] + 1
+        b_order = b_rank if b_rank is not None else b["rank_limit"] + 1
+        details.append(
+            {
+                "query_id": query["id"],
+                "query_kind": query.get("query_kind", "unspecified"),
+                "baseline_rank": a_rank,
+                "candidate_rank": b_rank,
+                "baseline_rank_limit": a["rank_limit"],
+                "candidate_rank_limit": b["rank_limit"],
+                "outcome": "win"
+                if b_order < a_order
+                else "loss"
+                if b_order > a_order
+                else "tie",
+                "delta_mrr": (1 / b_rank if b_rank else 0)
+                - (1 / a_rank if a_rank else 0),
+                "delta_hit@10": int(b_rank is not None and b_rank <= 10)
+                - int(a_rank is not None and a_rank <= 10),
+            }
+        )
+    rng = random.Random(seed)
+    overall = comparison_summary(details, bootstrap, rng)
+    per_kind = {
+        kind: comparison_summary(
+            [row for row in details if row["query_kind"] == kind], bootstrap, rng
+        )
+        for kind in sorted({row["query_kind"] for row in details})
+    }
+    pooled = {
+        name: comparison_summary(
+            [row for row in details if row["query_kind"] in kinds], bootstrap, rng
+        )
+        for name, kinds in POOLED_KINDS.items()
+    }
+    prose_lower = pooled["prose"]["ci95"]["delta_mrr"]
+    exact_lower = pooled["exact_term"]["ci95"]["delta_hit@10"]
+    clauses = {
+        "prose_wins_gt_losses": pooled["prose"]["wins"] > pooled["prose"]["losses"],
+        "prose_mrr_ci_lower_gt_zero": prose_lower is not None and prose_lower[0] > 0,
+        "exact_term_hit10_ci_lower_ge_minus_0.05": exact_lower is not None
+        and exact_lower[0] >= -0.05,
+        "no_query_kind_hit10_net_loss_gt_one": all(
+            group["hit@10"]["net"] >= -1 for group in per_kind.values()
+        ),
+    }
+    improvement = (
+        clauses["prose_wins_gt_losses"] and clauses["prose_mrr_ci_lower_gt_zero"]
+    )
+    non_regression = (
+        clauses["exact_term_hit10_ci_lower_ge_minus_0.05"]
+        and clauses["no_query_kind_hit10_net_loss_gt_one"]
+    )
+    a_correct = sum(row["baseline_correct_abstention"] for row in negatives)
+    b_correct = sum(row["candidate_correct_abstention"] for row in negatives)
+    gained = sum(
+        row["candidate_correct_abstention"] and not row["baseline_correct_abstention"]
+        for row in negatives
+    )
+    lost = sum(
+        row["baseline_correct_abstention"] and not row["candidate_correct_abstention"]
+        for row in negatives
+    )
+    return {
+        "split": split,
+        "questions": len(queries),
+        "unjudged_questions": sum(q["answerable"] is None for q in queries),
+        "bootstrap": {"samples": bootstrap, "seed": seed, "confidence": 0.95},
+        "overall": overall,
+        "per_query_kind": per_kind,
+        "pooled": pooled,
+        "negative_abstentions": {
+            "n": len(negatives),
+            "baseline_correct": a_correct,
+            "candidate_correct": b_correct,
+            "gained": gained,
+            "lost": lost,
+            "net": b_correct - a_correct,
+            "ties": len(negatives) - gained - lost,
+            "details": negatives,
+        },
+        "acceptance": {
+            "accepted": improvement and non_regression,
+            "improvement": improvement,
+            "non_regression": non_regression,
+            "clauses": clauses,
+        },
+        "details": details,
+    }
+
+
+def read_comparison_rankings(path, manifest_sha256):
+    """Matrix summaries bind all mode/repeat rankings to the manifest file bytes."""
+    summary_path = path.parent / "summary.json"
+    summary = json.loads(summary_path.read_text())
+    if (
+        not isinstance(summary, dict)
+        or summary.get("manifest_sha256") != manifest_sha256
+    ):
+        raise ValueError(
+            f"{path}: {summary_path} manifest_sha256 differs from manifest"
+        )
+    return read_jsonl(path)
 
 
 def evidence_passed(evidence):
@@ -592,17 +838,34 @@ def main():
     score.add_argument("--manifest", type=Path, required=True)
     score.add_argument("--rankings", type=Path, required=True)
     score.add_argument("--split", choices=["exploratory", "development", "heldout"])
+    paired = sub.add_parser("compare")
+    paired.add_argument("--manifest", type=Path, required=True)
+    paired.add_argument("--baseline", type=Path, required=True)
+    paired.add_argument("--candidate", type=Path, required=True)
+    paired.add_argument("--split", choices=["exploratory", "development", "heldout"])
+    paired.add_argument("--bootstrap", type=int, default=2000)
+    paired.add_argument("--seed", type=int, default=0)
     select = sub.add_parser("qualify")
     select.add_argument("--manifest", type=Path, required=True)
     select.add_argument("--candidates", type=Path, required=True)
     select.add_argument("--policy", type=Path)
-    for item in (score, select):
+    for item in (score, paired, select):
         item.add_argument("--output", type=Path)
     args = parser.parse_args()
     try:
         manifest = read_jsonl(args.manifest)
+        manifest_sha256 = hashlib.sha256(args.manifest.read_bytes()).hexdigest()
         if args.command == "metrics":
             result = metrics(manifest, read_jsonl(args.rankings), args.split)
+        elif args.command == "compare":
+            result = compare(
+                manifest,
+                read_comparison_rankings(args.baseline, manifest_sha256),
+                read_comparison_rankings(args.candidate, manifest_sha256),
+                args.split,
+                args.bootstrap,
+                args.seed,
+            )
         else:
             data = json.loads(args.candidates.read_text())
             policy = json.loads(args.policy.read_text()) if args.policy else None
@@ -614,9 +877,7 @@ def main():
                 data.get("workflow_evaluation"),
                 data.get("evaluation_cohort"),
             )
-        result["manifest_sha256"] = hashlib.sha256(
-            args.manifest.read_bytes()
-        ).hexdigest()
+        result["manifest_sha256"] = manifest_sha256
         output = json.dumps(result, indent=2, allow_nan=False) + "\n"
         if args.output:
             args.output.write_text(output)

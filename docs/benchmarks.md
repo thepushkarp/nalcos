@@ -148,7 +148,17 @@ record hardware and distinguish cold startup from warm queries.
 
 `cli_matrix.py` runs lexical/semantic/hybrid against prepared indexes and a frozen
 manifest, preserving scope, generation, coverage and evidence checks. It never
-syncs or downloads. `evaluate.py metrics` scores the resulting rankings.
+syncs or downloads. `evaluate.py metrics` scores the resulting rankings with raw
+hit counts, query-kind breakdowns and pooled `prose`/`exact_term` groups.
+`evaluate.py compare --manifest M --baseline A.rankings.jsonl --candidate B.rankings.jsonl`
+reports paired rank wins/losses/ties, hit@10 flips, candidate-minus-baseline MRR
+and hit@10 deltas, and percentile bootstrap 95% intervals (query-kind stratified
+for macro-hit@10). It checks identical query ids and the manifest hashes in each
+rankings file's sibling `summary.json`, reports negative abstention changes
+separately, and evaluates prose improvement and exact-term non-regression clauses.
+Optional `--split`, `--bootstrap` (default 2000), `--seed` (default 0) and `--output`
+control the comparison; valid comparisons exit 0 regardless of acceptance,
+and invalid input exits 2.
 The [hybrid regression fixture](../benchmarks/fixtures/hybrid/queries.jsonl) contains
 public retrospective queries, accepted merge equivalents, and supporting source
 labels. These are development cases, not held-out quality claims.
