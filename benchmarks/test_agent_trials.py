@@ -350,8 +350,8 @@ class AgentTrialTests(unittest.TestCase):
                     for index in range(2)
                 )
             )
-            skill = work / "skill"
-            skill.mkdir()
+            skill = work / "skills" / "nalcos"
+            skill.mkdir(parents=True)
             (skill / "SKILL.md").write_text(
                 "---\nname: nalcos\ndescription: Search history\n---\nUse nalcos.\n"
             )

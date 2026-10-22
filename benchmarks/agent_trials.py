@@ -115,7 +115,9 @@ def trial_prompt(query, budget_seconds, budget_tokens):
     return f"{PROTOCOL}\nBudget: {budget_seconds:g} seconds and {budget_tokens} total input/output tokens, including cached input. Stop within both budgets.\n\n{query['query']}"
 
 
-def agent_command(agent, executable, prompt, condition, max_turns=20, model=None):
+def agent_command(
+    agent, executable, prompt, condition, max_turns=20, model=None, skill_name="nalcos"
+):
     if agent == "claude":
         allowed = ["Read", "Grep", "Glob", "Bash(rg *)"]
         allowed += [f"Bash(git {name} *)" for name in READ_ONLY_GIT]
@@ -132,7 +134,7 @@ def agent_command(agent, executable, prompt, condition, max_turns=20, model=None
             )
         ]
         if condition == "nalcos_git_rg":
-            allowed += ["Bash(nalcos *)", "Skill(nalcos)"]
+            allowed += ["Bash(nalcos *)", f"Skill({skill_name})"]
         command = [
             str(executable),
             "-p",
@@ -202,6 +204,7 @@ def planned_trials(manifest, args):
                     condition,
                     args.max_turns,
                     getattr(args, agent + "_model"),
+                    args.skill.name if args.skill else "nalcos",
                 )
                 planned.append(
                     {
@@ -216,25 +219,25 @@ def planned_trials(manifest, args):
     return planned
 
 
-def skill_used(agent, events, complete):
+def skill_used(agent, events, complete, skill_name="nalcos"):
     """Report observed skill invocation/reads, not mere availability or claims."""
     observed = False
+    skill_file = rf"\.(?:agents|claude)/skills/{re.escape(skill_name)}/SKILL\.md"
     for event in events:
         for field in ("skills_used", "tools_used"):
             used = event.get(field)
             if isinstance(used, list):
                 observed = True
-                if "nalcos" in used or "Skill(nalcos)" in used:
+                if skill_name in used or f"Skill({skill_name})" in used:
                     return True
         for block in event.get("message", {}).get("content", []):
             if not isinstance(block, dict) or block.get("type") != "tool_use":
                 continue
             inputs = block.get("input", {})
-            if block.get("name") == "Skill" and inputs.get("skill") == "nalcos":
+            if block.get("name") == "Skill" and inputs.get("skill") == skill_name:
                 return True
             if block.get("name") == "Read" and re.search(
-                r"\.(?:agents|claude)/skills/nalcos/SKILL\.md$",
-                inputs.get("file_path", ""),
+                skill_file + "$", inputs.get("file_path", "")
             ):
                 return True
         item = event.get("item", {})
@@ -244,16 +247,13 @@ def skill_used(agent, events, complete):
             and item.get("type") == "command_execution"
             and item.get("exit_code") == 0
             and re.search(r"\b(cat|head|sed)\b", item.get("command", ""))
-            and re.search(
-                r"\.(?:agents|claude)/skills/nalcos/SKILL\.md(?:\s|['\"]|$)",
-                item.get("command", ""),
-            )
+            and re.search(skill_file + r"(?:\s|['\"]|$)", item.get("command", ""))
         ):
             return True
     return False if complete or observed else "unknown"
 
 
-def parse_agent_output(agent, text):
+def parse_agent_output(agent, text, skill_name="nalcos"):
     if agent == "claude":
         payload = json.loads(text)
         # --verbose --output-format json includes assistant tool calls and the
@@ -305,7 +305,7 @@ def parse_agent_output(agent, text):
         "usage": usages,
         "final_answer": answer,
         "agent_failed": failed,
-        "skill_used": skill_used(agent, events, complete),
+        "skill_used": skill_used(agent, events, complete, skill_name),
     }
 
 
@@ -454,7 +454,7 @@ def write_git_guard(tools, git):
 def collect_worktree_trial(plan, args, directory, repository):
     query, agent, condition = plan["query"], plan["agent"], plan["condition"]
     for root in (".claude", ".agents"):
-        destination = repository / root / "skills" / "nalcos"
+        destination = repository / root / "skills" / (args.skill.name if args.skill else "nalcos")
         if (
             not destination.resolve().is_relative_to(repository.resolve())
             or destination.exists()
@@ -546,7 +546,9 @@ def collect_worktree_trial(plan, args, directory, repository):
     }
     parse_error = None
     try:
-        parsed = parse_agent_output(agent, transcript.read_text())
+        parsed = parse_agent_output(
+            agent, transcript.read_text(), args.skill.name if args.skill else "nalcos"
+        )
     except (ValueError, TypeError, KeyError, AttributeError, IndexError) as error:
         parse_error = f"parse {agent} transcript {transcript}: {error}"
     outcome = "timeout" if measured["timed_out"] else "completed"
