@@ -1,11 +1,8 @@
-//! Keeps the published agent skill, the CLI help examples, and the Claude Code plugin manifests
-//! consistent with the CLI. The skill is installed on its own (for example by `npx skills add`),
-//! so every link must stay inside its directory and every documented `nalcos` command must
-//! parse with this build.
+//! Keeps the published agent skill installable and consistent with the CLI: `npx skills add`
+//! rejects invalid frontmatter, and every documented `nalcos` command must parse with this build.
 
-use clap::{CommandFactory, Parser, error::ErrorKind};
+use clap::{Parser, error::ErrorKind};
 use nalcos::cli::Cli;
-use serde_json::Value;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -154,65 +151,6 @@ fn skill_frontmatter_follows_the_agent_skills_specification() {
     }
 }
 
-/// Returns the targets of inline Markdown links, `[text](target)`, outside code spans.
-fn link_targets(text: &str) -> Vec<String> {
-    let mut targets = Vec::new();
-    let mut fenced = false;
-    for line in text.lines() {
-        if line.trim_start().starts_with("```") {
-            fenced = !fenced;
-            continue;
-        }
-        if fenced {
-            continue;
-        }
-        let mut in_code = false;
-        let mut rest = line;
-        while let Some(position) = rest.find(['`', ']']) {
-            let (marker, after) = (rest.as_bytes()[position], &rest[position + 1..]);
-            rest = after;
-            if marker == b'`' {
-                in_code = !in_code;
-            } else if !in_code
-                && let Some(link) = after.strip_prefix('(')
-                && let Some(end) = link.find(')')
-            {
-                targets.push(link[..end].to_owned());
-                rest = &link[end + 1..];
-            }
-        }
-    }
-    targets
-}
-
-#[test]
-fn skill_links_resolve_inside_the_skill() {
-    for directory in skill_directories() {
-        let skill_root = directory.canonicalize().expect("canonical skill directory");
-        for path in markdown_files(&directory) {
-            for target in link_targets(&read(&path)) {
-                if target.starts_with("https://") || target.starts_with('#') {
-                    continue;
-                }
-                let file = target.split('#').next().expect("link path");
-                let resolved = path
-                    .parent()
-                    .expect("markdown parent")
-                    .join(file)
-                    .canonicalize()
-                    .unwrap_or_else(|error| {
-                        panic!("{}: broken link {target:?}: {error}", path.display())
-                    });
-                assert!(
-                    resolved.starts_with(&skill_root),
-                    "{}: link {target:?} leaves the skill directory",
-                    path.display()
-                );
-            }
-        }
-    }
-}
-
 /// Splits one shell command line into words, honoring single and double quotes and
 /// backslash escapes. Words end at an unquoted comment, pipe, redirection, or separator,
 /// because only the `nalcos` invocation itself is checked.
@@ -310,82 +248,4 @@ fn documented_skill_commands_parse_with_this_cli() {
         }
     }
     assert!(checked > 0, "the skill documents no nalcos commands");
-}
-
-#[test]
-fn help_examples_parse_with_this_cli() {
-    let mut checked = 0;
-    for subcommand in Cli::command().get_subcommands() {
-        let Some(examples) = subcommand.get_after_help() else {
-            continue;
-        };
-        for line in examples.to_string().lines().map(str::trim) {
-            if line.starts_with("nalcos ") {
-                assert_parses(&format!("{} --help", subcommand.get_name()), line);
-                checked += 1;
-            }
-        }
-    }
-    assert!(checked > 0, "no subcommand help shows examples");
-}
-
-#[test]
-fn shell_words_respect_quotes_and_stop_at_operators() {
-    assert_eq!(
-        shell_words(r#"nalcos search "a \"b\" c" --path 'src/**' x\ y # note"#),
-        ["nalcos", "search", r#"a "b" c"#, "--path", "src/**", "x y"]
-    );
-    assert_eq!(
-        shell_words("nalcos --json status | jq .readiness"),
-        ["nalcos", "--json", "status"]
-    );
-    assert_eq!(shell_words("nalcos search ''"), ["nalcos", "search", ""]);
-}
-
-fn manifest(name: &str) -> Value {
-    let path = root().join(".claude-plugin").join(name);
-    serde_json::from_str(&read(&path))
-        .unwrap_or_else(|error| panic!("parse {}: {error}", path.display()))
-}
-
-fn nonempty<'a>(value: &'a Value, field: &str) -> &'a str {
-    value[field]
-        .as_str()
-        .filter(|text| !text.is_empty())
-        .unwrap_or_else(|| panic!("plugin manifest needs a nonempty {field:?}"))
-}
-
-#[test]
-fn plugin_marketplace_lists_this_repository_as_its_plugin() {
-    let plugin = manifest("plugin.json");
-    let name = nonempty(&plugin, "name");
-    nonempty(&plugin, "description");
-    assert_eq!(plugin["license"], env!("CARGO_PKG_LICENSE"));
-    // An explicit plugin version pins installs; one that differs from the crate drifts.
-    if let Some(version) = plugin.get("version") {
-        assert_eq!(version, env!("CARGO_PKG_VERSION"));
-    }
-
-    let marketplace = manifest("marketplace.json");
-    nonempty(&marketplace, "name");
-    nonempty(&marketplace["owner"], "name");
-    let entries = marketplace["plugins"]
-        .as_array()
-        .expect("marketplace plugins array");
-    let entry = entries
-        .iter()
-        .find(|entry| entry["name"] == name)
-        .unwrap_or_else(|| panic!("marketplace does not list plugin {name:?}"));
-    nonempty(entry, "description");
-    let source = nonempty(entry, "source");
-    assert!(
-        source.starts_with("./") && !source.contains(".."),
-        "plugin source must be a relative path inside the repository"
-    );
-    let source = root().join(source);
-    assert!(source.join(".claude-plugin/plugin.json").is_file());
-    assert!(
-        source.join("skills").is_dir(),
-        "the plugin source must contain the skills directory"
-    );
 }

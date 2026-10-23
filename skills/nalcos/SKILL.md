@@ -1,5 +1,5 @@
 ---
-name: nalcos-git-history
+name: nalcos
 description: Search this repository's Git history by meaning with the nalcos CLI. Use this skill whenever a question is about the repository's history - which commit introduced, changed, removed, or broke something; when or why code or behavior changed; or which commits between two revisions could have caused a regression - even if the user does not mention nalcos. Run one ranked search alongside git log -S/-G, `nalcos --json search "<question in plain words>" --compact --limit 5 --max-output-bytes 8192 --freshness cached --timeout 60s`, to surface commits whose messages and diffs use different words than the question; confirm candidates with git show and keep searching with git when the evidence does not match. Works on local checkouts only and never fetches remote history.
 license: MIT
 compatibility: Requires the nalcos CLI on macOS (Apple Silicon) or Linux and Git 2.45 or later. Semantic search needs a one-time model download of about 274 MB; lexical mode needs no model.
