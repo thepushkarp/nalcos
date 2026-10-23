@@ -1,6 +1,6 @@
 # Usage reference
 
-Run commands inside a Git checkout or pass `--repo PATH`. All commands accept `--config`, `--json`, `--offline`, `--timeout DURATION`, `--device`, and `--verbose`. Use `nalcos COMMAND --help` for the full option list. Coding agents can follow the [nalcos agent skill](../skills/nalcos-git-history/SKILL.md).
+Run commands inside a Git checkout or pass `--repo PATH`. All commands accept `--config`, `--json`, `--offline`, `--timeout DURATION`, `--device`, and `--verbose`. Use `nalcos COMMAND --help` for the full option list. Coding agents can follow the [nalcos agent skill](../skills/nalcos/SKILL.md).
 
 ## Scope and filters
 
@@ -72,7 +72,7 @@ During embedding work, `init` and `sync` report the actual device or remote prov
 
 `--json` emits a single object with `schema_version: 1`. `sync --watch --json` emits one object per line for the initial synchronization and each changed update. Progress and diagnostics go to stderr.
 
-Search output includes the resolved scope, requested/effective mode, coverage, active generation, runtime, results, warnings, and `output_truncated`. Check these fields before treating an empty result as evidence that a change does not exist. Coding agents use the CLI directly; there is no MCP server. The [agent skill](../skills/nalcos-git-history/SKILL.md) describes the workflow, and its [JSON reference](../skills/nalcos-git-history/references/json.md) lists the fields.
+Search output includes the resolved scope, requested/effective mode, coverage, active generation, runtime, results, warnings, and `output_truncated`. Check these fields before treating an empty result as evidence that a change does not exist. Coding agents use the CLI directly; there is no MCP server. The [agent skill](../skills/nalcos/SKILL.md) describes the workflow, and its [JSON reference](../skills/nalcos/references/json.md) lists the fields.
 
 | Option | Default and limit |
 | --- | --- |
