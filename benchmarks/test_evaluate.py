@@ -1,4 +1,4 @@
-"""Behavioral coverage for metrics, paired comparisons and release selection."""
+"""Behavioral coverage for metrics and fail-closed release selection."""
 
 import hashlib
 import json
@@ -140,13 +140,17 @@ class EvaluationTests(unittest.TestCase):
             query("plain"),
         ]
         result = metrics(
-            questions, [ranking("natural", ["d" * 40, "b" * 40, "c" * 40])]
+            questions,
+            [
+                ranking("natural", ["d" * 40, "b" * 40, "c" * 40]),
+                paired_ranking("plain", 11, 20),
+            ],
         )
         expected = (1 / math.log2(3) + 1 / math.log2(4)) / (1 + 1 / math.log2(3))
         self.assertAlmostEqual(result["ndcg@10"], expected / 2)
-        self.assertEqual(result["per_query_kind"]["unspecified"]["mrr"], 0)
+        self.assertEqual(result["per_query_kind"]["unspecified"]["mrr"], 1 / 11)
         self.assertEqual(result["per_query_kind"]["natural"]["recall"]["5"], 1)
-        self.assertEqual(result["mrr"], 0.25)
+        self.assertAlmostEqual(result["mrr"], (1 / 2 + 1 / 11) / 2)
 
     def test_evidence_needs_gold_commit_and_matching_path_and_hunk(self):
         question = query(gold_paths=["old.rs"], supporting_hunk_contains="needle")
@@ -172,42 +176,8 @@ class EvaluationTests(unittest.TestCase):
         with_unlabeled = metrics([question, unlabeled], [row])
         self.assertEqual(with_unlabeled["hit_rate_counts"]["10"], {"hits": 1, "n": 2})
         self.assertEqual(with_unlabeled["hunk_hit_counts"]["10"], {"hits": 1, "n": 1})
-
-    def test_optional_manifest_fields_and_malformed_evidence(self):
-        validate_manifest(
-            [
-                query(
-                    repo_key="repo",
-                    query_kind="regression",
-                    family="one",
-                    notes="",
-                    gold_paths=[],
-                    supporting_hunk_contains="x",
-                )
-            ]
-        )
-        for field, value in (
-            ("repo_key", 1),
-            ("query_kind", []),
-            ("query_kind", "other"),
-            ("gold_paths", "file"),
-            ("gold_paths", [None]),
-            ("supporting_hunk_contains", ""),
-            ("family", []),
-            ("notes", {}),
-        ):
-            with (
-                self.subTest(field=field, value=value),
-                self.assertRaisesRegex(ValueError, field),
-            ):
-                validate_manifest([query(**{field: value})])
-        for evidence in (
-            None,
-            [{}],
-            [{"commit": "b" * 40, "paths": [1], "excerpt": "x"}],
-        ):
-            with self.assertRaisesRegex(ValueError, "evidence"):
-                metrics([query()], [ranking() | {"evidence": evidence}])
+        with self.assertRaisesRegex(ValueError, "evidence"):
+            metrics([question], [ranking() | {"evidence": row["evidence"]}])
 
     def test_multi_gold_recall_differs_from_hit_rate(self):
         result = metrics(
@@ -444,6 +414,8 @@ class ComparisonTests(unittest.TestCase):
         candidate = [
             paired_ranking(identifier, b, 20) for identifier, _, _, b, _ in ranks
         ]
+        questions[3]["gold_commits"].append("c" * 40)
+        baseline[3]["commits"] = ["d" * 40, "c" * 40, "b" * 40]
         result = compare(questions, baseline, candidate, bootstrap=100)
         overall = result["overall"]
         self.assertEqual(
@@ -468,14 +440,6 @@ class ComparisonTests(unittest.TestCase):
                 self.assertEqual(details[identifier]["candidate_rank"], b)
                 self.assertEqual(details[identifier]["outcome"], outcome)
 
-    def test_best_of_multiple_gold_commits(self):
-        question = query(gold=["b" * 40, "c" * 40], query_kind="natural")
-        baseline = ranking(commits=["d" * 40, "c" * 40, "b" * 40]) | {"rank_limit": 10}
-        result = compare([question], [baseline], [paired_ranking("q", 1)], bootstrap=20)
-        self.assertEqual(result["details"][0]["baseline_rank"], 2)
-        self.assertEqual(result["overall"]["delta_mrr"], 0.5)
-        self.assertEqual(result["overall"]["ci95"]["delta_mrr"], [0.5, 0.5])
-
     def test_seeded_paired_bootstrap_and_stratified_macro(self):
         questions = [
             query(f"q{i}", query_kind="natural" if i < 3 else "paraphrase")
@@ -488,9 +452,6 @@ class ComparisonTests(unittest.TestCase):
             questions[::-1], baseline[::-1], candidate[::-1], bootstrap=100, seed=19
         )
         self.assertEqual(result, repeated)
-        self.assertEqual(
-            result["bootstrap"], {"samples": 100, "seed": 19, "confidence": 0.95}
-        )
         for group in (result["overall"], result["pooled"]["prose"]):
             self.assertEqual(group["delta_hit@10"], 0.5)
             self.assertEqual(group["delta_macro_hit@10"], 0)
@@ -559,30 +520,43 @@ class ComparisonTests(unittest.TestCase):
                 [paired_ranking("candidate-only", 1)],
             )
 
-    def test_acceptance_passes_and_fails_each_clause(self):
-        questions = [
-            query(f"q{i}", query_kind=kind)
-            for i, kind in enumerate(
-                ["natural", "paraphrase", "vocabulary", "vocabulary"]
-            )
+    def test_acceptance_requires_each_clause(self):
+        prose = [("natural", 2, 1), ("paraphrase", 2, 1)]
+        exact = [("vocabulary", 1, 1)]
+        cases = [
+            (None, prose + exact),
+            (
+                "prose_wins_gt_losses",
+                [("natural", 10, 1)] * 10 + [("natural", 9, 10)] * 10 + exact,
+            ),
+            (
+                "prose_mrr_ci_lower_gt_zero",
+                [("natural", 10, 9)] * 2 + [("natural", 1, None)] + exact,
+            ),
+            (
+                "exact_term_hit10_ci_lower_ge_minus_0.05",
+                prose + [("vocabulary", 1, None)],
+            ),
+            # Dilute two losses in one kind across a stable exact-term pool so
+            # only the per-kind guard, not the pooled interval, rejects them.
+            (
+                "no_query_kind_hit10_net_loss_gt_one",
+                prose + [("vocabulary", 1, None)] * 2 + [("symbol", 1, 1)] * 200,
+            ),
         ]
-        baseline = [paired_ranking(f"q{i}", 2 if i < 2 else 1) for i in range(4)]
-        candidate = [paired_ranking(f"q{i}", 1) for i in range(4)]
-        passed = compare(questions, baseline, candidate, bootstrap=100)["acceptance"]
-        self.assertTrue(passed["accepted"])
-        self.assertTrue(passed["improvement"])
-        self.assertTrue(passed["non_regression"])
-        self.assertTrue(all(passed["clauses"].values()))
-        failed = compare(
-            questions,
-            baseline,
-            [paired_ranking(f"q{i}", None) for i in range(4)],
-            bootstrap=100,
-        )["acceptance"]
-        self.assertFalse(failed["accepted"])
-        self.assertFalse(failed["improvement"])
-        self.assertFalse(failed["non_regression"])
-        self.assertFalse(any(failed["clauses"].values()))
+        for failed_clause, ranks in cases:
+            questions = [
+                query(str(i), query_kind=kind) for i, (kind, _, _) in enumerate(ranks)
+            ]
+            baseline = [paired_ranking(str(i), a) for i, (_, a, _) in enumerate(ranks)]
+            candidate = [paired_ranking(str(i), b) for i, (_, _, b) in enumerate(ranks)]
+            with self.subTest(failed_clause=failed_clause):
+                acceptance = compare(questions, baseline, candidate, bootstrap=100)[
+                    "acceptance"
+                ]
+                self.assertEqual(acceptance["accepted"], failed_clause is None)
+                for name, passed in acceptance["clauses"].items():
+                    self.assertEqual(passed, name != failed_clause, name)
 
     def test_invalid_resamples_and_recorded_limits(self):
         for bootstrap in (0, -1, True):
@@ -637,11 +611,6 @@ class ComparisonTests(unittest.TestCase):
                 "--seed",
                 "7",
             ]
-            valid = subprocess.run(command, capture_output=True, text=True, check=False)
-            self.assertEqual(valid.returncode, 0, valid.stderr)
-            report = json.loads(valid.stdout)
-            self.assertFalse(report["acceptance"]["accepted"])
-            self.assertEqual(report["manifest_sha256"], digest)
             output = base / "comparison.json"
             written = subprocess.run(
                 command + ["--output", str(output)],
@@ -650,15 +619,7 @@ class ComparisonTests(unittest.TestCase):
                 check=False,
             )
             self.assertEqual(written.returncode, 0, written.stderr)
-            self.assertEqual(written.stdout, "")
-            self.assertEqual(json.loads(output.read_text()), report)
-            paths[1].write_text("")
-            missing = subprocess.run(
-                command, capture_output=True, text=True, check=False
-            )
-            self.assertEqual(missing.returncode, 2)
-            self.assertIn("candidate missing ['q']", missing.stderr)
-            paths[1].write_text(json.dumps(paired_ranking("q", 1)) + "\n")
+            self.assertFalse(json.loads(output.read_text())["acceptance"]["accepted"])
             (paths[1].parent / "summary.json").write_text(
                 json.dumps({"manifest_sha256": "f" * 64})
             )

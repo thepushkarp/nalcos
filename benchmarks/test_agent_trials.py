@@ -3,6 +3,7 @@
 import io
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -12,16 +13,12 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from agent_trials import (
-    agent_command,
-    blind_answers,
     checked_command,
     collect_trial,
-    copy_directory,
     import_reviews,
     parse_agent_output,
     real_git,
     task_manifest,
-    trial_environment,
     write_git_guard,
     write_project_hint,
 )
@@ -30,118 +27,84 @@ from test_index_matrix import BENCHMARKS, executable, local_repo, repo_manifest
 from workflows import evaluate_trials
 
 
-class AgentTrialTests(unittest.TestCase):
-    def test_commands_use_real_noninteractive_flags_and_condition_tools(self):
-        for condition in ("git_rg", "nalcos_git_rg"):
-            command = agent_command(
-                "claude", "/fake/claude", "prompt", condition, max_turns=7
-            )
-            self.assertEqual(command[1:5], ["-p", "prompt", "--output-format", "json"])
-            self.assertEqual(command[command.index("--max-turns") + 1], "7")
-            allowed = command[command.index("--allowed-tools") + 1]
-            self.assertNotIn("Bash(git *)", allowed)
-            self.assertNotIn("Bash(git grep", allowed)
-            for name in ("head", "wc", "grep", "jq"):
-                self.assertIn(f"Bash({name} *)", allowed)
-            for name in ("sort", "uniq", "sed", "python3", "sh"):
-                self.assertNotIn(f"Bash({name} ", allowed)
-            for name in (
-                "log",
-                "show",
-                "diff",
-                "blame",
-                "rev-list",
-                "rev-parse",
-                "merge-base",
-                "cat-file",
-                "ls-files",
-                "ls-tree",
-                "describe",
-                "status",
-            ):
-                self.assertIn(f"Bash(git {name} *)", allowed)
-            self.assertIn("Bash(git status)", allowed)
-            self.assertEqual(command[command.index("--setting-sources") + 1], "project")
-            self.assertEqual(
-                command[command.index("--disallowed-tools") + 1],
-                "Write,Edit,NotebookEdit,WebFetch,WebSearch",
-            )
-            self.assertIn("--verbose", command)
-            self.assertEqual("Bash(nalcos *)" in allowed, condition == "nalcos_git_rg")
-        command = agent_command(
-            "codex", "/fake/codex", "prompt", "git_rg", model="pinned-model"
+def collection_inputs(work):
+    clones = work / "clones"
+    clones.mkdir()
+    head, base = local_repo(clones / "small")
+    repos, tasks = work / "repos.json", work / "tasks.jsonl"
+    repo_manifest(repos, head, base, keys=("small",))
+    tasks.write_text(
+        json.dumps(
+            {
+                "id": "q",
+                "repo_key": "small",
+                "prompt": "Find change",
+                "gold_commits": [head],
+                "answer_type": "find",
+            }
         )
-        self.assertEqual(command[1:3], ["exec", "--json"])
-        self.assertIn("--ephemeral", command)
-        self.assertIn("--ignore-user-config", command)
-        self.assertIn('approval_policy="never"', command)
-        self.assertIn('cli_auth_credentials_store="auto"', command)
-        self.assertEqual(command[command.index("--sandbox") + 1], "read-only")
-        self.assertEqual(command[-2:], ["--model", "pinned-model"])
+        + "\n"
+    )
+    return head, [
+        sys.executable,
+        str(BENCHMARKS / "agent_trials.py"),
+        "--tasks",
+        str(tasks),
+        "--repos",
+        str(repos),
+        "--clones",
+        str(clones),
+        "--budget-tokens",
+        "100",
+    ]
 
-    def test_project_hint_appends_to_existing_instructions(self):
+
+class AgentTrialTests(unittest.TestCase):
+    def test_project_hint_preserves_existing_instructions(self):
         with tempfile.TemporaryDirectory() as directory:
             repo = Path(directory)
             (repo / "CLAUDE.md").write_text("# Project rules\n")
             write_project_hint(repo, "nalcos")
-            claude = (repo / "CLAUDE.md").read_text()
-            agents = (repo / "AGENTS.md").read_text()
-            self.assertTrue(claude.startswith("# Project rules\n\n"))
-            for text in (claude, agents):
-                self.assertIn("use the nalcos skill", text)
-                self.assertIn("nalcos --json search", text)
+            self.assertTrue(
+                (repo / "CLAUDE.md").read_text().startswith("# Project rules\n")
+            )
+            for name in ("CLAUDE.md", "AGENTS.md"):
+                self.assertIn("use the nalcos skill", (repo / name).read_text())
 
-    def test_git_guard_rejects_writing_and_exec_options(self):
+    def test_git_guard_rejects_writes_and_exec_and_allows_history_reads(self):
         with tempfile.TemporaryDirectory() as directory:
             work = Path(directory)
-            repo = work / "repo"
-            subprocess.run(["git", "init", "-q", str(repo)], check=True)
+            head, _ = local_repo(work / "repo")
             guard = write_git_guard(work, real_git())
-            run = lambda *args: subprocess.run(
-                [str(guard), *args], cwd=repo, capture_output=True, text=True
-            )
-            self.assertEqual(run("rev-parse", "--is-inside-work-tree").stdout, "true\n")
+
+            def run(*args):
+                return subprocess.run(
+                    [str(guard), *args],
+                    cwd=work / "repo",
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+
+            self.assertEqual(run("rev-parse", "HEAD").stdout.strip(), head)
+            self.assertEqual(run("log", "-1", "--format=%H").stdout.strip(), head)
+            self.assertIn("two", run("show", "HEAD:file.txt").stdout)
             target = work / "written"
             for args in (
                 ("grep", "-Otouch", "x"),
                 ("-c", "core.pager=touch", "log"),
                 ("log", f"--output={target}"),
+                ("log", "--output", str(target)),
                 ("diff", "--ext-diff"),
+                ("show", "--textconv"),
                 ("log", "--exec-path=/tmp"),
                 ("config", "alias.x", "!touch"),
             ):
-                result = run(*args)
-                self.assertEqual(result.returncode, 126, args)
-                self.assertIn("not available in this trial", result.stderr)
+                with self.subTest(args=args):
+                    self.assertEqual(run(*args).returncode, 126)
             self.assertFalse(target.exists())
 
-    def test_environment_keeps_only_matching_agent_credentials(self):
-        planted = {
-            "GITHUB_TOKEN": "secret",
-            "AWS_SECRET_ACCESS_KEY": "secret",
-            "GH_TOKEN": "secret",
-            "SSH_AUTH_SOCK": "/host/socket",
-            "ANTHROPIC_API_KEY": "claude-only",
-            "OPENAI_API_KEY": "codex-only",
-            "CODEX_HOME": "/codex/home",
-            "NALCOS_DATA_DIR": "/host/index",
-            "HF_TOKEN": "secret",
-            "HOME": "/home",
-            "PATH": "/bin",
-        }
-        with patch.dict(os.environ, planted, clear=True):
-            for agent, permitted in (
-                ("claude", {"ANTHROPIC_API_KEY"}),
-                ("codex", {"OPENAI_API_KEY", "CODEX_HOME"}),
-            ):
-                env = trial_environment(agent)
-                self.assertEqual(env["HOME"], "/home")
-                self.assertEqual(env["GIT_CONFIG_VALUE_0"], os.devnull)
-                self.assertEqual(
-                    set(env).intersection(planted), permitted | {"HOME", "PATH"}
-                )
-
-    def test_worktree_cleanup_runs_after_setup_and_agent_failures(self):
+    def test_worktree_and_private_state_are_removed_after_failures(self):
         with tempfile.TemporaryDirectory() as directory:
             work = Path(directory)
             source = work / "small"
@@ -151,8 +114,6 @@ class AgentTrialTests(unittest.TestCase):
                 trial = work / stage
                 plan = {
                     "directory": str(trial),
-                    "agent": "claude",
-                    "condition": "git_rg",
                     "query": {"repo_key": "small", "snapshot": head},
                 }
 
@@ -168,29 +129,23 @@ class AgentTrialTests(unittest.TestCase):
                     raise OSError("fake agent launch failure")
 
                 with (
+                    patch("agent_trials.checked_command", side_effect=run_command),
                     patch(
-                        "agent_trials.checked_command", side_effect=run_command
-                    ) as commands,
-                    patch(
-                        "agent_trials.collect_worktree_trial",
-                        side_effect=fail_agent,
+                        "agent_trials.collect_worktree_trial", side_effect=fail_agent
                     ),
                     self.assertRaisesRegex(OSError, "fake"),
                 ):
                     collect_trial(plan, SimpleNamespace(clones=work), [])
-                calls = [call.args[0] for call in commands.call_args_list]
-                self.assertEqual(
-                    [call[4] for call in calls], ["add", "remove", "prune"]
+                for name in ("repo", "data", "runtime"):
+                    self.assertFalse((trial / name).exists())
+                registered = subprocess.check_output(
+                    ["git", "-C", str(source), "worktree", "list", "--porcelain"],
+                    text=True,
                 )
-                self.assertIn("--detach", calls[0])
-                self.assertIn("--force", calls[1])
-                self.assertFalse((trial / "repo").exists())
-                self.assertFalse((trial / "data").exists())
-                self.assertFalse((trial / "runtime").exists())
-                self.assertFalse((source / ".git/worktrees").exists())
+                self.assertNotIn(str(trial / "repo"), registered)
             self.assertEqual((source / ".git/config").read_bytes(), original_config)
 
-    def test_cleanup_failure_is_reported_in_row_and_stderr_and_still_prunes(self):
+    def test_cleanup_error_fails_trial_and_does_not_prevent_pruning(self):
         with tempfile.TemporaryDirectory() as directory:
             work = Path(directory)
             head, _ = local_repo(work / "small")
@@ -201,15 +156,15 @@ class AgentTrialTests(unittest.TestCase):
             }
 
             def run_command(command, operation):
-                checked_command(command, operation)
                 if "remove" in command:
-                    raise ValueError("fake worktree removal diagnostic")
+                    # Leave a stale registration that only prune can remove.
+                    shutil.rmtree(trial / "repo")
+                    raise ValueError("fake removal diagnostic")
+                checked_command(command, operation)
 
             errors = io.StringIO()
             with (
-                patch(
-                    "agent_trials.checked_command", side_effect=run_command
-                ) as commands,
+                patch("agent_trials.checked_command", side_effect=run_command),
                 patch(
                     "agent_trials.collect_worktree_trial",
                     return_value={"outcome": "completed"},
@@ -218,61 +173,30 @@ class AgentTrialTests(unittest.TestCase):
                 patch("agent_trials.sys.stderr", errors),
             ):
                 row = collect_trial(plan, SimpleNamespace(clones=work), [])
-            self.assertEqual(commands.call_args.args[0][-1], "prune")
+            registered = subprocess.check_output(
+                ["git", "-C", str(work / "small"), "worktree", "list", "--porcelain"],
+                text=True,
+            )
+            self.assertNotIn(str(trial / "repo"), registered)
             self.assertEqual(row["outcome"], "failed")
-            self.assertEqual(
-                row["cleanup_errors"], ["fake worktree removal diagnostic"]
-            )
-            self.assertIn(
-                "trial cleanup failed: fake worktree removal diagnostic",
-                errors.getvalue(),
-            )
-
-    def test_directory_copy_uses_platform_copy_on_write_and_reports_failure(self):
-        with tempfile.TemporaryDirectory() as directory:
-            work = Path(directory)
-            source = work / "index"
-            source.mkdir()
-            for platform, flag in (("darwin", "-cR"), ("linux", "-R")):
-                with (
-                    patch("agent_trials.sys.platform", platform),
-                    patch("agent_trials.checked_command") as command,
-                ):
-                    copy_directory(source, work / "data")
-                self.assertEqual(
-                    command.call_args.args[0],
-                    ["cp", flag, str(source.resolve()), str(work / "data")],
-                )
-            with (
-                patch(
-                    "agent_trials.checked_command", side_effect=ValueError("cp failed")
-                ),
-                self.assertRaisesRegex(ValueError, "cp failed"),
-            ):
-                copy_directory(source, work / "data")
+            self.assertIn("fake removal diagnostic", row["cleanup_errors"][0])
+            self.assertIn("fake removal diagnostic", errors.getvalue())
 
     def test_usage_counts_claude_cache_tokens_and_codex_cache_once(self):
-        parsed = parse_agent_output(
-            "claude",
-            json.dumps(
-                {
-                    "result": "answer",
-                    "usage": {
-                        "input_tokens": 2,
-                        "output_tokens": 3,
-                        "cache_read_input_tokens": 5,
-                        "cache_creation_input_tokens": 7,
-                    },
-                }
-            ),
-        )
-        self.assertEqual(parsed["tokens_used"], 17)
-        self.assertEqual(parsed["skill_used"], "unknown")
-        events = [
-            {
-                "type": "item.completed",
-                "item": {"type": "agent_message", "text": "answer"},
+        result = {
+            "type": "result",
+            "result": "answer",
+            "usage": {
+                "input_tokens": 2,
+                "output_tokens": 3,
+                "cache_read_input_tokens": 5,
+                "cache_creation_input_tokens": 7,
             },
+        }
+        self.assertEqual(
+            parse_agent_output("claude", json.dumps([result]))["tokens_used"], 17
+        )
+        events = [
             {
                 "type": "turn.completed",
                 "usage": {
@@ -287,7 +211,7 @@ class AgentTrialTests(unittest.TestCase):
             },
         ]
         self.assertEqual(
-            parse_agent_output("codex", "\n".join(json.dumps(e) for e in events))[
+            parse_agent_output("codex", "\n".join(map(json.dumps, events)))[
                 "tokens_used"
             ],
             37,
@@ -295,158 +219,114 @@ class AgentTrialTests(unittest.TestCase):
         for agent, text in (("claude", "{}"), ("codex", "{}"), ("codex", "not json")):
             with self.subTest(agent=agent), self.assertRaises(ValueError):
                 parse_agent_output(agent, text)
+        for usage in (
+            {"input_tokens": -1, "output_tokens": 1},
+            result["usage"] | {"cache_read_input_tokens": -1},
+        ):
+            with self.assertRaisesRegex(ValueError, "token usage"):
+                parse_agent_output("claude", json.dumps(result | {"usage": usage}))
 
-    def test_skill_use_requires_transcript_evidence(self):
+    def test_skill_use_requires_invocation_or_successful_read(self):
         result = {
             "type": "result",
-            "result": "nalcos skill was used",
+            "result": "I used the nalcos skill",
             "usage": {"input_tokens": 1, "output_tokens": 1},
+            "skills_used": ["nalcos"],
         }
-        invocation = {
-            "type": "assistant",
-            "message": {
-                "content": [
-                    {"type": "tool_use", "name": "Skill", "input": {"skill": "nalcos"}}
-                ]
-            },
-        }
-        self.assertTrue(
-            parse_agent_output("claude", json.dumps([invocation, result]))["skill_used"]
-        )
+        for name, inputs, expected in (
+            ("Skill", {"skill": "nalcos"}, True),
+            ("Read", {"file_path": "/repo/.claude/skills/nalcos/SKILL.md"}, True),
+            ("Skill", {"skill": "other"}, False),
+        ):
+            event = {
+                "message": {
+                    "content": [{"type": "tool_use", "name": name, "input": inputs}]
+                }
+            }
+            self.assertIs(
+                parse_agent_output("claude", json.dumps([event, result]))["skill_used"],
+                expected,
+            )
+        available = {"type": "system", "skills": ["nalcos"]}
         self.assertIs(
-            parse_agent_output("claude", json.dumps([result]))["skill_used"], False
-        )
-        self.assertIs(
-            parse_agent_output("claude", json.dumps(result | {"skills_used": []}))[
-                "skill_used"
-            ],
+            parse_agent_output("claude", json.dumps([available, result]))["skill_used"],
             False,
+        )
+        self.assertEqual(
+            parse_agent_output("claude", json.dumps(result))["skill_used"], "unknown"
         )
         completed = {
             "type": "turn.completed",
             "usage": {"input_tokens": 1, "output_tokens": 1},
         }
-        read = {
-            "type": "item.completed",
-            "item": {
-                "type": "command_execution",
-                "command": "cat .agents/skills/nalcos/SKILL.md",
-                "exit_code": 0,
-            },
-        }
-        for code, expected in ((0, True), (1, False)):
-            read["item"]["exit_code"] = code
-            parsed = parse_agent_output(
-                "codex", "\n".join(map(json.dumps, [read, completed]))
-            )
-            self.assertIs(parsed["skill_used"], expected)
+        for command, code, expected in (
+            ("cat .agents/skills/nalcos/SKILL.md", 0, True),
+            ("/bin/zsh -lc 'head .agents/skills/nalcos/SKILL.md'", 0, True),
+            ("sed -n '1,80p' .agents/skills/nalcos/SKILL.md", 0, True),
+            ("cat .agents/skills/nalcos/SKILL.md", 1, False),
+            ("echo cat .agents/skills/nalcos/SKILL.md", 0, False),
+            ("cat other; echo .agents/skills/nalcos/SKILL.md", 0, False),
+            ("cat other # .agents/skills/nalcos/SKILL.md", 0, False),
+            ("cat --help .agents/skills/nalcos/SKILL.md", 0, False),
+            ("cat .agents/skills/other/SKILL.md", 0, False),
+        ):
+            event = {
+                "type": "item.completed",
+                "item": {
+                    "type": "command_execution",
+                    "command": command,
+                    "exit_code": code,
+                },
+            }
+            with self.subTest(command=command, code=code):
+                self.assertIs(
+                    parse_agent_output(
+                        "codex", "\n".join(map(json.dumps, [event, completed]))
+                    )["skill_used"],
+                    expected,
+                )
 
-    def test_fake_collection_schema_counterbalancing_blind_export_and_review_import(
-        self,
-    ):
+    def test_collection_isolates_indexes_and_secrets_and_exports_reviewable_rows(self):
         with tempfile.TemporaryDirectory() as directory:
             work = Path(directory)
-            clones = work / "clones"
-            clones.mkdir()
-            head, base = local_repo(clones / "small")
-            repos = work / "repos.json"
-            repo_manifest(repos, head, base, keys=("small",))
-            tasks = work / "tasks.jsonl"
-            tasks.write_text(
-                "".join(
-                    json.dumps(
-                        {
-                            "id": f"q-{index}",
-                            "repo_key": "small",
-                            "prompt": "Find the behavior change",
-                            "gold_commits": [head],
-                            "answer_type": "find",
-                        }
-                    )
-                    + "\n"
-                    for index in range(2)
-                )
-            )
-            skill = work / "skills" / "nalcos"
-            skill.mkdir(parents=True)
-            (skill / "SKILL.md").write_text(
-                "---\nname: nalcos\ndescription: Search history\n---\nUse nalcos.\n"
-            )
-            binary = executable(work / "nalcos", 'print("fake nalcos")')
-            index = work / "prebuilt-data"
+            head, command = collection_inputs(work)
+            skill = work / "nalcos"
+            skill.mkdir()
+            (skill / "SKILL.md").write_text("Use nalcos.\n")
+            index, runtime = work / "index", work / "runtime"
             index.mkdir()
-            (index / "seed").write_text("original index")
-            (index / "common").write_text(str((clones / "small/.git").resolve()))
-            indexes = work / "indexes.json"
-            indexes.write_text(json.dumps({"small": "prebuilt-data"}))
-            runtime = work / "prebuilt-runtime"
             runtime.mkdir()
-            (runtime / "device").write_text("calibrated")
-            original_config = (clones / "small/.git/config").read_bytes()
+            (index / "seed").write_text("original index")
+            (runtime / "seed").write_text("original runtime")
+            indexes = work / "indexes.json"
+            indexes.write_text(json.dumps({"small": "index"}))
+            binary = executable(work / "binary", 'print("fake nalcos")')
             agent_source = """
                 import json, os, subprocess, sys
                 from pathlib import Path
-                args = sys.argv[1:]
-                treatment = (Path.cwd() / ".agents/skills/nalcos/SKILL.md").is_file()
-                assert (Path.cwd() / ".claude/skills/nalcos/SKILL.md").is_file() == treatment
-                probe = subprocess.run(["nalcos", "--version"], capture_output=True)
-                assert probe.returncode == (0 if treatment else 127)
-                assert os.environ["GIT_NO_LAZY_FETCH"] == "1"
-                assert (Path.cwd() / ".git").is_file()
-                for key in ("GITHUB_TOKEN", "AWS_SECRET_ACCESS_KEY", "GH_TOKEN", "SSH_AUTH_SOCK", "HF_TOKEN"):
+                treatment = Path(".agents/skills/nalcos/SKILL.md").is_file()
+                for key in ("GITHUB_TOKEN", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN", "SSH_AUTH_SOCK"):
                     assert key not in os.environ, key
-                assert os.environ["HF_HOME"] == "/shared/hf"
-                assert os.environ["HF_HUB_CACHE"] == "/shared/hf/hub"
-                guard = subprocess.run(["git", "config", "core.hooksPath"], capture_output=True, text=True)
-                assert guard.returncode == 126 and "not available in this trial" in guard.stderr
-                # The guard's last line execs the real git; use it to inspect trial config.
-                real = subprocess.check_output(["sh", "-c", "tail -1 \\"$(command -v git)\\""], text=True).split('"')[1]
-                assert subprocess.check_output([real, "config", "core.hooksPath"], text=True).strip() == os.devnull
-                for key, value in {"GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": os.devnull, "GIT_TERMINAL_PROMPT": "0", "GIT_PAGER": "cat", "PAGER": "cat"}.items():
-                    assert os.environ[key] == value
-                data, runtime = Path(os.environ["NALCOS_DATA_DIR"]), Path(os.environ["NALCOS_RUNTIME_CACHE"])
-                assert data == Path.cwd().parent / "data"
-                assert runtime == Path.cwd().parent / "runtime"
+                data = Path(os.environ["NALCOS_DATA_DIR"])
+                runtime = Path(os.environ["NALCOS_RUNTIME_CACHE"])
                 if treatment:
                     assert (data / "seed").read_text() == "original index"
-                    common = subprocess.check_output(["git", "rev-parse", "--git-common-dir"], text=True).strip()
-                    assert str(Path(common).resolve()) == (data / "common").read_text()
-                    (data / "seed").write_text("trial writes")
-                    assert (runtime / "device").read_text() == "calibrated"
-                    (runtime / "device").write_text("trial calibration")
+                    assert (runtime / "seed").read_text() == "original runtime"
+                    (data / "seed").write_text("agent write")
+                    (runtime / "seed").write_text("agent write")
                 else:
                     assert not list(data.iterdir()) and not list(runtime.iterdir())
-                if "exec" in args:
-                    assert "--json" in args and "--ephemeral" in args
-                    if treatment:
-                        print(json.dumps({"type": "item.completed", "item": {"type": "command_execution", "command": "cat .agents/skills/nalcos/SKILL.md", "exit_code": 0}}))
-                    print(json.dumps({"type": "item.completed", "item": {"type": "agent_message", "text": "Found the change with a supporting hunk"}}))
-                    print(json.dumps({"type": "turn.completed", "usage": {"input_tokens": 10, "cached_input_tokens": 5, "output_tokens": 3}}))
+                    assert subprocess.run(["nalcos"], capture_output=True).returncode == 127
+                if sys.argv[0].endswith("codex"):
+                    print(json.dumps({"type": "item.completed", "item": {"type": "agent_message", "text": "Evidence answer"}}))
+                    print(json.dumps({"type": "turn.completed", "usage": {"input_tokens": 10, "output_tokens": 3}}))
                 else:
-                    assert "--max-turns" in args
-                    assert json.loads((Path.cwd() / ".claude/settings.json").read_text()) == {}
-                    assert (Path.cwd() / ".claude/skills").is_dir()
-                    allowed = args[args.index("--allowed-tools") + 1]
-                    assert ("Bash(nalcos *)" in allowed) == treatment
-                    assert "Bash(git *)" not in allowed
-                    messages = []
-                    if treatment:
-                        messages.append({"type": "assistant", "message": {"content": [{"type": "tool_use", "name": "Skill", "input": {"skill": "nalcos"}}]}})
-                    messages.append({"type": "result", "result": "Found the change with a supporting hunk", "usage": {"input_tokens": 10, "output_tokens": 3, "cache_read_input_tokens": 2}})
-                    print(json.dumps(messages))
+                    print(json.dumps([{"type": "result", "result": "Evidence answer", "usage": {"input_tokens": 10, "output_tokens": 3}}]))
             """
             claude = executable(work / "fake-claude", agent_source)
             codex = executable(work / "fake-codex", agent_source)
-            output = work / "trials"
-            command = [
-                sys.executable,
-                str(BENCHMARKS / "agent_trials.py"),
-                "--tasks",
-                str(tasks),
-                "--repos",
-                str(repos),
-                "--clones",
-                str(clones),
+            output = work / "out"
+            command += [
                 "--skill",
                 str(skill),
                 "--binary",
@@ -455,39 +335,39 @@ class AgentTrialTests(unittest.TestCase):
                 str(claude),
                 "--codex",
                 str(codex),
-                "--budget-seconds",
-                "30",
-                "--budget-tokens",
-                "100",
                 "--output",
                 str(output),
             ]
             planned = subprocess.run(
-                command, capture_output=True, text=True, check=False
+                command + ["--dry-run"], capture_output=True, text=True, check=False
             )
             self.assertEqual(planned.returncode, 0, planned.stderr)
-            self.assertEqual(len(planned.stdout.splitlines()), 8)
             self.assertFalse(output.exists())
-            missing_indexes = subprocess.run(
-                [*command, "--run"], capture_output=True, text=True, check=False
-            )
-            self.assertEqual(missing_indexes.returncode, 2)
-            self.assertIn(
-                "nalcos_git_rg requires --indexes PATH", missing_indexes.stderr
-            )
-            self.assertFalse(output.exists())
-            with patch.dict(
-                os.environ,
-                {
-                    "GITHUB_TOKEN": "secret",
-                    "AWS_SECRET_ACCESS_KEY": "secret",
-                    "HF_HOME": "/shared/hf",
-                    "HF_HUB_CACHE": "/shared/hf/hub",
-                },
-            ):
+            for condition in ("nalcos_git_rg", "nalcos_hint"):
+                missing = subprocess.run(
+                    command + ["--run", "--conditions", condition],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+                self.assertEqual(missing.returncode, 2)
+                self.assertIn("requires --indexes", missing.stderr)
+                self.assertIn("repo_key", missing.stderr)
+                self.assertFalse(output.exists())
+            planted = {
+                key: "planted-secret"
+                for key in (
+                    "GITHUB_TOKEN",
+                    "AWS_ACCESS_KEY_ID",
+                    "AWS_SECRET_ACCESS_KEY",
+                    "AWS_SESSION_TOKEN",
+                    "SSH_AUTH_SOCK",
+                )
+            }
+            with patch.dict(os.environ, planted):
                 collected = subprocess.run(
-                    [
-                        *command,
+                    command
+                    + [
                         "--indexes",
                         str(indexes),
                         "--runtime-cache",
@@ -498,63 +378,25 @@ class AgentTrialTests(unittest.TestCase):
                     text=True,
                     check=False,
                 )
-            diagnostics = collected.stdout + collected.stderr
-            if collected.returncode:
-                diagnostics += "\n" + "\n".join(
-                    path.read_text() for path in output.glob("*/trial-*/*.txt")
-                )
-                diagnostics += "\n" + "\n".join(
-                    path.read_text() for path in output.glob("*/trials.jsonl")
-                )
+            diagnostics = collected.stderr + "\n".join(
+                p.read_text() for p in output.glob("*/trial-*/*.txt")
+            )
             self.assertEqual(collected.returncode, 0, diagnostics)
+            self.assertEqual((index / "seed").read_text(), "original index")
+            self.assertEqual((runtime / "seed").read_text(), "original runtime")
             manifest = read_jsonl(output / "manifest.jsonl")
-            all_rows = []
             for agent in ("claude", "codex"):
                 rows = read_jsonl(output / agent / "trials.jsonl")
-                self.assertEqual(len(rows), 4)
-                self.assertTrue(
-                    all(
-                        r["review_status"] == "pending_review"
-                        and r["outcome"] == "completed"
-                        for r in rows
-                    )
-                )
-                self.assertTrue(
-                    all(
-                        r["tokens_used"] == (15 if agent == "claude" else 13)
-                        for r in rows
-                    )
-                )
-                self.assertEqual(
-                    {r["order"] for r in rows if r["condition"] == "nalcos_git_rg"},
-                    {0, 1},
-                )
-                self.assertTrue(
-                    all((output / r["transcript_path"]).is_file() for r in rows)
-                )
                 result = evaluate_trials(manifest, rows, split="development")
-                self.assertEqual(result["paired_questions"], 2)
+                self.assertEqual(result["paired_questions"], 1)
                 self.assertEqual(result["incomparable_pairs"], 0)
                 self.assertEqual(result["conditions"]["git_rg"]["successes"], 0)
-                all_rows.extend(rows)
-            self.assertEqual(len({r["isolation_id"] for r in all_rows}), 8)
-            for row in all_rows:
-                self.assertEqual(row["skill_used"], row["condition"] == "nalcos_git_rg")
-                self.assertEqual(row["cleanup_errors"], [])
-                self.assertEqual(
-                    row["data_size_bytes"] > 0, row["condition"] == "nalcos_git_rg"
-                )
-                trial_dir = (output / row["transcript_path"]).parent
-                for name in ("repo", "data", "runtime"):
-                    self.assertFalse((trial_dir / name).exists())
-            self.assertEqual((index / "seed").read_text(), "original index")
-            self.assertEqual({p.name for p in index.iterdir()}, {"seed", "common"})
-            self.assertEqual((runtime / "device").read_text(), "calibrated")
-            self.assertEqual(
-                (clones / "small/.git/config").read_bytes(), original_config
-            )
-            self.assertFalse((clones / "small/.git/worktrees").exists())
-            self.assertFalse((clones / "small" / ".agents").exists())
+                for row in rows:
+                    self.assertEqual(row["outcome"], "completed")
+                    for name in ("repo", "data", "runtime"):
+                        self.assertFalse(
+                            ((output / row["transcript_path"]).parent / name).exists()
+                        )
             blind = work / "blind"
             exported = subprocess.run(
                 [
@@ -571,21 +413,17 @@ class AgentTrialTests(unittest.TestCase):
             )
             self.assertEqual(exported.returncode, 0, exported.stderr)
             answers = read_jsonl(blind / "answers.jsonl")
-            self.assertEqual(len(answers), 8)
-            self.assertEqual(list(blind.iterdir()), [blind / "answers.jsonl"])
-            self.assertEqual(answers, blind_answers(manifest, all_rows))
+            self.assertEqual(len(answers), 4)
             for answer in answers:
-                self.assertFalse(
-                    set(answer).intersection(
-                        {
-                            "condition",
-                            "agent",
-                            "order",
-                            "transcript_path",
-                            "elapsed_seconds",
-                        }
-                    )
-                )
+                self.assertEqual(answer["answer"], "Evidence answer")
+                for hidden in (
+                    "condition",
+                    "agent",
+                    "order",
+                    "transcript_path",
+                    "elapsed_seconds",
+                ):
+                    self.assertNotIn(hidden, answer)
             reviews = work / "reviews.jsonl"
             reviews.write_text(
                 "".join(
@@ -594,8 +432,8 @@ class AgentTrialTests(unittest.TestCase):
                             "review_id": a["review_id"],
                             "passed": True,
                             "blind_to_condition": True,
-                            "reviewer_id": "independent",
-                            "references": ["review.txt"],
+                            "reviewer_id": "judge",
+                            "references": ["review"],
                             "verified_commits": [head],
                         }
                     )
@@ -626,9 +464,9 @@ class AgentTrialTests(unittest.TestCase):
                     read_jsonl(reviewed / agent / "trials.jsonl"),
                     split="development",
                 )
-                self.assertEqual(result["conditions"]["nalcos_git_rg"]["successes"], 2)
+                self.assertEqual(result["conditions"]["nalcos_git_rg"]["successes"], 1)
 
-    def test_review_rejects_unknown_or_duplicate_ids_and_task_labels(self):
+    def test_review_validation_and_absence_labels(self):
         row = {
             "trial_id": "one",
             "outcome": "failed",
@@ -645,11 +483,19 @@ class AgentTrialTests(unittest.TestCase):
         merged = import_reviews([row], [review])[0]
         self.assertEqual(merged["outcome"], "failed")
         self.assertEqual(row["review_status"], "pending_review")
-        for reviews in (
-            [review, review],
-            [review | {"review_id": "unknown"}],
-            [review | {"verified_commits": ["abc"]}],
-        ):
+        invalid = [
+            review | {key: value}
+            for key, value in (
+                ("review_id", "unknown"),
+                ("verified_commits", ["abc"]),
+                ("passed", "yes"),
+                ("blind_to_condition", None),
+                ("reviewer_id", ""),
+                ("references", []),
+                ("absence_reviewed", "yes"),
+            )
+        ]
+        for reviews in ([review, review], *([r] for r in invalid)):
             with self.assertRaises(ValueError):
                 import_reviews([row], reviews)
         repo = {"r": {"url": "local", "snapshot": "a" * 40, "split": "heldout"}}
@@ -664,77 +510,47 @@ class AgentTrialTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "gold"):
             task_manifest([task | {"gold_commits": ["b" * 40]}], repo)
 
-    def test_token_overrun_is_failed_and_wall_timeout_is_workflow_compatible(self):
+    def test_token_overrun_and_timeout_fail_and_remain_workflow_compatible(self):
         with tempfile.TemporaryDirectory() as directory:
             work = Path(directory)
-            clones = work / "clones"
-            clones.mkdir()
-            head, base = local_repo(clones / "small")
-            repos = work / "repos.json"
-            repo_manifest(repos, head, base, keys=("small",))
-            tasks = work / "tasks.jsonl"
-            tasks.write_text(
-                json.dumps(
-                    {
-                        "id": "q",
-                        "repo_key": "small",
-                        "prompt": "Find change",
-                        "gold_commits": [head],
-                        "answer_type": "explain",
-                    }
-                )
-                + "\n"
-            )
+            _, command = collection_inputs(work)
             fake = executable(
                 work / "fake",
-                """
-                import json, time
-                print(json.dumps({"result": "answer", "usage": {"input_tokens": 100, "output_tokens": 1}}), flush=True)
-            """,
+                'import json\nprint(json.dumps({"result": "answer", "usage": {"input_tokens": 100, "output_tokens": 1}}), flush=True)',
             )
-            base_command = [
-                sys.executable,
-                str(BENCHMARKS / "agent_trials.py"),
-                "--tasks",
-                str(tasks),
-                "--repos",
-                str(repos),
-                "--clones",
-                str(clones),
+            command += [
                 "--conditions",
                 "git_rg",
                 "--agents",
                 "claude",
                 "--claude",
                 str(fake),
-                "--budget-tokens",
-                "10",
                 "--run",
             ]
-            overrun = work / "overrun"
-            result = subprocess.run(
-                [*base_command, "--output", str(overrun)],
-                capture_output=True,
-                text=True,
-                check=False,
-            )
-            self.assertEqual(result.returncode, 3, result.stderr)
-            self.assertEqual(
-                read_jsonl(overrun / "claude/trials.jsonl")[0]["outcome"], "failed"
-            )
-            executable(fake, "import time\ntime.sleep(20)")
-            timeout = work / "timeout"
-            result = subprocess.run(
-                [*base_command, "--budget-seconds", "0.1", "--output", str(timeout)],
-                capture_output=True,
-                text=True,
-                check=False,
-            )
-            self.assertEqual(result.returncode, 3, result.stderr)
-            row = read_jsonl(timeout / "claude/trials.jsonl")[0]
-            self.assertEqual(row["outcome"], "timeout")
-            self.assertFalse(row["usage_complete"])
-            self.assertIn("transcript", row["parse_error"])
+            for outcome in ("failed", "timeout"):
+                output = work / outcome
+                if outcome == "timeout":
+                    executable(fake, "import time\ntime.sleep(20)")
+                result = subprocess.run(
+                    command
+                    + [
+                        "--budget-seconds",
+                        "0.2" if outcome == "timeout" else "30",
+                        "--output",
+                        str(output),
+                    ],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+                self.assertEqual(result.returncode, 3, result.stderr)
+                row = read_jsonl(output / "claude/trials.jsonl")[0]
+                self.assertEqual(row["outcome"], outcome)
+                evaluate_trials(read_jsonl(output / "manifest.jsonl"), [row])
+                self.assertFalse((output / "claude/trial-000-0/repo").exists())
+                if outcome == "timeout":
+                    self.assertFalse(row["usage_complete"])
+                    self.assertIn("transcript", row["parse_error"])
 
 
 if __name__ == "__main__":

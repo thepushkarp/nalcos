@@ -67,14 +67,13 @@ def validate_manifest(rows):
         for field in ("repo", "query"):
             if not isinstance(row.get(field), str) or not row[field].strip():
                 raise ValueError(f"{identifier}: {field} must be a nonempty string")
-        for field in ("repo_key", "family", "notes", "supporting_hunk_contains"):
+        for field in ("repo_key", "supporting_hunk_contains"):
             if field in row and (
                 not isinstance(row[field], str)
-                or (field != "notes" and not row[field].strip())
+                or not row[field].strip()
             ):
                 raise ValueError(
-                    f"{identifier}: {field} must be a string"
-                    + ("" if field == "notes" else " and nonempty")
+                    f"{identifier}: {field} must be a nonempty string"
                 )
         if "query_kind" in row and (
             not isinstance(row["query_kind"], str)

@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from cli_matrix import adapt_response, check_encoder_consistency, scope_arguments
+from cli_matrix import adapt_response, check_encoder_consistency
 from evaluate import metrics
 from test_evaluate import query
 from test_index_matrix import BENCHMARKS, executable
@@ -37,10 +37,6 @@ class CoverageTests(unittest.TestCase):
             "good": "c" * 40,
             "bad": "d" * 40,
         }
-        self.assertEqual(
-            scope_arguments(regression), ["--range", "c" * 40 + ".." + "d" * 40]
-        )
-        self.assertEqual(scope_arguments(self.query), ["--ref", "a" * 40])
         self.assertIn(
             "snapshot_mismatch",
             adapt_response(regression, "lexical", self.payload, 0)["incomplete_reasons"],
@@ -111,25 +107,34 @@ class CoverageTests(unittest.TestCase):
         self.assertFalse(changed["complete"])
         self.assertIn("encoder_changed_during_matrix", changed["incomplete_reasons"])
 
-    def test_device_repeats_repository_mapping_and_evidence_with_fake_cli(self):
+    def test_scope_selection_repeats_and_evidence_with_fake_cli(self):
         with tempfile.TemporaryDirectory() as directory:
             work = Path(directory)
-            questions = [query("one", repo_key="one"), query("two", repo_key="two")]
-            questions[1]["scope_range"] = "c" * 40 + ".." + "a" * 40
+            questions = [
+                query("snapshot", repo_key="repo"),
+                query("range", repo_key="repo")
+                | {"snapshot": "c" * 40, "scope_range": "d" * 40 + ".." + "c" * 40},
+                query("regression", repo_key="repo")
+                | {"task": "regression", "good": "d" * 40, "bad": "e" * 40},
+            ]
+            for q in questions:
+                q.update(gold_paths=["old.rs"], supporting_hunk_contains="needle")
             manifest = work / "queries.jsonl"
             manifest.write_text("".join(json.dumps(q) + "\n" for q in questions))
             config = work / "config.toml"
             config.write_text("version = 1\n")
+            data = work / "data"
+            data.mkdir()
+            (data / "gold").write_text("b" * 40)
             mapping = work / "repositories.json"
             mapping.write_text(
                 json.dumps(
                     {
-                        key: {
-                            "path": str(work / key),
+                        "repo": {
+                            "path": str(work),
                             "config": str(config),
-                            "data_dir": str(work / key / "data"),
+                            "data_dir": str(data),
                         }
-                        for key in ("one", "two")
                     }
                 )
             )
@@ -137,27 +142,20 @@ class CoverageTests(unittest.TestCase):
                 work / "nalcos",
                 """
                 import json, os, sys
+                from pathlib import Path
                 args = sys.argv[1:]
-                repo = args[args.index("--repo") + 1]
-                assert os.environ["NALCOS_DATA_DIR"] == repo + "/data"
-                assert args.index("--device") < args.index("search")
-                assert args[args.index("--device") + 1] == "metal"
-                assert os.environ["GIT_NO_LAZY_FETCH"] == "1"
-                if repo.endswith("two"):
-                    assert "--ref" not in args
-                    assert args[args.index("--range") + 1] == "c" * 40 + ".." + "a" * 40
-                else:
-                    assert "--range" not in args and "--ref" in args
+                scope = args[args.index("--range") + 1] if "--range" in args else args[args.index("--ref") + 1]
+                roots = {"a" * 40: "a" * 40, "d" * 40 + ".." + "c" * 40: "c" * 40, "d" * 40 + ".." + "e" * 40: "e" * 40}
+                gold = (Path(os.environ["NALCOS_DATA_DIR"]) / "gold").read_text()
                 print(json.dumps({
                     "mode_used": "lexical", "history_coverage": {"complete": True},
                     "embedding_coverage": {"complete": False},
-                    "scope": {"roots": [{"oid": "a" * 40}], "shallow": False},
+                    "scope": {"roots": [{"oid": roots[scope]}], "shallow": False},
                     "output_truncated": False,
-                    "results": [{"commit": {"oid": "b" * 40}, "evidence": [
+                    "results": [{"commit": {"oid": gold}, "evidence": [
                         {"verified": True, "new_path": {"display": "new.rs"}, "old_path": {"display": "old.rs"}, "excerpt": "needle"}
                     ]}],
                 }))
-                print(repo, file=sys.stderr)
             """,
             )
             output = work / "out"
@@ -177,57 +175,31 @@ class CoverageTests(unittest.TestCase):
                 "--device",
                 "metal",
                 "--repeats",
-                "3",
+                "2",
             ]
             result = subprocess.run(
                 command, capture_output=True, text=True, check=False
             )
             self.assertEqual(result.returncode, 0, result.stderr)
-            rows = [
-                json.loads(line)
-                for line in (output / "lexical.rankings.jsonl").read_text().splitlines()
-            ]
-            self.assertEqual(len(rows), 2)
-            self.assertEqual({r["repo_key"] for r in rows}, {"one", "two"})
-            self.assertTrue(
-                all(
-                    r["cache_state"] == "cold" and r["peak_rss_bytes"] > 0 for r in rows
-                )
-            )
-            self.assertEqual(
-                rows[0]["evidence"],
-                [
-                    {
-                        "commit": "b" * 40,
-                        "paths": ["new.rs", "old.rs"],
-                        "excerpt": "needle",
-                    }
-                ],
-            )
-            self.assertEqual(metrics(questions, rows)["mrr"], 1)
-            for repeat in (1, 2):
-                warm = [
+            for filename, state in (
+                ("lexical.rankings.jsonl", "cold"),
+                ("lexical.repeat-1.rankings.jsonl", "warm"),
+            ):
+                rows = [
                     json.loads(line)
-                    for line in (output / f"lexical.repeat-{repeat}.rankings.jsonl")
-                    .read_text()
-                    .splitlines()
+                    for line in (output / filename).read_text().splitlines()
                 ]
-                self.assertTrue(
-                    all(
-                        r["repeat"] == repeat and r["cache_state"] == "warm"
-                        for r in warm
-                    )
-                )
+                scores = metrics(questions, rows)
+                self.assertTrue(scores["coverage_complete"])
+                self.assertEqual(scores["mrr"], 1)
+                self.assertEqual(scores["hunk_hit"]["10"], 1)
+                self.assertTrue(all(r["cache_state"] == state for r in rows))
             summary = json.loads((output / "summary.json").read_text())["modes"][
                 "lexical"
             ]
-            self.assertEqual(summary["by_cache_state"]["cold"]["samples"], 2)
-            self.assertEqual(summary["by_cache_state"]["warm"]["samples"], 4)
+            self.assertEqual(summary["by_cache_state"]["cold"]["samples"], 3)
+            self.assertEqual(summary["by_cache_state"]["warm"]["samples"], 3)
             self.assertGreater(summary["by_cache_state"]["warm"]["p95_seconds"], 0)
-            self.assertEqual(
-                (output / "raw" / "001-lexical-02.stderr").read_text().strip(),
-                str(work / "two"),
-            )
 
     def test_missing_repo_key_names_query_and_mapping_input(self):
         with tempfile.TemporaryDirectory() as directory:

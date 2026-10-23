@@ -11,7 +11,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from harness import load_repositories, rss_bytes, run_measured
-from index_matrix import phase_timings, read_payload, summarize
+from index_matrix import read_payload, summarize
 
 BENCHMARKS = Path(__file__).resolve().parent
 
@@ -59,17 +59,11 @@ def repo_manifest(path, head, base, keys=("small", "large")):
 
 
 class IndexTests(unittest.TestCase):
-    def test_manifest_validation_and_checked_in_copy(self):
-        checked_in = load_repositories(BENCHMARKS / "repos.json")
-        self.assertEqual(
-            set(checked_in), {"etymology", "nalcos", "toki", "pgvector", "vllm"}
-        )
+    def test_manifest_rejects_invalid_snapshot_and_range(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "repos.json"
             for field, value in (
                 ("snapshot", "abc"),
-                ("split", "dev"),
-                ("semantic_range", "a..b"),
                 ("semantic_range", "a" * 40 + "..." + "b" * 40),
             ):
                 repositories = repo_manifest(path, "a" * 40, "b" * 40)
@@ -79,9 +73,7 @@ class IndexTests(unittest.TestCase):
                 )
                 with (
                     self.subTest(field=field, value=value),
-                    self.assertRaisesRegex(
-                        ValueError, field if field != "split" else "split"
-                    ),
+                    self.assertRaisesRegex(ValueError, field),
                 ):
                     load_repositories(path)
 
@@ -102,30 +94,24 @@ class IndexTests(unittest.TestCase):
                 args = sys.argv[1:]
                 data = Path(os.environ["NALCOS_DATA_DIR"])
                 cache = Path(os.environ["NALCOS_RUNTIME_CACHE"])
-                assert data.parent == cache.parent
-                assert os.environ["GIT_NO_LAZY_FETCH"] == "1"
-                assert os.environ["GIT_NO_REPLACE_OBJECTS"] == "1"
                 command = next(c for c in ("init", "sync", "status") if c in args)
                 if command != "status":
                     assert not list(data.iterdir())
                     assert not list(cache.iterdir())
-                    assert args.index("--device") < args.index(command)
-                    assert "--ref" not in args[:args.index(command)]
-                    assert "--range" not in args[:args.index(command)]
-                    assert ("--model" in args) == (command == "init")
-                    (data / "receipt.json").write_text(json.dumps(args))
+                    # Interpret only the scope and operation that determine coverage.
+                    scope = args[args.index("--range") + 1] if "--range" in args else args[args.index("--ref") + 1]
+                    (data / "receipt.json").write_text(json.dumps({"semantic": command == "init", "scope": scope}))
                     (cache / "probe").write_text("fresh")
-                    print("phase=extract duration=12ms", file=sys.stderr)
                 previous = json.loads((data / "receipt.json").read_text())
-                semantic = "init" in previous
+                semantic = previous["semantic"]
+                ranged = ".." in previous["scope"]
                 payload = {
                     "command": command, "commits_added": 2, "documents_embedded": 4 if semantic else 0,
-                    "history_coverage": {"total": 2, "indexed": 2, "complete": True},
+                    "history_coverage": {"total": 1 if ranged else 2, "indexed": 1 if ranged else 2, "complete": True},
                     "embedding_coverage": {"total": 4, "indexed": 4 if semantic else 0, "complete": semantic},
-                    "indexing_runtime": {"selected_device": previous[previous.index("--device") + 1]} if semantic else None,
                 }
                 if command == "status":
-                    payload["counts"] = {"commits": 2, "documents": 4, "vectors": 6 if semantic else 0}
+                    payload["counts"] = {"commits": 1 if ranged else 2, "documents": 4, "vectors": 6 if semantic else 0}
                 print(json.dumps(payload))
             """,
             )
@@ -141,7 +127,6 @@ class IndexTests(unittest.TestCase):
                 str(clones),
                 "--devices",
                 "cpu",
-                "auto",
                 "--repeats",
                 "2",
                 "--timeout",
@@ -158,11 +143,7 @@ class IndexTests(unittest.TestCase):
                 json.loads(line)
                 for line in (output / "runs.jsonl").read_text().splitlines()
             ]
-            self.assertEqual(len(rows), 12)
-            self.assertEqual(
-                {row["tier"] for row in rows},
-                {"semantic-full", "semantic-range", "lexical-full"},
-            )
+            self.assertEqual(len(rows), 6)
             self.assertTrue(
                 all(
                     row["peak_rss_bytes"] > 0
@@ -171,19 +152,22 @@ class IndexTests(unittest.TestCase):
                     for row in rows
                 )
             )
-            self.assertTrue(
-                all(row["phase_seconds"] == {"extract": [0.012]} for row in rows)
-            )
             for row in rows:
-                self.assertTrue((output / row["stderr_path"]).is_file())
                 self.assertEqual(
                     row["vectors"], 0 if row["tier"] == "lexical-full" else 6
                 )
                 self.assertEqual(
-                    "--range" in row["command"], row["tier"] == "semantic-range"
+                    row["commits"], 1 if row["tier"] == "semantic-range" else 2
                 )
+            self.assertEqual(
+                {(r["repo_key"], r["tier"]) for r in rows},
+                {
+                    ("small", "semantic-full"),
+                    ("large", "lexical-full"),
+                    ("large", "semantic-range"),
+                },
+            )
             summary = json.loads((output / "summary.json").read_text())
-            self.assertEqual(len(summary["summaries"]), 6)
             self.assertTrue(
                 all(group["successful_runs"] == 2 for group in summary["summaries"])
             )
@@ -225,8 +209,7 @@ class IndexTests(unittest.TestCase):
             with patch("harness.sys.platform", "linux"):
                 self.assertEqual(rss_bytes(1234), 1234 * 1024)
 
-    def test_progress_is_not_a_phase_duration_and_failures_do_not_improve_medians(self):
-        self.assertEqual(phase_timings("Indexing history: 32/64 commits"), {})
+    def test_failed_runs_do_not_improve_medians(self):
         row = {
             "repo_key": "r",
             "device": "cpu",

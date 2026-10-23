@@ -64,6 +64,10 @@ def rss_bytes(value):
     return int(value) if sys.platform == "darwin" else int(value * 1024)
 
 
+def directory_size(directory):
+    return sum(path.stat().st_size for path in directory.rglob("*") if path.is_file())
+
+
 def run_measured(command, stdout, stderr, *, env, timeout, cwd=None):
     """Use files so verbose children cannot deadlock while wait4 owns reaping.
 

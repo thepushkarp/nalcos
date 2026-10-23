@@ -48,10 +48,6 @@ def scope_arguments(query):
     return ["--ref", query["snapshot"]]
 
 
-def scope_tip(query):
-    return query["bad"] if query.get("task") == "regression" else query["snapshot"]
-
-
 def adapt_response(query, requested_mode, payload, returncode):
     reasons = []
     if returncode != 0:
@@ -65,7 +61,8 @@ def adapt_response(query, requested_mode, payload, returncode):
     if requested_mode != "lexical" and embedding.get("complete") is not True:
         reasons.append("embedding_incomplete")
     scope = payload.get("scope", {})
-    if scope_tip(query) not in {r.get("oid") for r in scope.get("roots", [])}:
+    tip = query["bad"] if query.get("task") == "regression" else query["snapshot"]
+    if tip not in {r.get("oid") for r in scope.get("roots", [])}:
         reasons.append("snapshot_mismatch")
     if scope.get("shallow") is not False:
         reasons.append("shallow_or_unknown_history")

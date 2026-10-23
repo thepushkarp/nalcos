@@ -5,55 +5,19 @@ import argparse
 import json
 import math
 import os
-import re
 import statistics
 from datetime import datetime, timezone
 from pathlib import Path
 
-from harness import GIT_ENV, load_repositories, run_measured, validate_clone
+from harness import (
+    GIT_ENV,
+    directory_size,
+    load_repositories,
+    run_measured,
+    validate_clone,
+)
 from scale import digest, emit, host
 from vector_scale import runtime_conditions
-
-
-def indexing_command(
-    binary, clone, config, repo, device, tier, timeout, model, offline
-):
-    command = [
-        str(binary),
-        "--repo",
-        str(clone),
-        "--config",
-        str(config),
-        "--json",
-        "-vv",
-        "--timeout",
-        f"{timeout:g}s",
-        "--device",
-        device,
-    ]
-    if offline:
-        command.append("--offline")
-    if tier == "lexical-full":
-        return command + ["sync", "--ref", repo["snapshot"]]
-    scope = (
-        ["--range", repo["semantic_range"]]
-        if tier == "semantic-range"
-        else ["--ref", repo["snapshot"]]
-    )
-    return command + ["init", *scope, "--model", model]
-
-
-def phase_timings(stderr):
-    # Progress counters have no elapsed duration and must not become phase estimates.
-    samples = {}
-    pattern = re.compile(
-        r"\bphase=([\w-]+)\s+(?:duration|elapsed)=(\d+(?:\.\d+)?)(ms|s)\b"
-    )
-    for phase, value, unit in pattern.findall(stderr):
-        samples.setdefault(phase, []).append(
-            float(value) / (1000 if unit == "ms" else 1)
-        )
-    return samples
 
 
 def read_payload(path, measurement):
@@ -166,16 +130,30 @@ def run(args):
                         "NALCOS_RUNTIME_CACHE": str(runtime),
                     }
                     clone = (args.clones / key).resolve()
-                    command = indexing_command(
-                        binary,
-                        clone,
-                        config,
-                        repo,
+                    scope = (
+                        ["--range", repo["semantic_range"]]
+                        if tier == "semantic-range"
+                        else ["--ref", repo["snapshot"]]
+                    )
+                    command = [
+                        str(binary),
+                        "--repo",
+                        str(clone),
+                        "--config",
+                        str(config),
+                        "--json",
+                        "-vv",
+                        "--timeout",
+                        f"{args.timeout:g}s",
+                        "--device",
                         device,
-                        tier,
-                        args.timeout,
-                        args.model,
-                        args.offline,
+                    ]
+                    if args.offline:
+                        command.append("--offline")
+                    command += (
+                        ["sync", *scope]
+                        if tier == "lexical-full"
+                        else ["init", *scope, "--model", args.model]
                     )
                     conditions = runtime_conditions()
                     measurement = run_measured(
@@ -186,16 +164,7 @@ def run(args):
                         timeout=args.timeout + 5,
                     )
                     payload = read_payload(work / "index.stdout", measurement)
-                    storage = sum(
-                        path.stat().st_size
-                        for path in data.rglob("*")
-                        if path.is_file()
-                    )
-                    scope = (
-                        ["--range", repo["semantic_range"]]
-                        if tier == "semantic-range"
-                        else ["--ref", repo["snapshot"]]
-                    )
+                    storage = directory_size(data)
                     status_command = [
                         str(binary),
                         "--repo",
@@ -251,9 +220,6 @@ def run(args):
                         if processed is not None
                         else None,
                         "storage_bytes": storage,
-                        "phase_seconds": phase_timings(
-                            (work / "index.stderr").read_text()
-                        ),
                         "stderr_path": str(
                             (work / "index.stderr").relative_to(args.output.resolve())
                         ),
@@ -284,7 +250,7 @@ def run(args):
         "model": args.model,
         "offline": args.offline,
         "summaries": summarize(rows),
-        "measurement": "Index command only; status collection is untimed. RSS is the direct child's wait4 peak. Runtime caches are fresh per run; HF and filesystem caches are shared. Phase timings require explicit duration records; progress lines contain no durations.",
+        "measurement": "Index command only; status collection is untimed. RSS is the direct child's wait4 peak. Runtime caches are fresh per run; HF and filesystem caches are shared.",
     }
     (args.output / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
     return 3 if any(r["exit_code"] or r["status_exit_code"] for r in rows) else 0

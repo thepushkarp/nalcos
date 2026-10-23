@@ -13,6 +13,7 @@ import json
 import math
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -21,7 +22,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from evaluate import OID, read_jsonl, validate_manifest
-from harness import GIT_ENV, load_repositories, run_measured, validate_clone
+from harness import (
+    GIT_ENV,
+    directory_size,
+    load_repositories,
+    run_measured,
+    validate_clone,
+)
 from scale import digest
 from workflows import evaluate_trials
 
@@ -129,9 +136,7 @@ def trial_prompt(query, budget_seconds, budget_tokens):
     return f"{PROTOCOL}\nBudget: {budget_seconds:g} seconds and {budget_tokens} total input/output tokens, including cached input. Stop within both budgets.\n\n{query['query']}"
 
 
-def agent_command(
-    agent, executable, prompt, condition, max_turns=20, model=None, skill_name="nalcos"
-):
+def agent_command(agent, executable, prompt, condition, max_turns, model, skill_name):
     if agent == "claude":
         allowed = ["Read", "Grep", "Glob", "Bash(rg *)"]
         allowed += [f"Bash({name} *)" for name in READ_ONLY_FILTERS]
@@ -235,15 +240,8 @@ def planned_trials(manifest, args):
 
 def skill_used(agent, events, complete, skill_name="nalcos"):
     """Report observed skill invocation/reads, not mere availability or claims."""
-    observed = False
     skill_file = rf"\.(?:agents|claude)/skills/{re.escape(skill_name)}/SKILL\.md"
     for event in events:
-        for field in ("skills_used", "tools_used"):
-            used = event.get(field)
-            if isinstance(used, list):
-                observed = True
-                if skill_name in used or f"Skill({skill_name})" in used:
-                    return True
         for block in event.get("message", {}).get("content", []):
             if not isinstance(block, dict) or block.get("type") != "tool_use":
                 continue
@@ -260,11 +258,26 @@ def skill_used(agent, events, complete, skill_name="nalcos"):
             and event.get("type") == "item.completed"
             and item.get("type") == "command_execution"
             and item.get("exit_code") == 0
-            and re.search(r"\b(cat|head|sed)\b", item.get("command", ""))
-            and re.search(skill_file + r"(?:\s|['\"]|$)", item.get("command", ""))
         ):
-            return True
-    return False if complete or observed else "unknown"
+            command = shlex.split(item.get("command", ""), comments=True)
+            # Codex records the shell wrapper as well as direct read commands.
+            if (
+                len(command) == 3
+                and Path(command[0]).name in {"sh", "bash", "zsh"}
+                and command[1] in {"-c", "-lc"}
+            ):
+                command = shlex.split(command[2], comments=True)
+            # Compound commands and redirections need shell evaluation to prove
+            # a read; their mere mention of a skill file is insufficient.
+            if (
+                command
+                and Path(command[0]).name in {"cat", "head", "sed"}
+                and not any(c in arg for arg in command for c in ";|&<>")
+                and not {"--help", "--version"}.intersection(command)
+                and any(re.search(skill_file + "$", arg) for arg in command[1:])
+            ):
+                return True
+    return False if complete else "unknown"
 
 
 def parse_agent_output(agent, text, skill_name="nalcos"):
@@ -363,10 +376,6 @@ def copy_directory(source, destination):
         raise ValueError(
             f"copy trial directory {source}: symlinks are unsafe for writable trial data"
         )
-
-
-def directory_size(directory):
-    return sum(path.stat().st_size for path in directory.rglob("*") if path.is_file())
 
 
 def collect_trial(plan, args, manifest):
@@ -709,34 +718,27 @@ def run(args):
         return 0
     if args.import_reviews:
         if not args.trials:
-            raise ValueError("--import-reviews requires --trials FILE or RUN_DIR")
-        paths = (
-            sorted(args.trials.glob("*/trials.jsonl"))
-            if args.trials.is_dir()
-            else [args.trials]
-        )
+            raise ValueError("--import-reviews requires --trials RUN_DIR")
+        paths = sorted(args.trials.glob("*/trials.jsonl"))
         if not paths:
             raise ValueError(f"review import {args.trials}: no trial files found")
         trials = [row for path in paths for row in read_jsonl(path)]
         rows = import_reviews(trials, read_jsonl(args.import_reviews))
         args.output.mkdir(parents=True)
-        if args.trials.is_dir():
-            manifest = read_jsonl(args.trials / "manifest.jsonl")
-            write_jsonl(args.output / "manifest.jsonl", manifest)
-            for path in paths:
-                agent_rows = [row for row in rows if row["agent"] == path.parent.name]
-                evaluate_trials(manifest, agent_rows)
-                target = args.output / path.relative_to(args.trials)
-                target.parent.mkdir(parents=True)
-                write_jsonl(target, agent_rows)
-        else:
-            write_jsonl(args.output / "trials.jsonl", rows)
+        manifest = read_jsonl(args.trials / "manifest.jsonl")
+        write_jsonl(args.output / "manifest.jsonl", manifest)
+        for path in paths:
+            agent_rows = [row for row in rows if row["agent"] == path.parent.name]
+            evaluate_trials(manifest, agent_rows)
+            target = args.output / path.relative_to(args.trials)
+            target.parent.mkdir(parents=True)
+            write_jsonl(target, agent_rows)
         return 0
     if args.tasks is None or args.clones is None:
         raise ValueError("trial planning requires --tasks and --clones")
     if args.run and NALCOS_CONDITIONS & set(args.conditions) and args.indexes is None:
         raise ValueError(
-            "--run with nalcos_git_rg requires --indexes PATH: JSON mapping "
+            "--run with a nalcos condition requires --indexes PATH: JSON mapping "
             "repo_key to the prebuilt NALCOS_DATA_DIR for the source clone"
         )
     if NALCOS_CONDITIONS & set(args.conditions) and (
@@ -746,7 +748,7 @@ def run(args):
         or not args.binary.is_file()
     ):
         raise ValueError(
-            "nalcos_git_rg requires --skill DIR containing SKILL.md and --binary FILE"
+            "nalcos conditions require --skill DIR containing SKILL.md and --binary FILE"
         )
     repositories = load_repositories(args.repos)
     manifest = task_manifest(read_jsonl(args.tasks), repositories)
@@ -855,7 +857,7 @@ def main():
     parser.add_argument(
         "--trials",
         type=Path,
-        help="Agent trials.jsonl or collection RUN_DIR for review import",
+        help="Collection RUN_DIR for review import",
     )
     args = parser.parse_args()
     if (
