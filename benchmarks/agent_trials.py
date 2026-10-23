@@ -25,7 +25,17 @@ from harness import GIT_ENV, load_repositories, run_measured, validate_clone
 from scale import digest
 from workflows import evaluate_trials
 
-CONDITIONS = ["git_rg", "nalcos_git_rg"]
+CONDITIONS = ["git_rg", "nalcos_git_rg", "nalcos_hint"]
+DEFAULT_CONDITIONS = ["git_rg", "nalcos_git_rg"]
+# nalcos_hint also adds a one-line project instruction (AGENTS.md/CLAUDE.md), the
+# setup a user would add when an agent does not invoke the skill on its own.
+NALCOS_CONDITIONS = {"nalcos_git_rg", "nalcos_hint"}
+PROJECT_HINT = (
+    "For questions about this repository's history (which commit introduced, changed, "
+    "removed, or broke something; when or why behavior changed), use the {skill} skill: "
+    "run `nalcos --json search \"<question in plain words>\" --limit 5 --freshness cached` "
+    "alongside git log, then confirm candidates with git show."
+)
 AGENTS = ["claude", "codex"]
 ENVIRONMENT = (
     "PATH",
@@ -138,7 +148,7 @@ def agent_command(
                 "status",
             )
         ]
-        if condition == "nalcos_git_rg":
+        if condition in NALCOS_CONDITIONS:
             allowed += ["Bash(nalcos *)", f"Skill({skill_name})"]
         command = [
             str(executable),
@@ -194,11 +204,10 @@ def planned_trials(manifest, args):
         reverse = args.order == "ba" or (
             args.order == "counterbalanced" and index % 2 == 1
         )
-        order = list(reversed(CONDITIONS)) if reverse else CONDITIONS
+        selected = [c for c in CONDITIONS if c in args.conditions]
+        order = list(reversed(selected)) if reverse else selected
         for agent in args.agents:
             for position, condition in enumerate(order):
-                if condition not in args.conditions:
-                    continue
                 directory = (
                     args.output.resolve() / agent / f"trial-{index:03}-{position}"
                 )
@@ -456,6 +465,15 @@ def write_git_guard(tools, git):
     return guard
 
 
+def write_project_hint(repository, skill_name):
+    """Append the hint to both instruction files, keeping any checked-in content."""
+    for name in ("AGENTS.md", "CLAUDE.md"):
+        path = repository / name
+        existing = path.read_text() if path.exists() else ""
+        separator = "\n\n" if existing and not existing.endswith("\n\n") else ""
+        path.write_text(existing + separator + PROJECT_HINT.format(skill=skill_name) + "\n")
+
+
 def collect_worktree_trial(plan, args, directory, repository):
     query, agent, condition = plan["query"], plan["agent"], plan["condition"]
     for root in (".claude", ".agents"):
@@ -467,12 +485,14 @@ def collect_worktree_trial(plan, args, directory, repository):
             raise ValueError(
                 f"prepare trial skill {destination}: expected an absent path inside trial worktree"
             )
-        if condition == "nalcos_git_rg":
+        if condition in NALCOS_CONDITIONS:
             shutil.copytree(args.skill, destination)
         else:
             # Claude can fall back to the main checkout's skills when this
             # directory is absent in a linked worktree.
             destination.parent.mkdir(parents=True, exist_ok=True)
+    if condition == "nalcos_hint":
+        write_project_hint(repository, args.skill.name)
     if agent == "claude":
         settings = repository / ".claude" / "settings.json"
         if not settings.resolve().is_relative_to(repository.resolve()):
@@ -485,7 +505,7 @@ def collect_worktree_trial(plan, args, directory, repository):
     tools = directory / "bin"
     tools.mkdir()
     write_git_guard(tools, real_git())
-    if condition == "nalcos_git_rg":
+    if condition in NALCOS_CONDITIONS:
         (tools / "nalcos").symlink_to(args.binary.resolve())
     else:
         # A preinstalled CLI on the host PATH must not give the control arm NaLCoS.
@@ -494,11 +514,11 @@ def collect_worktree_trial(plan, args, directory, repository):
         )
         (tools / "nalcos").chmod(0o755)
     data, runtime = directory / "data", directory / "runtime"
-    if condition == "nalcos_git_rg":
+    if condition in NALCOS_CONDITIONS:
         copy_directory(args.index_data[query["repo_key"]], data)
     else:
         data.mkdir()
-    if condition == "nalcos_git_rg" and args.runtime_cache:
+    if condition in NALCOS_CONDITIONS and args.runtime_cache:
         copy_directory(args.runtime_cache, runtime)
     else:
         runtime.mkdir()
@@ -714,12 +734,12 @@ def run(args):
         return 0
     if args.tasks is None or args.clones is None:
         raise ValueError("trial planning requires --tasks and --clones")
-    if args.run and "nalcos_git_rg" in args.conditions and args.indexes is None:
+    if args.run and NALCOS_CONDITIONS & set(args.conditions) and args.indexes is None:
         raise ValueError(
             "--run with nalcos_git_rg requires --indexes PATH: JSON mapping "
             "repo_key to the prebuilt NALCOS_DATA_DIR for the source clone"
         )
-    if "nalcos_git_rg" in args.conditions and (
+    if NALCOS_CONDITIONS & set(args.conditions) and (
         args.skill is None
         or not (args.skill / "SKILL.md").is_file()
         or args.binary is None
@@ -807,7 +827,7 @@ def main():
         help="Copy a prebuilt NALCOS_RUNTIME_CACHE per NaLCoS trial; default is an empty trial directory",
     )
     parser.add_argument(
-        "--conditions", nargs="+", choices=CONDITIONS, default=CONDITIONS
+        "--conditions", nargs="+", choices=CONDITIONS, default=DEFAULT_CONDITIONS
     )
     parser.add_argument("--agents", nargs="+", choices=AGENTS, default=AGENTS)
     parser.add_argument("--budget-seconds", type=float, default=300)

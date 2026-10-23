@@ -23,6 +23,7 @@ from agent_trials import (
     task_manifest,
     trial_environment,
     write_git_guard,
+    write_project_hint,
 )
 from evaluate import read_jsonl
 from test_index_matrix import BENCHMARKS, executable, local_repo, repo_manifest
@@ -77,6 +78,18 @@ class AgentTrialTests(unittest.TestCase):
         self.assertIn('cli_auth_credentials_store="auto"', command)
         self.assertEqual(command[command.index("--sandbox") + 1], "read-only")
         self.assertEqual(command[-2:], ["--model", "pinned-model"])
+
+    def test_project_hint_appends_to_existing_instructions(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory)
+            (repo / "CLAUDE.md").write_text("# Project rules\n")
+            write_project_hint(repo, "nalcos")
+            claude = (repo / "CLAUDE.md").read_text()
+            agents = (repo / "AGENTS.md").read_text()
+            self.assertTrue(claude.startswith("# Project rules\n\n"))
+            for text in (claude, agents):
+                self.assertIn("use the nalcos skill", text)
+                self.assertIn("nalcos --json search", text)
 
     def test_git_guard_rejects_writing_and_exec_options(self):
         with tempfile.TemporaryDirectory() as directory:
