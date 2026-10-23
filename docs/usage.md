@@ -72,7 +72,7 @@ During embedding work, `init` and `sync` report the actual device or remote prov
 
 `--json` emits a single object with `schema_version: 1`. `sync --watch --json` emits one object per line for the initial synchronization and each changed update. Progress and diagnostics go to stderr.
 
-Search output includes the resolved scope, requested/effective mode, coverage, active generation, runtime, results, warnings, and `output_truncated`. Check these fields before treating an empty result as evidence that a change does not exist. Coding agents use the CLI directly; there is no MCP server. The [agent skill](../skills/nalcos/SKILL.md) describes the workflow, and its [JSON reference](../skills/nalcos/references/json.md) lists the fields.
+Search output includes the resolved scope, requested/effective mode, coverage, active generation, runtime, results, warnings, and `output_truncated`. Check these fields before treating an empty result as evidence that a change does not exist. The CLI is the coding-agent interface; there is no MCP server.
 
 | Option | Default and limit |
 | --- | --- |
@@ -83,19 +83,4 @@ Search output includes the resolved scope, requested/effective mode, coverage, a
 
 Use `-vv` for search-phase timings on stderr. `--timeout` accepts durations such as `30s` or `5m`. GGUF checks cancellation and deadlines between native batches, so a running batch can delay exit; see [runtime limitations](native-runtime.md).
 
-An empty search result exits successfully. Invalid arguments, configuration, model names (`unknown_model`), and repository paths (`not_a_repository`) exit with code 2, other operation failures with 1, timeouts with 124, and interruption with 130. With `--json`, a failure prints `{"schema_version":1,"command":"error","error":{...}}` on stdout with a stable `code`, a `message`, and an `action` when a fix is known.
-
-## Environment variables
-
-| Variable | Effect |
-| --- | --- |
-| `NALCOS_CONFIG` | Configuration file used when `--config` is absent. |
-| `NALCOS_DATA_DIR` | Index storage root; takes precedence over the `data_dir` setting. |
-| `HF_HUB_CACHE` | Hugging Face model cache directory. |
-| `HF_HOME` | Hugging Face home; without `HF_HUB_CACHE`, models are cached in `$HF_HOME/hub`, otherwise `$XDG_CACHE_HOME/huggingface/hub` or `~/.cache/huggingface/hub`. |
-| `HF_ENDPOINT` | Hugging Face Hub base URL for model downloads, such as a mirror; default `https://huggingface.co`. Must be HTTP(S) without embedded credentials. |
-| `HF_TOKEN` | Hugging Face access token; otherwise the Hugging Face token cache is used. |
-| `NALCOS_ORT_LIBRARY` | ONNX Runtime shared library; `runtime.ort_library` takes precedence and `ORT_DYLIB_PATH` is the fallback. |
-| `NALCOS_RUNTIME_CACHE` | Directory for the ONNX Runtime library that explicit setup installs. |
-
-See [configuration](configuration.md) for the precedence of these values relative to configuration settings.
+An empty search result exits successfully. Invalid arguments, configuration, model names (`unknown_model`), and repository paths (`not_a_repository`) exit with code 2, other operation failures with 1, timeouts with 124, and interruption with 130.
