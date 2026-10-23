@@ -55,6 +55,10 @@ TRIAL_GIT_ENV = {
     "GIT_CONFIG_KEY_1": "core.fsmonitor",
     "GIT_CONFIG_VALUE_1": "false",
 }
+# Agents pipe output through these; without them Claude's permission check denies
+# the whole pipeline and the agent concludes Bash is unavailable. Filters that can
+# name an output file (sort -o, uniq OUT, sed w) and interpreters stay out.
+READ_ONLY_FILTERS = ("head", "tail", "wc", "grep", "cut", "tr", "cat", "jq")
 # `git grep` is excluded because -O/--open-files-in-pager runs a command; agents
 # search file contents with the Grep tool and rg instead.
 READ_ONLY_GIT = (
@@ -120,6 +124,7 @@ def agent_command(
 ):
     if agent == "claude":
         allowed = ["Read", "Grep", "Glob", "Bash(rg *)"]
+        allowed += [f"Bash({name} *)" for name in READ_ONLY_FILTERS]
         allowed += [f"Bash(git {name} *)" for name in READ_ONLY_GIT]
         allowed += [
             f"Bash(git {name})"
