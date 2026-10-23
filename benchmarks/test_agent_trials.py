@@ -40,6 +40,10 @@ class AgentTrialTests(unittest.TestCase):
             allowed = command[command.index("--allowed-tools") + 1]
             self.assertNotIn("Bash(git *)", allowed)
             self.assertNotIn("Bash(git grep", allowed)
+            for name in ("head", "wc", "grep", "jq"):
+                self.assertIn(f"Bash({name} *)", allowed)
+            for name in ("sort", "uniq", "sed", "python3", "sh"):
+                self.assertNotIn(f"Bash({name} ", allowed)
             for name in (
                 "log",
                 "show",
