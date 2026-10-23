@@ -551,6 +551,158 @@ fn result_ids(json: &Value) -> Vec<&str> {
 }
 
 #[test]
+fn compact_search_returns_ranked_evidence_that_can_be_expanded() {
+    let repository = Repository::new();
+    repository.write("settings.txt", "compactneedle = 1\n");
+    repository.commit("Initial settings\n\nMessage body", "2024-01-01T12:00:00Z");
+    repository.write("settings.txt", "compactneedle = 2\n");
+    repository.commit("Adjust settings", "2024-01-02T12:00:00Z");
+    let verbose = repository.json(&[
+        "search",
+        "compactneedle",
+        "--mode",
+        "lexical",
+        "--freshness",
+        "wait",
+    ]);
+    let compact = repository.json(&[
+        "search",
+        "compactneedle",
+        "--mode",
+        "lexical",
+        "--freshness",
+        "cached",
+        "--compact",
+    ]);
+    let results = compact["results"].as_array().unwrap();
+    assert_eq!(results.len(), 2);
+    for (index, result) in results.iter().enumerate() {
+        assert_eq!(result["rank"], index + 1);
+        assert_eq!(result["commit"], verbose["results"][index]["commit"]["oid"]);
+        assert_eq!(
+            result["subject"],
+            verbose["results"][index]["commit"]["message"]
+                .as_str()
+                .unwrap()
+                .lines()
+                .next()
+                .unwrap()
+        );
+        assert!(result.get("author_email").is_none());
+        let item = &result["evidence"][0];
+        assert!(item["id"].as_str().unwrap().starts_with("e1:"));
+        assert!(item["excerpt"].as_str().unwrap().contains("compactneedle"));
+        for field in ["content_hash", "old_blob", "new_blob"] {
+            assert!(item.get(field).is_none());
+        }
+        let args: Vec<_> = item["show"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|arg| arg.as_str().unwrap())
+            .collect();
+        let shown = Command::new(env!("CARGO_BIN_EXE_nalcos"))
+            .env("NALCOS_DATA_DIR", &repository.data)
+            .env("NALCOS_CONFIG", &repository.config)
+            .args(["--json", "--offline"])
+            .args(&args[1..])
+            .output()
+            .unwrap();
+        assert_success(&shown);
+        assert_eq!(parse_json(&shown)["evidence"]["id"], item["id"]);
+    }
+}
+
+#[test]
+fn search_output_budget_drops_lowest_ranks_and_rejects_small_limits() {
+    let repository = Repository::new();
+    for day in 1..=4 {
+        repository.write(&format!("file-{day}.txt"), "budgetneedle\n");
+        repository.commit(
+            &format!("Change {day}"),
+            &format!("2024-01-{day:02}T12:00:00Z"),
+        );
+    }
+    repository.json(&[
+        "search",
+        "budgetneedle",
+        "--mode",
+        "lexical",
+        "--freshness",
+        "wait",
+    ]);
+    for compact in [false, true] {
+        let mut args = vec![
+            "search",
+            "budgetneedle",
+            "--mode",
+            "lexical",
+            "--freshness",
+            "cached",
+        ];
+        if compact {
+            args.push("--compact");
+        }
+        let full = repository.json(&args);
+        let results = full["results"].as_array().unwrap();
+        let budget = (serde_json::to_vec(&full).unwrap().len() - 500).to_string();
+        args.extend(["--max-output-bytes", &budget]);
+        let output = repository.run(&args);
+        assert_success(&output);
+        assert!(output.stdout.len() <= budget.parse::<usize>().unwrap());
+        let bounded = parse_json(&output);
+        let retained = bounded["results"].as_array().unwrap();
+        assert!(!retained.is_empty() && retained.len() < results.len());
+        assert_eq!(bounded["dropped_results"], results.len() - retained.len());
+        assert_eq!(bounded["output_truncated"], true);
+        assert_eq!(bounded["output_bytes"], output.stdout.len());
+        for (actual, expected) in retained.iter().zip(results) {
+            assert_eq!(actual["commit"], expected["commit"]);
+        }
+    }
+    let invalid = repository.run(&["search", "budgetneedle", "--max-output-bytes", "100"]);
+    assert_eq!(invalid.status.code(), Some(2));
+    assert_eq!(parse_json(&invalid)["error"]["code"], "invalid_input");
+}
+
+#[test]
+fn search_output_budget_shortens_single_result_on_utf8_boundaries() {
+    let repository = Repository::new();
+    repository.write(
+        "unicode.txt",
+        &format!("singleneedle\n{}", "é\"\\\t\n".repeat(1000)),
+    );
+    repository.commit("Unicode patch", "2024-01-01T12:00:00Z");
+    let args = [
+        "search",
+        "singleneedle",
+        "--mode",
+        "lexical",
+        "--freshness",
+        "wait",
+        "--compact",
+    ];
+    let full = repository.json(&args);
+    let mut args = args.to_vec();
+    args.extend(["--max-output-bytes", "4096"]);
+    let output = repository.run(&args);
+    assert_success(&output);
+    assert!(output.stdout.len() <= 4096);
+    let bounded = parse_json(&output);
+    assert_eq!(bounded["results"].as_array().unwrap().len(), 1);
+    assert_eq!(bounded["dropped_results"], 0);
+    assert_eq!(bounded["output_truncated"], true);
+    let item = &bounded["results"][0]["evidence"][0];
+    let excerpt = item["excerpt"].as_str().unwrap();
+    let original = full["results"][0]["evidence"][0]["excerpt"]
+        .as_str()
+        .unwrap();
+    assert!(excerpt.contains('é') && excerpt.len() < original.len());
+    assert!(original.starts_with(excerpt));
+    assert_eq!(item["excerpt_truncated"], true);
+}
+
+#[test]
 fn cached_search_rechecks_reset_and_deleted_branch_reachability() {
     let repository = Repository::new();
     repository.write("settings.txt", "retry_timeout = 30\n");

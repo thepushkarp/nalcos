@@ -1,9 +1,195 @@
 use crate::{
     embedding::{Backend, ModelProfile, RuntimeInfo},
-    error::Result,
+    error::{AppError, Result},
 };
-use serde_json::Value;
-use std::io::{self, Write};
+use serde_json::{Value, json};
+use std::{
+    io::{self, Write},
+    path::Path,
+};
+
+pub fn compact_search(value: &Value, repo: &Path) -> Result<Value> {
+    let mut compact = json!({"compact":true});
+    for field in [
+        "schema_version",
+        "command",
+        "mode_requested",
+        "mode_used",
+        "freshness",
+        "history_coverage",
+        "embedding_coverage",
+        "warnings",
+        "output_truncated",
+    ] {
+        compact[field] = value[field].clone();
+    }
+    compact["source_coverage"] = json!({
+        "recorded_omissions":value["source_coverage"]["recorded_omissions"],
+        "categories":value["source_coverage"]["categories"],
+    });
+    let mut results = Vec::new();
+    for (index, result) in value["results"]
+        .as_array()
+        .expect("search results")
+        .iter()
+        .enumerate()
+    {
+        let commit = &result["commit"];
+        let oid = commit["oid"].as_str().expect("commit OID");
+        let timestamp = commit["committed_at"].as_i64().expect("commit timestamp");
+        let committed_at = chrono::DateTime::from_timestamp(timestamp, 0)
+            .ok_or_else(|| {
+                AppError::new(
+                    "invalid_index",
+                    format!("Cannot format committed_at {timestamp} for commit {oid} as RFC 3339"),
+                )
+            })?
+            .to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+        let evidence: Vec<_> = result["evidence"]
+            .as_array()
+            .expect("search evidence")
+            .iter()
+            .map(|item| {
+                let old = item["old_path"]["display"].as_str();
+                let new = item["new_path"]["display"].as_str();
+                let path = match (old, new) {
+                    (Some(old), Some(new)) if old != new => Some(format!("{old} -> {new}")),
+                    _ => new.or(old).map(str::to_owned),
+                };
+                let show = json!(["nalcos", "--repo", repo, "show", "--evidence", item["id"]]);
+                let mut evidence = json!({"path":path,"show":show});
+                for field in [
+                    "id",
+                    "kind",
+                    "role",
+                    "excerpt",
+                    "verified",
+                    "excerpt_truncated",
+                    "metadata_only",
+                ] {
+                    evidence[field] = item[field].clone();
+                }
+                if item["kind"] == "diff" {
+                    for field in ["old_start", "old_lines", "new_start", "new_lines"] {
+                        evidence[field] = item[field].clone();
+                    }
+                }
+                evidence
+            })
+            .collect();
+        results.push(json!({
+            "rank":index + 1,"commit":oid,"short":&oid[..oid.len().min(12)],
+            "subject":commit["message"].as_str().unwrap_or("").lines().next().unwrap_or(""),
+            "committed_at":committed_at,"author":commit["author_name"],"evidence":evidence,
+        }));
+    }
+    compact["results"] = json!(results);
+    Ok(compact)
+}
+
+pub fn bound_search(value: &mut Value, limit: usize) -> Result<()> {
+    value["dropped_results"] = json!(0);
+    if search_output_bytes(value)? <= limit {
+        return Ok(());
+    }
+    value["output_truncated"] = json!(true);
+    let mut dropped = 0;
+    while value["results"].as_array().expect("search results").len() > 1 {
+        value["results"]
+            .as_array_mut()
+            .expect("search results")
+            .pop();
+        dropped += 1;
+        value["dropped_results"] = json!(dropped);
+        if search_output_bytes(value)? <= limit {
+            return Ok(());
+        }
+    }
+    if let Some(result) = value["results"]
+        .as_array_mut()
+        .expect("search results")
+        .first_mut()
+    {
+        result["evidence"]
+            .as_array_mut()
+            .expect("search evidence")
+            .retain(|item| item["role"] != "supporting_code");
+    }
+    if search_output_bytes(value)? <= limit {
+        return Ok(());
+    }
+    let items = value["results"][0]["evidence"]
+        .as_array()
+        .map_or(0, Vec::len);
+    for index in (0..items).rev() {
+        let original = value["results"][0]["evidence"][index]["excerpt"]
+            .as_str()
+            .expect("evidence excerpt")
+            .to_owned();
+        if original.is_empty() {
+            continue;
+        }
+        shorten_excerpt(&mut value["results"][0]["evidence"][index], &original, 0);
+        if search_output_bytes(value)? > limit {
+            continue;
+        }
+        // JSON escaping and output_bytes itself affect the budget, so measure
+        // serialized prefixes rather than subtracting raw excerpt lengths.
+        let (mut low, mut high) = (0, original.len());
+        while low < high {
+            let middle = low + (high - low).div_ceil(2);
+            shorten_excerpt(
+                &mut value["results"][0]["evidence"][index],
+                &original,
+                middle,
+            );
+            if search_output_bytes(value)? <= limit {
+                low = middle;
+            } else {
+                high = middle - 1;
+            }
+        }
+        shorten_excerpt(&mut value["results"][0]["evidence"][index], &original, low);
+        search_output_bytes(value)?;
+        return Ok(());
+    }
+    if value["results"]
+        .as_array_mut()
+        .expect("search results")
+        .pop()
+        .is_some()
+    {
+        value["dropped_results"] = json!(dropped + 1);
+    }
+    if search_output_bytes(value)? > limit {
+        value["warnings"].as_array_mut().expect("search warnings").push(json!(format!(
+            "Search JSON envelope exceeds --max-output-bytes {limit} even with zero results; coverage and warnings are preserved"
+        )));
+        search_output_bytes(value)?;
+    }
+    Ok(())
+}
+
+fn shorten_excerpt(item: &mut Value, original: &str, limit: usize) {
+    let (excerpt, _) = truncate_utf8(original, limit);
+    item["excerpt"] = json!(excerpt);
+    item["excerpt_truncated"] = json!(true);
+    if let Some(start) = item["excerpt_byte_start"].as_u64() {
+        item["excerpt_byte_end"] = json!(start + excerpt.len() as u64);
+    }
+}
+
+fn search_output_bytes(value: &mut Value) -> Result<usize> {
+    loop {
+        // emit() appends one newline. Iterate until the decimal width of this
+        // self-inclusive count no longer changes the serialized size.
+        let bytes = serde_json::to_vec(value)?.len() + 1;
+        if value["output_bytes"].as_u64() == Some(bytes as u64) {
+            return Ok(bytes);
+        }
+        value["output_bytes"] = json!(bytes);
+    }
+}
 
 pub fn emit(value: &Value, json: bool) -> Result<()> {
     let mut out = io::stdout().lock();

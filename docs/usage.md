@@ -78,8 +78,12 @@ Search output includes the resolved scope, requested/effective mode, coverage, a
 | --- | --- |
 | Search `--limit` | 10 results; accepts 1–100. |
 | Search `--max-bytes` | 16 KiB shared across result excerpts. JSON envelope and commit metadata add overhead. |
+| Search `--compact` | Compact JSON with ranked commits, evidence, runnable `show` argv, and coverage/warnings; human output is unchanged. |
+| Search `--max-output-bytes N` | Total stdout JSON budget including newline, at least 1024 bytes, with or without `--compact`; drops lowest-ranked results, then supporting evidence and excerpts, and reports `dropped_results` and `output_bytes`. Coverage and warnings are preserved if the empty envelope exceeds the budget. |
 | Show `--max-bytes` | 16 KiB patch budget. `--full` lifts the response budget; extraction safety limits still apply. |
 | Show `--parent`, `--context` | Parent 1, three context lines. |
+
+`--max-bytes` budgets excerpts before `--max-output-bytes` limits the serialized JSON.
 
 Use `-vv` for search-phase timings on stderr. `--timeout` accepts durations such as `30s` or `5m`. GGUF checks cancellation and deadlines between native batches, so a running batch can delay exit; see [runtime limitations](native-runtime.md).
 
