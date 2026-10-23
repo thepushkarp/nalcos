@@ -75,7 +75,7 @@ nalcos --json search "stop retrying cancelled requests" --limit 5 --max-bytes 16
 nalcos --json show --evidence EVIDENCE_ID --max-bytes 16384
 ```
 
-Check coverage, warnings, and `output_truncated` before interpreting results. Progress and diagnostics go to stderr; JSON goes to stdout. The [JSON reference](skills/nalcos/references/json.md) lists fields and exit codes.
+Check coverage, warnings, and `output_truncated` before interpreting results. Progress and diagnostics go to stderr; JSON goes to stdout. The [JSON reference](skills/nalcos-git-history/references/json.md) lists fields and exit codes.
 
 ## Commands
 

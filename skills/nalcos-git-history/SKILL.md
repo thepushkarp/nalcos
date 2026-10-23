@@ -1,6 +1,6 @@
 ---
-name: nalcos
-description: Search local Git history in natural language with the nalcos CLI and get ranked commits with source-verified patch evidence. Use when asked which commit changed, introduced, removed, or broke something; when or why code or behavior changed; to list regression candidates between two revisions; or when git log -S, git log -G, grep, and git blame miss because the history uses different words than the question. Works on local checkouts only and never fetches remote history.
+name: nalcos-git-history
+description: Search this repository's Git history by meaning with the nalcos CLI. Use this skill whenever a question is about the repository's history - which commit introduced, changed, removed, or broke something; when or why code or behavior changed; or which commits between two revisions could have caused a regression - even if the user does not mention nalcos. Run one ranked search alongside git log -S/-G, `nalcos --json search "<question in plain words>" --limit 5 --freshness cached`, to surface commits whose messages and diffs use different words than the question; confirm candidates with git show and keep searching with git when the evidence does not match. Works on local checkouts only and never fetches remote history.
 license: MIT
 compatibility: Requires the nalcos CLI on macOS (Apple Silicon) or Linux and Git 2.45 or later. Semantic search needs a one-time model download of about 274 MB; lexical mode needs no model.
 ---
@@ -11,8 +11,13 @@ nalcos indexes commit messages and patch hunks from local Git history and ranks 
 natural-language query. Every evidence item is re-verified against Git objects before it is
 returned. Treat results as candidates to confirm with Git, not as answers.
 
-Use plain Git instead when you already know the exact string (`git log -S`, `git log -G`), the
-file and lines (`git blame`, `git log -L`), or need history that is not in the local clone.
+Run one nalcos search early when a question describes behavior rather than quoting code, and use
+it alongside `git log -S`/`-G`, not instead of it. nalcos matches exact identifiers, paths, and
+project terms more reliably than plain-language descriptions, so treat its results as
+candidates: confirm them with `git show`, rerun with likely identifiers when the evidence does
+not match, and fall back to Git patterns. Use plain Git alone when you already know the exact
+string (`git log -S`, `git log -G`), the file and lines (`git blame`, `git log -L`), or need
+history that is not in the local clone.
 
 ## Workflow
 
