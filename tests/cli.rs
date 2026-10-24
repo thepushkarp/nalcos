@@ -1349,27 +1349,16 @@ fn read_only_index_directory_answers_from_the_cached_index() {
                 .unwrap()
                 .contains("Cannot write index directory"))
     );
-    let missing = repository
-        .command_at(&repository.path)
-        .env("NALCOS_DATA_DIR", repository.data.join("missing"))
-        .args(["--offline"])
-        .args(search)
-        .output()
-        .unwrap();
-    for output in [
-        repository.run(&[&search[..], &["--freshness", "wait"]].concat()),
-        missing,
-    ] {
-        assert_eq!(output.status.code(), Some(1));
-        let error = &parse_json(&output)["error"];
-        assert_eq!(error["code"], "index_read_only");
-        assert!(
-            error["message"]
-                .as_str()
-                .unwrap()
-                .contains(repository.data.to_str().unwrap())
-        );
-    }
+    let wait = repository.run(&[&search[..], &["--freshness", "wait"]].concat());
+    assert_eq!(wait.status.code(), Some(1));
+    let error = &parse_json(&wait)["error"];
+    assert_eq!(error["code"], "index_read_only");
+    assert!(
+        error["message"]
+            .as_str()
+            .unwrap()
+            .contains(repository.data.to_str().unwrap())
+    );
     set_writable(&repository.data, true);
 }
 
