@@ -49,7 +49,9 @@ Argument errors from the parser also use this envelope with `code: "invalid_inpu
 - `active_generation`: the embedding model in use (`model`, `revision`, `backend`,
   `dimensions`), or `null`.
 - `staging_generation` and `staging_progress`: an unfinished model switch (`completed`,
-  `total`, `remaining`, `resume_command`).
+  `total`, `remaining`, `resume_command`). `resume_command` is `null` while another process
+  is indexing.
+- `writer_active`: `true` while another nalcos process holds the index writer lock.
 - `runtime`: the device used by the last indexing run, or `null`.
 - `check`: result of `status --check`, which probes the encoder with synthetic text.
 
@@ -120,6 +122,8 @@ metadata alone does.
 - `old_path`, `new_path`: `{display, bytes_hex}` or `null`. Use `display` for reading; it
   escapes control characters and invalid UTF-8.
 - `old_start`, `old_lines`, `new_start`, `new_lines`: hunk coordinates.
+- `excerpt_line`: new-file line where the excerpt starts; present only when the excerpt
+  starts inside a hunk body, after its `@@` header.
 - `excerpt`, `excerpt_byte_start`, `excerpt_byte_end`, `excerpt_truncated`: the returned slice
   of the document text.
 - `truncated`: the indexed document itself was clipped by an indexing limit.

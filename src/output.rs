@@ -4,9 +4,45 @@ use crate::{
 };
 use serde_json::{Value, json};
 use std::{
+    collections::VecDeque,
     io::{self, Write},
     path::Path,
+    time::{Duration, Instant},
 };
+
+const RATE_WINDOW: Duration = Duration::from_secs(30);
+const RATE_MINIMUM: Duration = Duration::from_secs(5);
+
+/// Embedding rate over the last `RATE_WINDOW` of this run, so a resumed build's
+/// retained documents and a slow start do not distort the remaining-time estimate.
+pub struct ProgressRate(VecDeque<(Instant, usize)>);
+
+impl ProgressRate {
+    pub fn new(started: Instant) -> Self {
+        Self(VecDeque::from([(started, 0)]))
+    }
+
+    /// Returns `", N docs/s, about T left"` once `RATE_MINIMUM` of samples exist.
+    pub fn suffix(&mut self, now: Instant, done: usize, remaining: usize) -> String {
+        self.0.push_back((now, done));
+        while self.0.len() > 2 && now.duration_since(self.0[1].0) >= RATE_WINDOW {
+            self.0.pop_front();
+        }
+        let (since, base) = self.0[0];
+        let elapsed = now.duration_since(since);
+        if elapsed < RATE_MINIMUM || done <= base {
+            return String::new();
+        }
+        let rate = (done - base) as f64 / elapsed.as_secs_f64();
+        let left = (remaining as f64 / rate).round() as u64;
+        let left = match left {
+            0..60 => format!("{left}s"),
+            60..3600 => format!("{}m", left.div_ceil(60)),
+            _ => format!("{}h {:02}m", left / 3600, left % 3600 / 60),
+        };
+        format!(", {rate:.1} docs/s, about {left} left")
+    }
+}
 
 pub fn compact_search(value: &Value, repo: &Path) -> Result<Value> {
     let mut compact = json!({"compact":true});
@@ -176,7 +212,7 @@ pub fn emit(value: &Value, json: bool) -> Result<()> {
                 if results.is_empty() {
                     writeln!(out, "No matches in the available coverage.")?;
                 }
-                for result in results {
+                for (rank, result) in results.iter().enumerate() {
                     let commit = &result["commit"];
                     let oid = commit["oid"].as_str().unwrap_or("");
                     let title = commit["message"]
@@ -185,14 +221,25 @@ pub fn emit(value: &Value, json: bool) -> Result<()> {
                         .lines()
                         .next()
                         .unwrap_or("");
-                    writeln!(out, "\n{}  {}", &oid[..oid.len().min(12)], title)?;
+                    writeln!(
+                        out,
+                        "\n{}. {}  {}  {}  {}",
+                        rank + 1,
+                        &oid[..oid.len().min(12)],
+                        date(&commit["authored_at"], "%Y-%m-%d"),
+                        printable(commit["author_name"].as_str().unwrap_or("")),
+                        title
+                    )?;
                     if let Some(evidence) = result["evidence"].as_array() {
                         for item in evidence {
                             if let Some(path) = item["new_path"]["display"]
                                 .as_str()
                                 .or_else(|| item["old_path"]["display"].as_str())
                             {
-                                writeln!(out, "  {path}")?;
+                                match item["excerpt_line"].as_u64() {
+                                    Some(line) => writeln!(out, "  {path}:{line}")?,
+                                    None => writeln!(out, "  {path}")?,
+                                }
                             }
                             let label = if item["metadata_only"] == true {
                                 " (file metadata only)"
@@ -206,8 +253,22 @@ pub fn emit(value: &Value, json: bool) -> Result<()> {
                                 "  evidence: {}{label}",
                                 item["id"].as_str().unwrap_or("")
                             )?;
-                            for line in item["excerpt"].as_str().unwrap_or("").lines() {
+                            let mut lines: Vec<_> =
+                                item["excerpt"].as_str().unwrap_or("").lines().collect();
+                            // A diff document starts with the commit title, shown above.
+                            if item["kind"] == "diff" && item["excerpt_byte_start"] == 0 {
+                                lines.drain(..lines.len().min(1));
+                            }
+                            for line in lines.iter().take(EXCERPT_LINES) {
                                 writeln!(out, "    {line}")?;
+                            }
+                            if lines.len() > EXCERPT_LINES {
+                                writeln!(
+                                    out,
+                                    "    … {} more lines: nalcos show --evidence {}",
+                                    lines.len() - EXCERPT_LINES,
+                                    item["id"].as_str().unwrap_or("")
+                                )?;
                             }
                             write_patch_hint(&mut out, item, &value["repository"]["work_dir"])?;
                         }
@@ -226,12 +287,24 @@ pub fn emit(value: &Value, json: bool) -> Result<()> {
                 writeln!(out, "{}", evidence["excerpt"].as_str().unwrap_or(""))?;
                 write_patch_hint(&mut out, evidence, &value["repository"]["work_dir"])?;
             } else {
+                let commit = &value["commit"];
+                writeln!(out, "commit {}", commit["oid"].as_str().unwrap_or(""))?;
                 writeln!(
                     out,
-                    "commit {}",
-                    value["commit"]["oid"].as_str().unwrap_or("")
+                    "Author: {} <{}>",
+                    printable(commit["author_name"].as_str().unwrap_or("")),
+                    printable(commit["author_email"].as_str().unwrap_or(""))
                 )?;
-                writeln!(out, "{}", value["commit"]["message"].as_str().unwrap_or(""))?;
+                writeln!(
+                    out,
+                    "Date:   {}\n",
+                    date(&commit["authored_at"], "%Y-%m-%d %H:%M:%S UTC")
+                )?;
+                writeln!(
+                    out,
+                    "{}\n",
+                    commit["message"].as_str().unwrap_or("").trim_end()
+                )?;
                 writeln!(out, "{}", value["patch"].as_str().unwrap_or(""))?;
             }
         }
@@ -251,6 +324,9 @@ pub fn emit(value: &Value, json: bool) -> Result<()> {
                 "Embeddings: {}/{} documents",
                 value["embedding_coverage"]["indexed"], value["embedding_coverage"]["total"]
             )?;
+            if value["writer_active"] == true {
+                writeln!(out, "Indexing in progress in another nalcos process")?;
+            }
             if value["staging_progress"].is_object() {
                 writeln!(
                     out,
@@ -421,6 +497,30 @@ fn write_indexing_runtime(
     Ok(())
 }
 
+/// Excerpt lines shown per evidence item in human search output.
+const EXCERPT_LINES: usize = 8;
+
+/// Escapes control and bidirectional-override characters so commit metadata
+/// cannot drive the terminal or visually reorder the line.
+fn printable(text: &str) -> String {
+    text.chars()
+        .flat_map(|c| {
+            if c.is_control() || matches!(c, '\u{200e}' | '\u{200f}' | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}') {
+                c.escape_default().collect::<Vec<_>>()
+            } else {
+                vec![c]
+            }
+        })
+        .collect()
+}
+
+fn date(timestamp: &Value, format: &str) -> String {
+    timestamp
+        .as_i64()
+        .and_then(|seconds| chrono::DateTime::from_timestamp(seconds, 0))
+        .map_or_else(String::new, |date| date.format(format).to_string())
+}
+
 fn write_patch_hint(out: &mut impl Write, evidence: &Value, repository: &Value) -> Result<()> {
     if let Some(args) = evidence["patch_lookup"]["args"].as_array() {
         let args: Vec<_> = args
@@ -470,6 +570,26 @@ pub fn truncate_utf8(text: &str, limit: usize) -> (&str, bool) {
 mod tests {
     use super::*;
     use crate::embedding::{Device, profile};
+
+    #[test]
+    fn progress_rate_appears_after_enough_samples_and_tracks_the_recent_window() {
+        let start = Instant::now();
+        let at = |seconds| start + Duration::from_secs(seconds);
+        let mut rate = ProgressRate::new(start);
+        assert_eq!(rate.suffix(at(2), 40, 960), "");
+        assert_eq!(
+            rate.suffix(at(10), 200, 800),
+            ", 20.0 docs/s, about 40s left"
+        );
+        assert_eq!(
+            rate.suffix(at(40), 500, 500),
+            ", 10.0 docs/s, about 50s left"
+        );
+        assert_eq!(
+            rate.suffix(at(70), 560, 100_000),
+            ", 2.0 docs/s, about 13h 53m left"
+        );
+    }
 
     #[test]
     fn indexing_messages_use_selected_runtime_and_report_transitions_once() {
