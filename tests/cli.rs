@@ -1313,6 +1313,29 @@ fn evidence_budget_and_argument_errors_are_machine_readable() {
 }
 
 #[test]
+fn hyphen_leading_queries_are_queries_unless_they_are_options() {
+    let repository = Repository::new();
+    repository.write("hooks.txt", "--no-verify skips hooks; -x traces\n");
+    repository.commit("Document hook flags", "2024-01-01T12:00:00Z");
+    for (query, matches) in [
+        (vec!["--no-verify skips"], true),
+        (vec!["-x traces"], true),
+        (vec!["--", "-v"], false),
+    ] {
+        let mut args = vec!["search", "--mode", "lexical", "--freshness", "wait"];
+        args.extend(query);
+        assert_eq!(!result_ids(&repository.json(&args)).is_empty(), matches);
+    }
+    let option = repository.run(&["search", "-v", "--mode", "lexical"]);
+    assert_eq!(option.status.code(), Some(2));
+    let message = parse_json(&option)["error"]["message"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    assert!(message.contains("[--] <QUERY>"), "{message}");
+}
+
+#[test]
 fn provider_model_changes_reembed_retained_history_but_query_prefix_changes_do_not() {
     let repository = Repository::new();
     let provider = MockProvider::new();
