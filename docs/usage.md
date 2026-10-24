@@ -2,6 +2,8 @@
 
 Run commands inside a Git checkout or pass `--repo PATH`. All commands accept `--config`, `--json`, `--offline`, `--timeout DURATION`, `--device`, and `--verbose`. Use `nalcos COMMAND --help` for the full option list.
 
+A search query may start with `-`, as in `nalcos search "--no-verify flag"`. A query that is exactly an option name, such as `-v`, must follow `--`: `nalcos search -- -v`.
+
 ## Scope and filters
 
 The default scope is the ancestry of the current `HEAD`. Select a different scope with one of these mutually exclusive options:
