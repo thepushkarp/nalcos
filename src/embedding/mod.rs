@@ -133,7 +133,7 @@ impl Encoder {
             return Ok(encoder);
         }
         eprintln!(
-            "Detecting available inference devices for {:.120} (batch size {})",
+            "Detecting available inference devices for {:.120} (batch size {}); the first run of a new nalcos binary can take longer while GPU shaders compile",
             model.profile.id, options.batch_size
         );
         let inventory = runtime::available_devices(model.profile.backend, &options)?;
