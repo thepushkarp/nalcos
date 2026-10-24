@@ -191,7 +191,7 @@ pub fn emit(value: &Value, json: bool) -> Result<()> {
                         rank + 1,
                         &oid[..oid.len().min(12)],
                         date(&commit["authored_at"], "%Y-%m-%d"),
-                        commit["author_name"].as_str().unwrap_or(""),
+                        printable(commit["author_name"].as_str().unwrap_or("")),
                         title
                     )?;
                     if let Some(evidence) = result["evidence"].as_array() {
@@ -256,8 +256,8 @@ pub fn emit(value: &Value, json: bool) -> Result<()> {
                 writeln!(
                     out,
                     "Author: {} <{}>",
-                    commit["author_name"].as_str().unwrap_or(""),
-                    commit["author_email"].as_str().unwrap_or("")
+                    printable(commit["author_name"].as_str().unwrap_or("")),
+                    printable(commit["author_email"].as_str().unwrap_or(""))
                 )?;
                 writeln!(
                     out,
@@ -460,6 +460,19 @@ fn write_indexing_runtime(
 
 /// Excerpt lines shown per evidence item in human search output.
 const EXCERPT_LINES: usize = 8;
+
+/// Escapes control characters so commit metadata cannot drive the terminal.
+fn printable(text: &str) -> String {
+    text.chars()
+        .flat_map(|c| {
+            if c.is_control() {
+                c.escape_default().collect::<Vec<_>>()
+            } else {
+                vec![c]
+            }
+        })
+        .collect()
+}
 
 fn date(timestamp: &Value, format: &str) -> String {
     timestamp
