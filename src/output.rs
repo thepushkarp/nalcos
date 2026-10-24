@@ -212,7 +212,7 @@ pub fn emit(value: &Value, json: bool) -> Result<()> {
                 if results.is_empty() {
                     writeln!(out, "No matches in the available coverage.")?;
                 }
-                for result in results {
+                for (rank, result) in results.iter().enumerate() {
                     let commit = &result["commit"];
                     let oid = commit["oid"].as_str().unwrap_or("");
                     let title = commit["message"]
@@ -221,14 +221,25 @@ pub fn emit(value: &Value, json: bool) -> Result<()> {
                         .lines()
                         .next()
                         .unwrap_or("");
-                    writeln!(out, "\n{}  {}", &oid[..oid.len().min(12)], title)?;
+                    writeln!(
+                        out,
+                        "\n{}. {}  {}  {}  {}",
+                        rank + 1,
+                        &oid[..oid.len().min(12)],
+                        date(&commit["authored_at"], "%Y-%m-%d"),
+                        printable(commit["author_name"].as_str().unwrap_or("")),
+                        title
+                    )?;
                     if let Some(evidence) = result["evidence"].as_array() {
                         for item in evidence {
                             if let Some(path) = item["new_path"]["display"]
                                 .as_str()
                                 .or_else(|| item["old_path"]["display"].as_str())
                             {
-                                writeln!(out, "  {path}")?;
+                                match item["excerpt_line"].as_u64() {
+                                    Some(line) => writeln!(out, "  {path}:{line}")?,
+                                    None => writeln!(out, "  {path}")?,
+                                }
                             }
                             let label = if item["metadata_only"] == true {
                                 " (file metadata only)"
@@ -242,8 +253,22 @@ pub fn emit(value: &Value, json: bool) -> Result<()> {
                                 "  evidence: {}{label}",
                                 item["id"].as_str().unwrap_or("")
                             )?;
-                            for line in item["excerpt"].as_str().unwrap_or("").lines() {
+                            let mut lines: Vec<_> =
+                                item["excerpt"].as_str().unwrap_or("").lines().collect();
+                            // A diff document starts with the commit title, shown above.
+                            if item["kind"] == "diff" && item["excerpt_byte_start"] == 0 {
+                                lines.drain(..lines.len().min(1));
+                            }
+                            for line in lines.iter().take(EXCERPT_LINES) {
                                 writeln!(out, "    {line}")?;
+                            }
+                            if lines.len() > EXCERPT_LINES {
+                                writeln!(
+                                    out,
+                                    "    … {} more lines: nalcos show --evidence {}",
+                                    lines.len() - EXCERPT_LINES,
+                                    item["id"].as_str().unwrap_or("")
+                                )?;
                             }
                             write_patch_hint(&mut out, item, &value["repository"]["work_dir"])?;
                         }
@@ -262,12 +287,24 @@ pub fn emit(value: &Value, json: bool) -> Result<()> {
                 writeln!(out, "{}", evidence["excerpt"].as_str().unwrap_or(""))?;
                 write_patch_hint(&mut out, evidence, &value["repository"]["work_dir"])?;
             } else {
+                let commit = &value["commit"];
+                writeln!(out, "commit {}", commit["oid"].as_str().unwrap_or(""))?;
                 writeln!(
                     out,
-                    "commit {}",
-                    value["commit"]["oid"].as_str().unwrap_or("")
+                    "Author: {} <{}>",
+                    printable(commit["author_name"].as_str().unwrap_or("")),
+                    printable(commit["author_email"].as_str().unwrap_or(""))
                 )?;
-                writeln!(out, "{}", value["commit"]["message"].as_str().unwrap_or(""))?;
+                writeln!(
+                    out,
+                    "Date:   {}\n",
+                    date(&commit["authored_at"], "%Y-%m-%d %H:%M:%S UTC")
+                )?;
+                writeln!(
+                    out,
+                    "{}\n",
+                    commit["message"].as_str().unwrap_or("").trim_end()
+                )?;
                 writeln!(out, "{}", value["patch"].as_str().unwrap_or(""))?;
             }
         }
@@ -458,6 +495,30 @@ fn write_indexing_runtime(
         writeln!(out, "Indexing runtime: {reason}")?;
     }
     Ok(())
+}
+
+/// Excerpt lines shown per evidence item in human search output.
+const EXCERPT_LINES: usize = 8;
+
+/// Escapes control and bidirectional-override characters so commit metadata
+/// cannot drive the terminal or visually reorder the line.
+fn printable(text: &str) -> String {
+    text.chars()
+        .flat_map(|c| {
+            if c.is_control() || matches!(c, '\u{200e}' | '\u{200f}' | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}') {
+                c.escape_default().collect::<Vec<_>>()
+            } else {
+                vec![c]
+            }
+        })
+        .collect()
+}
+
+fn date(timestamp: &Value, format: &str) -> String {
+    timestamp
+        .as_i64()
+        .and_then(|seconds| chrono::DateTime::from_timestamp(seconds, 0))
+        .map_or_else(String::new, |date| date.format(format).to_string())
 }
 
 fn write_patch_hint(out: &mut impl Write, evidence: &Value, repository: &Value) -> Result<()> {
