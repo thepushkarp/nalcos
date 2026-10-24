@@ -33,6 +33,7 @@ pub enum Command {
     /// Reconcile history, resume indexing, or explicitly change embedding models.
     Sync(SyncArgs),
     /// Retrieve commits with source-verified evidence.
+    #[command(override_usage = "nalcos search [OPTIONS] [--] <QUERY>")]
     Search(SearchArgs),
     /// Inspect a commit or a stable evidence identifier.
     Show(ShowArgs),
@@ -113,6 +114,8 @@ pub enum Freshness {
 
 #[derive(Debug, Args)]
 pub struct SearchArgs {
+    /// Text to search for; put a query that is exactly an option name, such as -v, after --
+    #[arg(allow_hyphen_values = true)]
     pub query: String,
     #[command(flatten)]
     pub scope: ScopeArgs,

@@ -1318,6 +1318,105 @@ fn evidence_budget_and_argument_errors_are_machine_readable() {
     assert_eq!(invalid["error"]["code"], "invalid_input");
 }
 
+#[cfg(unix)]
+#[test]
+fn read_only_index_directory_answers_from_the_cached_index() {
+    use std::os::unix::fs::PermissionsExt;
+    fn set_writable(path: &Path, writable: bool) {
+        let mode = match (path.is_dir(), writable) {
+            (true, true) => 0o755,
+            (true, false) => 0o555,
+            (false, true) => 0o644,
+            (false, false) => 0o444,
+        };
+        if path.is_dir() {
+            for entry in fs::read_dir(path).unwrap() {
+                set_writable(&entry.unwrap().path(), writable);
+            }
+        }
+        fs::set_permissions(path, fs::Permissions::from_mode(mode)).unwrap();
+    }
+    let repository = Repository::new();
+    repository.write("notes.txt", "readonlyneedle\n");
+    repository.commit("Add notes", "2024-01-01T12:00:00Z");
+    let search = ["search", "readonlyneedle", "--mode", "lexical"];
+    repository.json(&[&search[..], &["--freshness", "wait"]].concat());
+    set_writable(&repository.data, false);
+
+    let cached = repository.json(&search);
+    assert!(!result_ids(&cached).is_empty());
+    assert!(
+        cached["warnings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|warning| warning
+                .as_str()
+                .unwrap()
+                .contains("Cannot write index directory"))
+    );
+    let wait = repository.run(&[&search[..], &["--freshness", "wait"]].concat());
+    assert_eq!(wait.status.code(), Some(1));
+    let error = &parse_json(&wait)["error"];
+    assert_eq!(error["code"], "index_read_only");
+    assert!(
+        error["message"]
+            .as_str()
+            .unwrap()
+            .contains(repository.data.to_str().unwrap())
+    );
+    set_writable(&repository.data, true);
+}
+
+#[test]
+fn hyphen_leading_queries_are_queries_unless_they_are_options() {
+    let repository = Repository::new();
+    repository.write("hooks.txt", "--no-verify skips hooks; -x traces\n");
+    repository.commit("Document hook flags", "2024-01-01T12:00:00Z");
+    for (query, matches) in [
+        (vec!["--no-verify skips"], true),
+        (vec!["-x traces"], true),
+        (vec!["--", "-v"], false),
+    ] {
+        let mut args = vec!["search", "--mode", "lexical", "--freshness", "wait"];
+        args.extend(query);
+        assert_eq!(!result_ids(&repository.json(&args)).is_empty(), matches);
+    }
+    let option = repository.run(&["search", "-v", "--mode", "lexical"]);
+    assert_eq!(option.status.code(), Some(2));
+    let message = parse_json(&option)["error"]["message"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    assert!(message.contains("[--] <QUERY>"), "{message}");
+}
+
+#[test]
+fn another_writer_is_reported_instead_of_resume_advice() {
+    let repository = Repository::new();
+    repository.write("notes.txt", "busyneedle\n");
+    repository.commit("Add notes", "2024-01-01T12:00:00Z");
+    let search = ["search", "busyneedle", "--mode", "lexical"];
+    repository.json(&[&search[..], &["--freshness", "wait"]].concat());
+    let status = repository.json(&["status"]);
+    assert_eq!(status["writer_active"], false);
+    let lock = fs::File::open(
+        Path::new(status["index_path"].as_str().unwrap()).with_file_name("writer.lock"),
+    )
+    .unwrap();
+    fs2::FileExt::lock_exclusive(&lock).unwrap();
+
+    assert_eq!(repository.json(&["status"])["writer_active"], true);
+    let busy = repository.json(&search);
+    assert!(!result_ids(&busy).is_empty());
+    assert!(busy["warnings"].as_array().unwrap().iter().any(|warning| {
+        warning
+            .as_str()
+            .unwrap()
+            .starts_with("Another nalcos process is indexing")
+    }));
+}
+
 #[test]
 fn human_search_and_show_are_bounded_and_name_each_commit_once() {
     let repository = Repository::new();
@@ -2145,7 +2244,7 @@ fn queued_sync_observes_the_model_selected_by_the_writer_ahead_of_it() {
         let mut collected = String::new();
         for line in BufReader::new(stderr).lines() {
             let line = line.expect("read queued writer progress");
-            if line.starts_with("Waiting for index writer lock: ")
+            if line.starts_with("Waiting for another nalcos process to finish indexing: ")
                 && let Some(waiting) = notification.take()
             {
                 waiting.send(()).expect("report writer contention");
