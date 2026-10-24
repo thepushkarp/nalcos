@@ -49,7 +49,9 @@ Argument errors from the parser also use this envelope with `code: "invalid_inpu
 - `active_generation`: the embedding model in use (`model`, `revision`, `backend`,
   `dimensions`), or `null`.
 - `staging_generation` and `staging_progress`: an unfinished model switch (`completed`,
-  `total`, `remaining`, `resume_command`).
+  `total`, `remaining`, `resume_command`). `resume_command` is `null` while another process
+  is indexing.
+- `writer_active`: `true` while another nalcos process holds the index writer lock.
 - `runtime`: the device used by the last indexing run, or `null`.
 - `check`: result of `status --check`, which probes the encoder with synthetic text.
 

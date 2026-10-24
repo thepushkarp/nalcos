@@ -342,6 +342,7 @@ fn staging_progress(
     store: &Store,
     config: &Config,
     generation: Option<&Generation>,
+    writer_active: bool,
 ) -> Result<Value> {
     let Some(generation) = generation else {
         return Ok(Value::Null);
@@ -353,7 +354,8 @@ fn staging_progress(
         "total": progress.total,
         "remaining": progress.total.saturating_sub(progress.completed),
         "scope": "generation",
-        "resume_command": staging_compatible(config, generation)?.then_some("nalcos sync"),
+        "resume_command": (!writer_active && staging_compatible(config, generation)?)
+            .then_some("nalcos sync"),
     }))
 }
 
@@ -369,16 +371,49 @@ fn staging_compatible(config: &Config, generation: &Generation) -> Result<bool> 
 fn semantic_unavailable_with_staging(
     config: &Config,
     generation: Option<&Generation>,
+    writer_active: bool,
 ) -> Result<AppError> {
     if let Some(generation) = generation
         && staging_compatible(config, generation)?
     {
-        return Ok(semantic_unavailable().action(format!(
-            "Run nalcos sync to resume embedding generation {}, or use --mode lexical",
-            generation.id
-        )));
+        let action = if writer_active {
+            format!(
+                "Another nalcos process is building embedding generation {}; wait for it, or use --mode lexical",
+                generation.id
+            )
+        } else {
+            format!(
+                "Run nalcos sync to resume embedding generation {}, or use --mode lexical",
+                generation.id
+            )
+        };
+        return Ok(semantic_unavailable().action(action));
     }
     Ok(semantic_unavailable())
+}
+
+/// Reports whether another process holds the writer lock. A shared, non-blocking
+/// probe needs no write access, and the kernel releases a crashed writer's lock.
+fn writer_active(index_path: &Path) -> Result<bool> {
+    let path = index_path.with_file_name("writer.lock");
+    let file = match File::open(&path) {
+        Ok(file) => file,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(error) => {
+            return Err(AppError::new(
+                "index_lock_failed",
+                format!("Open {}: {error}", path.display()),
+            ));
+        }
+    };
+    match fs2::FileExt::try_lock_shared(&file) {
+        Ok(()) => Ok(false),
+        Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => Ok(true),
+        Err(error) => Err(AppError::new(
+            "index_lock_failed",
+            format!("Lock {}: {error}", path.display()),
+        )),
+    }
 }
 
 fn selected_profile(
@@ -514,12 +549,7 @@ fn same_document_profile(a: &Option<ModelProfile>, b: &Option<ModelProfile>) -> 
 struct WriterLock(File);
 
 impl WriterLock {
-    fn acquire(
-        index_path: &Path,
-        wait: bool,
-        verbose: bool,
-        execution: &Execution,
-    ) -> Result<Self> {
+    fn acquire(index_path: &Path, wait: bool, execution: &Execution) -> Result<Self> {
         let directory = index_path
             .parent()
             .ok_or_else(|| AppError::invalid("Index path has no parent"))?;
@@ -548,7 +578,19 @@ impl WriterLock {
             .map_err(read_only)?;
         let mut reported_contention = false;
         loop {
-            execution.check()?;
+            if let Err(error) = execution.check() {
+                return Err(if reported_contention && error.code == "timeout" {
+                    AppError::new(
+                        "timeout",
+                        format!(
+                            "Timed out waiting for another nalcos process to release {}",
+                            path.display()
+                        ),
+                    )
+                } else {
+                    error
+                });
+            }
             match fs2::FileExt::try_lock_exclusive(&file) {
                 Ok(()) => return Ok(Self(file)),
                 Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
@@ -558,8 +600,11 @@ impl WriterLock {
                             "Another process is indexing this repository",
                         ));
                     }
-                    if verbose && !reported_contention {
-                        eprintln!("Waiting for index writer lock: {}", path.display());
+                    if !reported_contention {
+                        eprintln!(
+                            "Waiting for another nalcos process to finish indexing: {}",
+                            path.display()
+                        );
                         reported_contention = true;
                     }
                     std::thread::sleep(Duration::from_millis(25));
@@ -796,7 +841,7 @@ fn sync(
     let _lock = if dry_run {
         None
     } else {
-        Some(WriterLock::acquire(path, true, cli.verbose > 0, execution)?)
+        Some(WriterLock::acquire(path, true, execution)?)
     };
     // Inspect the saved selection without creating an index for invalid setup
     // requests. Keep the writer lock through validation and writable opening.
@@ -1181,7 +1226,7 @@ fn refresh_search(
     wait: bool,
     execution: &Execution,
 ) -> Result<()> {
-    let _lock = WriterLock::acquire(path, wait, cli.verbose > 0, execution)?;
+    let _lock = WriterLock::acquire(path, wait, execution)?;
     let mut store = Store::open(path)?;
     let policy = saved_index_policy(&store, &config.index)?;
     // An empty index has no legacy sources. Existing sources are refreshed only
@@ -1289,10 +1334,10 @@ fn search(
                 &indexing_execution,
             ) {
                 execution.check()?;
-                if args.freshness == Freshness::Auto
-                    && matches!(error.code.as_str(), "timeout" | "index_busy")
-                {
+                if args.freshness == Freshness::Auto && error.code == "timeout" {
                     warnings.push("Incremental indexing is incomplete; use --freshness wait or nalcos sync to finish".to_owned());
+                } else if args.freshness == Freshness::Auto && error.code == "index_busy" {
+                    warnings.push("Another nalcos process is indexing this repository; searched the existing index without incremental indexing".to_owned());
                 } else if args.freshness == Freshness::Auto
                     && error.code == "index_read_only"
                     && path.exists()
@@ -1355,6 +1400,7 @@ fn search(
                         return Err(semantic_unavailable_with_staging(
                             config,
                             store.staging_generation()?.as_ref(),
+                            writer_active(path)?,
                         )?);
                     }
                 };
@@ -1855,13 +1901,14 @@ fn status(
     execution: &Execution,
 ) -> Result<Value> {
     let scope = repo.resolve_scope(&scope_options(args), execution)?;
+    let writer = writer_active(path)?;
     let (coverage, active, staging, progress, counts, source_refresh_required, source) =
         if path.exists() {
             let mut store = Store::read_only(path)?;
             store.set_scope(&scope.oids)?;
             store.begin_snapshot()?;
             let staging = store.staging_generation()?;
-            let progress = staging_progress(&store, config, staging.as_ref())?;
+            let progress = staging_progress(&store, config, staging.as_ref(), writer)?;
             (
                 store.scope_coverage()?,
                 store.active_generation()?,
@@ -1903,7 +1950,13 @@ fn status(
     if check {
         let generation = match active.as_ref() {
             Some(generation) => generation,
-            None => return Err(semantic_unavailable_with_staging(config, staging.as_ref())?),
+            None => {
+                return Err(semantic_unavailable_with_staging(
+                    config,
+                    staging.as_ref(),
+                    writer,
+                )?);
+            }
         };
         let saved = snapshot(generation)?;
         check_offline(&saved.resolved, cli.offline)?;
@@ -1939,7 +1992,7 @@ fn status(
         );
     }
     Ok(
-        json!({"schema_version":1,"command":"status","repository":repository_view(repo),"scope":scope_view(&scope)?,"readiness":readiness,"source_refresh_required":source_refresh_required,"index_path":path,"storage_bytes":if path.exists() {std::fs::metadata(path)?.len()} else {0},"counts":counts,"history_coverage":history,"embedding_coverage":embedding,"source_coverage":source,"active_generation":generation_view(active.as_ref())?,"staging_generation":generation_view(staging.as_ref())?,"staging_progress":progress,"desired_profile":desired,"effective_config":config,"runtime":active.as_ref().map(snapshot).transpose()?.and_then(|s| s.runtime),"check":probe,"warnings":warnings,"release_qualification":"pending"}),
+        json!({"schema_version":1,"command":"status","repository":repository_view(repo),"scope":scope_view(&scope)?,"readiness":readiness,"source_refresh_required":source_refresh_required,"index_path":path,"storage_bytes":if path.exists() {std::fs::metadata(path)?.len()} else {0},"counts":counts,"history_coverage":history,"embedding_coverage":embedding,"source_coverage":source,"active_generation":generation_view(active.as_ref())?,"staging_generation":generation_view(staging.as_ref())?,"staging_progress":progress,"writer_active":writer,"desired_profile":desired,"effective_config":config,"runtime":active.as_ref().map(snapshot).transpose()?.and_then(|s| s.runtime),"check":probe,"warnings":warnings,"release_qualification":"pending"}),
     )
 }
 

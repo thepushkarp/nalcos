@@ -1386,6 +1386,32 @@ fn hyphen_leading_queries_are_queries_unless_they_are_options() {
 }
 
 #[test]
+fn another_writer_is_reported_instead_of_resume_advice() {
+    let repository = Repository::new();
+    repository.write("notes.txt", "busyneedle\n");
+    repository.commit("Add notes", "2024-01-01T12:00:00Z");
+    let search = ["search", "busyneedle", "--mode", "lexical"];
+    repository.json(&[&search[..], &["--freshness", "wait"]].concat());
+    let status = repository.json(&["status"]);
+    assert_eq!(status["writer_active"], false);
+    let lock = fs::File::open(
+        Path::new(status["index_path"].as_str().unwrap()).with_file_name("writer.lock"),
+    )
+    .unwrap();
+    fs2::FileExt::lock_exclusive(&lock).unwrap();
+
+    assert_eq!(repository.json(&["status"])["writer_active"], true);
+    let busy = repository.json(&search);
+    assert!(!result_ids(&busy).is_empty());
+    assert!(busy["warnings"].as_array().unwrap().iter().any(|warning| {
+        warning
+            .as_str()
+            .unwrap()
+            .starts_with("Another nalcos process is indexing")
+    }));
+}
+
+#[test]
 fn provider_model_changes_reembed_retained_history_but_query_prefix_changes_do_not() {
     let repository = Repository::new();
     let provider = MockProvider::new();
@@ -2161,7 +2187,7 @@ fn queued_sync_observes_the_model_selected_by_the_writer_ahead_of_it() {
         let mut collected = String::new();
         for line in BufReader::new(stderr).lines() {
             let line = line.expect("read queued writer progress");
-            if line.starts_with("Waiting for index writer lock: ")
+            if line.starts_with("Waiting for another nalcos process to finish indexing: ")
                 && let Some(waiting) = notification.take()
             {
                 waiting.send(()).expect("report writer contention");
