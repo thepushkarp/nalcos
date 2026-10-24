@@ -94,6 +94,12 @@ impl Repository {
     }
 
     fn command_at(&self, path: &Path) -> Command {
+        let mut command = self.human_command_at(path);
+        command.arg("--json");
+        command
+    }
+
+    fn human_command_at(&self, path: &Path) -> Command {
         let mut command = Command::new(env!("CARGO_BIN_EXE_nalcos"));
         command
             .env("NALCOS_DATA_DIR", &self.data)
@@ -106,7 +112,7 @@ impl Repository {
             .env("no_proxy", "127.0.0.1,localhost")
             .arg("--repo")
             .arg(path)
-            .args(["--json", "--timeout", "15s"]);
+            .args(["--timeout", "15s"]);
         command
     }
 
@@ -1310,6 +1316,57 @@ fn evidence_budget_and_argument_errors_are_machine_readable() {
     let invalid = parse_json(&output);
     assert_eq!(invalid["command"], "error");
     assert_eq!(invalid["error"]["code"], "invalid_input");
+}
+
+#[test]
+fn human_search_and_show_are_bounded_and_name_each_commit_once() {
+    let repository = Repository::new();
+    let body: String = (1..=20)
+        .map(|line| format!("humanneedle line {line}\n"))
+        .collect();
+    repository.write("one.txt", &body);
+    repository.write("two.txt", "humanneedle\n");
+    repository.commit("Add human fixtures", "2024-03-04T05:06:07Z");
+    repository.json(&[
+        "search",
+        "humanneedle",
+        "--mode",
+        "lexical",
+        "--freshness",
+        "wait",
+    ]);
+    let human = |args: &[&str]| {
+        let output = repository
+            .human_command_at(&repository.path)
+            .args(args)
+            .output()
+            .unwrap();
+        assert_success(&output);
+        String::from_utf8(output.stdout).unwrap()
+    };
+    let search = human(&[
+        "search",
+        "humanneedle",
+        "--mode",
+        "lexical",
+        "--freshness",
+        "cached",
+    ]);
+    let short = &repository.git(&["rev-parse", "HEAD"])[..12];
+    assert!(
+        search.contains(&format!("1. {short}  2024-03-04  ")),
+        "{search}"
+    );
+    assert!(
+        search.contains("more lines: nalcos show --evidence e1:"),
+        "{search}"
+    );
+    assert!(!search.contains("humanneedle line 20"), "{search}");
+
+    let show = human(&["show", "HEAD"]);
+    assert_eq!(show.matches("Add human fixtures").count(), 1, "{show}");
+    assert!(show.contains("Date:   2024-03-04 05:06:07 UTC"), "{show}");
+    assert!(show.contains("+++ one.txt") && show.contains("+++ two.txt"));
 }
 
 #[test]

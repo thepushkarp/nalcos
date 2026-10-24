@@ -274,7 +274,9 @@ fn add_omission_warning(warnings: &mut Vec<String>, source: &Value) {
         })
         .collect::<Vec<_>>()
         .join(", ");
-    warnings.push(format!("Source omissions across all paths in selected commits: {reasons}. Commit coverage does not imply complete source text; inspect with nalcos omissions using the same repository, configuration, and history options"));
+    warnings.push(format!(
+        "Source omissions across all paths in selected commits: {reasons}; inspect with nalcos omissions"
+    ));
 }
 
 fn omissions(
@@ -1705,6 +1707,26 @@ fn search_excerpt_range(text: &str, limit: usize, diff: bool) -> (usize, usize) 
     (start, start + excerpt.len())
 }
 
+/// New-file line where an excerpt that starts inside a hunk body begins. Excerpts
+/// that start at or before a hunk header show the header's line numbers themselves.
+fn excerpt_line(text: &str, start: usize) -> Option<u64> {
+    let before = &text[..start];
+    let header = before.rfind("\n@@ ")? + 1;
+    let (header, body) = before[header..].split_once('\n')?;
+    let first = header
+        .split_whitespace()
+        .find_map(|field| field.strip_prefix('+'))?
+        .split(',')
+        .next()?
+        .parse::<u64>()
+        .ok()?;
+    let advanced = body
+        .split_inclusive('\n')
+        .filter(|line| line.ends_with('\n') && !line.starts_with(['-', '\\']))
+        .count();
+    Some(first + advanced as u64)
+}
+
 fn evidence_text(document: &DocumentRecord, start: usize, end: usize) -> Result<&str> {
     document.text.get(start..end).ok_or_else(|| {
         AppError::new(
@@ -1731,6 +1753,9 @@ fn evidence_view(
     object.insert("excerpt".into(), json!(excerpt));
     object.insert("excerpt_byte_start".into(), json!(start));
     object.insert("excerpt_byte_end".into(), json!(start + excerpt.len()));
+    if let Some(line) = excerpt_line(&document.text, start) {
+        object.insert("excerpt_line".into(), json!(line));
+    }
     object.insert("excerpt_truncated".into(), json!(clipped));
     object.insert("verified".into(), json!(true));
     let metadata = metadata_only(document);
@@ -1923,6 +1948,17 @@ fn status(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn excerpt_line_counts_new_file_lines_from_the_enclosing_hunk() {
+        let text = "Title\n--- a/f\n+++ b/f\n@@ -10,4 +20,5 @@\n ctx\n-old\n+new\n tail\n";
+        let at = |needle: &str| text.find(needle).unwrap();
+        assert_eq!(excerpt_line(text, at("@@")), None);
+        assert_eq!(excerpt_line(text, at(" ctx")), Some(20));
+        assert_eq!(excerpt_line(text, at("+new")), Some(21));
+        assert_eq!(excerpt_line(text, at(" tail")), Some(22));
+        assert_eq!(excerpt_line(text, at("ail")), Some(22));
+    }
 
     #[test]
     fn excerpt_budget_shares_space_and_reclaims_short_results() {
