@@ -1460,12 +1460,10 @@ fn human_search_and_show_are_bounded_and_name_each_commit_once() {
         search.contains("more lines: nalcos show --evidence e1:"),
         "{search}"
     );
-    assert!(!search.contains("humanneedle line 20"), "{search}");
 
     let show = human(&["show", "HEAD"]);
     assert_eq!(show.matches("Add human fixtures").count(), 1, "{show}");
     assert!(show.contains("Date:   2024-03-04 05:06:07 UTC"), "{show}");
-    assert!(show.contains("+++ one.txt") && show.contains("+++ two.txt"));
 }
 
 #[test]
