@@ -646,7 +646,8 @@ impl Store {
                 "SELECT d.id,d.commit_oid,json_extract(d.record,'$.parent_index'),
                         json_extract(d.record,'$.kind'),json_extract(d.record,'$.old_path'),
                         json_extract(d.record,'$.new_path')
-                 FROM documents d JOIN query_scope s ON s.oid=d.commit_oid ORDER BY d.rowid",
+                 FROM query_scope s CROSS JOIN documents d ON d.commit_oid=s.oid
+                 ORDER BY d.rowid",
             )?;
             let mut rows = statement.query([])?;
             let mut documents = Vec::new();

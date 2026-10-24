@@ -589,20 +589,18 @@ impl Repository {
         oids: &[String],
         execution: &Execution,
     ) -> Result<Vec<CommitRecord>> {
-        let mut result = Vec::with_capacity(oids.len());
-        for batch in oids.chunks(128) {
-            let objects = self.read_objects(batch, COMMIT_LIMIT, execution)?;
-            for oid in batch {
+        let objects = self.read_objects(oids, COMMIT_LIMIT, execution)?;
+        oids.iter()
+            .map(|oid| {
                 let (kind, bytes) = objects.get(oid).ok_or_else(|| missing(oid))?;
                 if kind != "commit" {
                     return Err(AppError::invalid(format!(
                         "Object {oid} is {kind}, not a commit"
                     )));
                 }
-                result.push(parse_commit(oid, bytes)?);
-            }
-        }
-        Ok(result)
+                parse_commit(oid, bytes)
+            })
+            .collect()
     }
 
     pub fn filter_scope(
@@ -625,7 +623,7 @@ impl Repository {
             filtered.oids = snapshot.oids.clone();
             return Ok(filtered);
         }
-        for batch in snapshot.oids.chunks(128) {
+        for batch in snapshot.oids.chunks(4096) {
             let records = self.load_commits(batch, execution)?;
             let author = filters.author.as_ref().map(|s| s.to_lowercase());
             let selected: Vec<_> = records
@@ -1385,15 +1383,18 @@ impl Repository {
         if commits.is_empty() {
             return Ok(vec![]);
         }
-        let mut input = String::new();
-        for commit in commits {
-            input.push_str(&commit.oid);
-            if let Some(oid) = selected_parent(commit, parent)? {
-                input.push(' ');
-                input.push_str(&oid);
+        let input = |commits: &[&CommitRecord]| -> Result<Vec<u8>> {
+            let mut input = String::new();
+            for commit in commits {
+                input.push_str(&commit.oid);
+                if let Some(oid) = selected_parent(commit, parent)? {
+                    input.push(' ');
+                    input.push_str(&oid);
+                }
+                input.push('\n');
             }
-            input.push('\n');
-        }
+            Ok(input.into_bytes())
+        };
         let mut args: Vec<String> = [
             "diff-tree",
             "--stdin",
@@ -1412,19 +1413,19 @@ impl Repository {
         .map(str::to_owned)
         .collect();
         args.push("--".into());
-        let mut changes = parse_raw_changes(&self.run(
-            &args,
-            Some(input.clone().into_bytes()),
-            execution,
-            PIPE_LIMIT,
-        )?)?;
-        if !paths.is_empty() {
-            // Git pathspecs can hide one side before rename detection. Preserve the
-            // unfiltered change and use Git's filtered paths only for selection.
-            args.extend(paths.iter().cloned());
+        // Git pathspecs can hide one side before rename detection. Preserve the
+        // unfiltered change and use Git's filtered paths only for selection. Only
+        // commits with a filtered change can contribute, so the costlier unfiltered,
+        // rename-detecting diff runs for those commits alone.
+        let mut selected: Vec<_> = commits.iter().collect();
+        let matching = if paths.is_empty() {
+            None
+        } else {
+            let mut filtered = args.clone();
+            filtered.extend(paths.iter().cloned());
             let matching = parse_raw_changes(&self.run(
-                &args,
-                Some(input.into_bytes()),
+                &filtered,
+                Some(input(&selected)?),
                 execution,
                 PIPE_LIMIT,
             )?)?
@@ -1436,6 +1437,16 @@ impl Repository {
                     .map(move |p| (c.commit_oid.clone(), p.bytes_hex))
             })
             .collect::<HashSet<_>>();
+            let oids: HashSet<_> = matching.iter().map(|(oid, _)| oid.as_str()).collect();
+            selected.retain(|c| oids.contains(c.oid.as_str()));
+            if selected.is_empty() {
+                return Ok(vec![]);
+            }
+            Some(matching)
+        };
+        let mut changes =
+            parse_raw_changes(&self.run(&args, Some(input(&selected)?), execution, PIPE_LIMIT)?)?;
+        if let Some(matching) = matching {
             changes.retain(|c| {
                 c.old_path
                     .iter()
@@ -1499,9 +1510,13 @@ impl Repository {
             return Ok(HashMap::new());
         }
         let info = self.object_info(oids, execution)?;
+        // Batch by bytes so each `cat-file --batch` output fits the pipe limit; the
+        // per-object header is at most an OID, a type, a size, and separators.
+        let mut batches = vec![Vec::new()];
+        let mut batch_bytes = 0;
         for oid in oids {
-            match info.get(oid) {
-                Some(Some((_, size))) if *size <= max_size => {}
+            let size = match info.get(oid) {
+                Some(Some((_, size))) if *size <= max_size => *size,
                 Some(Some((_, size))) => {
                     return Err(AppError::new(
                         "source_limit",
@@ -1509,16 +1524,27 @@ impl Repository {
                     ));
                 }
                 _ => return Err(missing(oid)),
+            };
+            let bytes = size + oid.len() + 64;
+            if batch_bytes + bytes > PIPE_LIMIT && !batches.last().expect("one batch").is_empty() {
+                batches.push(Vec::new());
+                batch_bytes = 0;
             }
+            batch_bytes += bytes;
+            batches.last_mut().expect("one batch").push(oid.as_str());
         }
-        let input = format!("{}\n", oids.join("\n"));
-        let output = self.run(
-            &["cat-file", "--batch"],
-            Some(input.into_bytes()),
-            execution,
-            PIPE_LIMIT,
-        )?;
-        parse_objects(&output)
+        let mut objects = HashMap::new();
+        for batch in batches {
+            let input = format!("{}\n", batch.join("\n"));
+            let output = self.run(
+                &["cat-file", "--batch"],
+                Some(input.into_bytes()),
+                execution,
+                PIPE_LIMIT,
+            )?;
+            objects.extend(parse_objects(&output)?);
+        }
+        Ok(objects)
     }
 
     fn run<S: AsRef<OsStr>>(
