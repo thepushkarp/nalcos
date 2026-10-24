@@ -80,8 +80,8 @@ def evaluate_trials(
             raise ValueError(f"{identifier}: tokens_used must be a nonnegative integer")
         if row.get("outcome") not in {"completed", "timeout", "failed"}:
             raise ValueError(f"{identifier}: invalid outcome")
-        if type(row.get("order")) is not int or row["order"] not in (0, 1):
-            raise ValueError(f"{identifier}: order must be 0 or 1")
+        if type(row.get("order")) is not int or row["order"] < 0:
+            raise ValueError(f"{identifier}: order must be a nonnegative integer")
         started = datetime.fromisoformat(row.get("started_at", ""))
         if started.tzinfo is None:
             raise ValueError(f"{identifier}: started_at must include a timezone")
@@ -176,7 +176,9 @@ def evaluate_trials(
     last = max(observed) if observed else None
     span = (last - first).total_seconds() / 86400 if observed else 0
     independent = bool(pairs) and all(genuine_holdout(q) for q, _, _ in pairs)
-    order_counterbalanced = {treatment["order"] for _, _, treatment in pairs} == {0, 1}
+    order_counterbalanced = {
+        treatment["order"] > baseline["order"] for _, baseline, treatment in pairs
+    } == {False, True}
     blockers = []
     if not protocol_reviewed or not workflow_protocol_passed(protocol):
         blockers.append("workflow_protocol_unverified")
