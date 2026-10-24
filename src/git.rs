@@ -306,27 +306,13 @@ impl Repository {
             )
             .action("Install Git 2.45 or later and ensure it is first on PATH"));
         }
-        let probe = git_output(
+        let bare = text_output(git(
             &cwd,
             &["rev-parse", "--is-bare-repository"],
             None,
             execution,
             1024,
-        )?;
-        if !probe.success {
-            // Git reports failed discovery only through its fatal message (untranslated
-            // because git_output sets LC_ALL=C). Other fatal errors, such as
-            // safe.directory, keep the generic error because they need other fixes.
-            if String::from_utf8_lossy(&probe.stderr).contains("not a git repository") {
-                return Err(AppError::new(
-                    "not_a_repository",
-                    format!("{} is not inside a Git repository", cwd.display()),
-                )
-                .action("Run inside a Git checkout or pass --repo PATH"));
-            }
-            return Err(git_error("read repository", &probe.stderr));
-        }
-        let bare = text_output(probe.stdout)? == "true";
+        )?)? == "true";
         let common = git(
             &cwd,
             &["rev-parse", "--path-format=absolute", "--git-common-dir"],
@@ -1583,9 +1569,6 @@ fn git_output<S: AsRef<OsStr>>(
         .env("GIT_NO_REPLACE_OBJECTS", "1")
         .env("GIT_NO_LAZY_FETCH", "1")
         .env("GIT_TERMINAL_PROMPT", "0")
-        // Output is parsed as bytes, so the locale only changes diagnostics. Untranslated
-        // messages keep error classification (such as not_a_repository) locale-independent.
-        .env("LC_ALL", "C")
         .stdin(if input.is_some() {
             Stdio::piped()
         } else {

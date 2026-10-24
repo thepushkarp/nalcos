@@ -10,7 +10,7 @@ diagnostic and may change.
 | Code | Meaning |
 | --- | --- |
 | `0` | Success, including a search with no results. |
-| `2` | Invalid arguments or configuration, an unknown `--model`, or a `--repo` outside Git. |
+| `2` | Invalid arguments or configuration, or an unknown `--model`. |
 | `1` | Any other failure (Git, index, model, runtime, provider). |
 | `124` | `--timeout` elapsed. Completed index batches are kept. |
 | `130` | Interrupted with Ctrl-C. Completed index batches are kept. |

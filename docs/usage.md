@@ -1,6 +1,6 @@
 # Usage reference
 
-Run commands inside a Git checkout or pass `--repo PATH`. All commands accept `--config`, `--json`, `--offline`, `--timeout DURATION`, `--device`, and `--verbose`. Use `nalcos COMMAND --help` for the full option list. Coding agents can follow the [nalcos agent skill](../skills/nalcos/SKILL.md).
+Run commands inside a Git checkout or pass `--repo PATH`. All commands accept `--config`, `--json`, `--offline`, `--timeout DURATION`, `--device`, and `--verbose`. Use `nalcos COMMAND --help` for the full option list.
 
 ## Scope and filters
 
@@ -9,7 +9,7 @@ The default scope is the ancestry of the current `HEAD`. Select a different scop
 | Option | Scope |
 | --- | --- |
 | `--ref REF` | Ancestry of a named ref; repeat to include several refs. |
-| `--range A..B` | Commits reachable from `B` but not `A`. Only the two-dot form is accepted; `A...B` is rejected. |
+| `--range A..B` | Commits reachable from `B` but not `A`. |
 | `--all-refs` | Every local ref resolving to a commit, plus worktree HEADs. Includes custom namespaces and `refs/stash`; excludes reflog-only commits. |
 
 `--first-parent` narrows traversal through merges. Cached searches still validate the requested scope against local Git objects. NaLCoS uses Git's `--no-lazy-fetch` to prevent implicit downloads from partial clones; missing objects are reported and can leave evidence incomplete.
@@ -17,8 +17,8 @@ The default scope is the ancestry of the current `HEAD`. Select a different scop
 Search filters:
 
 - `--path PATHSPEC`: repeatable Git pathspec. Diff evidence must match an old or new path; commit messages qualify when first-parent changes touch a matching path.
-- `--author TEXT`: one case-insensitive literal substring of the author's `Name <email>`, such as `alice` or `@example.com`. Patterns and lists are not interpreted.
-- `--since DATE`, `--until DATE`: inclusive committer timestamps, as `YYYY-MM-DD` (UTC) or RFC 3339 timestamps such as `2024-03-01T12:00:00+01:00`. A date-only `--until` includes the whole UTC day. `--since` must not be later than `--until`.
+- `--author AUTHOR`: filter commits by author.
+- `--since DATE`, `--until DATE`: inclusive committer timestamps. A date-only `--until` includes the whole UTC day; RFC 3339 timestamps are accepted.
 
 ## Retrieval and freshness
 
@@ -29,8 +29,6 @@ Retrieval mode and index freshness are independent:
 | `--mode hybrid` | Default. Combine lexical and semantic retrieval; report lexical fallback if semantic retrieval is unavailable. |
 | `--mode lexical` | Search without a model. |
 | `--mode semantic` | Require usable embeddings; do not fall back to lexical results. |
-
-Lexical retrieval splits the query on every character other than letters, digits, and `_`, ORs the resulting words, and ranks matching documents by BM25. Each word matches whole tokens case-insensitively, without stemming: `retry` matches `retry_limit` and `Retry`, but not `retries` or `retryLimit`. Phrase, boolean, regex, and wildcard syntax is not interpreted. Hybrid ranking fuses the lexical and semantic rankings by reciprocal rank, so result scores are not comparable across modes or queries.
 
 | Freshness | Behavior |
 | --- | --- |
@@ -44,7 +42,7 @@ Search never downloads models or runtime libraries. Run `init` to install a mode
 
 ## Evidence and coverage
 
-Each result identifies a commit and carries at most two evidence items, the commit's best-ranked documents. Indexed diffs compare each commit with its first parent. Expand a result's exact evidence ID with:
+Each result identifies a commit and parent comparison. Expand a result's exact evidence ID with:
 
 ```sh
 nalcos show --evidence EVIDENCE_ID
@@ -87,4 +85,4 @@ Search output includes the resolved scope, requested/effective mode, coverage, a
 
 Use `-vv` for search-phase timings on stderr. `--timeout` accepts durations such as `30s` or `5m`. GGUF checks cancellation and deadlines between native batches, so a running batch can delay exit; see [runtime limitations](native-runtime.md).
 
-An empty search result exits successfully. Invalid arguments, configuration, model names (`unknown_model`), and repository paths (`not_a_repository`) exit with code 2, other operation failures with 1, timeouts with 124, and interruption with 130.
+An empty search result exits successfully. Invalid arguments/configuration exit with code 2, operation failures with 1, timeouts with 124, and interruption with 130.

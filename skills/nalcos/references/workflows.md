@@ -87,31 +87,6 @@ For a full chronology of one file, use Git directly:
 git log --follow --oneline -- src/cache/store.rs
 ```
 
-## Narrow by people, time, or branches
-
-```sh
-nalcos --json search "switch to structured logging" --author alice@example.com --since 2024-01-01 --until 2024-03-31
-nalcos --json search "hotfix for duplicate invoices" --ref release/2.3 --ref main --limit 5
-nalcos --json search "temporary debug flag" --all-refs --freshness cached
-```
-
-- `--author` matches one case-insensitive substring of `Name <email>`. Run separate searches
-  for several authors.
-- Dates are committer dates. A rebased or cherry-picked commit has a later committer date than
-  its author date (`authored_at` in the JSON).
-- `--all-refs` includes local branches, tags, worktree HEADs, and `refs/stash`, but only refs
-  that exist locally.
-
-## Search another checkout
-
-```sh
-nalcos --repo ../service --json status
-nalcos --repo ../service --json search "rate limit headers" --limit 5 --timeout 60s
-```
-
-Linked worktrees of one repository share an index; each still searches its own `HEAD` unless
-you pass a scope option.
-
 ## Prove that something never happened
 
 nalcos can only support absence, never prove it. Before saying a change does not exist:
