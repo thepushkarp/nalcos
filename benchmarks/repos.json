@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "repositories": {
+    "etymology": {"url": "https://github.com/thepushkarp/etymology-explorer.git", "snapshot": "6f9c958b04731f9e74a3a85bac7666fe90e3587c", "language": "TypeScript", "split": "development", "semantic_range": null},
+    "nalcos": {"url": "https://github.com/thepushkarp/nalcos.git", "snapshot": "01b72981fbbd30bda452ea619db5b523df29840e", "language": "Rust/Python", "split": "development", "semantic_range": null},
+    "toki": {"url": "https://github.com/aashutoshrathi/toki.git", "snapshot": "d84299f55cabbd5ebbbb35df723bb56c0ea2be0d", "language": "Swift", "split": "heldout", "semantic_range": null},
+    "pgvector": {"url": "https://github.com/pgvector/pgvector.git", "snapshot": "f0252a04b3c5fc46bf89e1f793e325cbbfd092d5", "language": "C", "split": "heldout", "semantic_range": null},
+    "vllm": {"url": "https://github.com/vllm-project/vllm.git", "snapshot": "40210d8317bbad8d05124b260e75677daf33e091", "language": "Python", "split": "heldout", "semantic_range": "9e1cd262cbf43b3f3839a28cfa151e2e4b27e2d8..40210d8317bbad8d05124b260e75677daf33e091"}
+  }
+}

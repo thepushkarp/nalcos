@@ -158,6 +158,79 @@ vectors. Default scale output goes into ignored `benchmarks/output/`.
 Each harness exposes `--help`; complete commands and schema contracts are preserved
 in the archive's `docs/benchmarks.md`.
 
+## Round 2 harness
+
+`index_matrix.py` requires local clones containing the pinned snapshots in
+`repos.json`; each repeat gets fresh data/runtime directories while HF and
+filesystem caches stay shared. Large repositories use lexical-full and
+semantic-range tiers.
+
+```sh
+python3 benchmarks/index_matrix.py --binary target/release/nalcos \
+  --repos benchmarks/repos.json --clones /tmp/nalcos-clones \
+  --devices cpu metal auto --repeats 3 --timeout 3600 --model coderank --offline \
+  --output /tmp/nalcos-index-matrix
+```
+
+`cli_matrix.py` uses a local JSON mapping of `repo_key` to `path`, `config`, and
+`data_dir`, and never indexes or downloads. Cold means repeat 0 of each
+query/mode; warm means subsequent CLI processes, without flushing caches.
+
+```sh
+python3 benchmarks/cli_matrix.py --binary target/release/nalcos \
+  --manifest benchmarks/fixtures/hybrid/queries.jsonl \
+  --repositories /tmp/nalcos-local-repositories.json --device auto --repeats 3 \
+  --output /tmp/nalcos-query-matrix
+```
+
+`evaluate.py metrics` scores each repeat separately; `compare` requires matching
+query IDs and manifest hashes in sibling `summary.json` files. Acceptance requires
+more prose wins than losses, a prose MRR 95% bootstrap lower bound above zero,
+an exact-term hit@10 lower bound at least -0.05, and no query kind losing more
+than one net hit@10; valid comparisons exit 0 regardless of acceptance.
+
+```sh
+python3 benchmarks/evaluate.py metrics --manifest benchmarks/fixtures/hybrid/queries.jsonl \
+  --rankings /tmp/nalcos-query-matrix/hybrid.rankings.jsonl
+python3 benchmarks/evaluate.py compare --manifest benchmarks/fixtures/hybrid/queries.jsonl \
+  --baseline /tmp/nalcos-query-matrix/lexical.rankings.jsonl \
+  --candidate /tmp/nalcos-query-matrix/hybrid.rankings.jsonl --bootstrap 2000 --seed 0
+```
+
+`agent_trials.py` plans by default; `--run` executes tasks with `id`, `repo_key`,
+`prompt`, `gold_commits`, and `answer_type` (`find|absence|explain`), with `--indexes`
+mapping repository keys to data directories built against the same source clones.
+Trials use disposable linked worktrees and private index/runtime copies, an
+allowlisted environment with matching-agent credentials, a guarded Git command,
+and agent read-only permissions; HOME authentication and configured HF caches
+remain shared.
+Wall deadlines kill the process group, token budgets are checked after execution,
+and blind exports hide condition metadata but answers can still name tools.
+
+```sh
+python3 benchmarks/agent_trials.py --tasks /tmp/nalcos-agent-tasks.jsonl \
+  --repos benchmarks/repos.json --clones /tmp/nalcos-clones \
+  --indexes /tmp/nalcos-agent-indexes.json --skill "$NALCOS_SKILL" \
+  --binary target/release/nalcos --agents claude codex --conditions git_rg nalcos_git_rg \
+  --budget-seconds 300 --budget-tokens 20000 --order counterbalanced \
+  --output /tmp/nalcos-agent-trials --run
+python3 benchmarks/agent_trials.py --blind-export /tmp/nalcos-agent-trials \
+  --output /tmp/nalcos-blind-review
+python3 benchmarks/agent_trials.py --import-reviews /tmp/nalcos-reviews.jsonl \
+  --trials /tmp/nalcos-agent-trials --output /tmp/nalcos-reviewed-trials
+```
+
+`workflows.py` evaluates one agent's paired rows at a time after independent
+review; reviews need `review_id`, boolean `passed`/`blind_to_condition`,
+`reviewer_id`, `references`, and full `verified_commits` (plus `absence_reviewed`
+for absence answers).
+
+```sh
+python3 benchmarks/workflows.py --manifest /tmp/nalcos-reviewed-trials/manifest.jsonl \
+  --trials /tmp/nalcos-reviewed-trials/claude/trials.jsonl --split development \
+  --output /tmp/nalcos-reviewed-trials/claude/workflow.json
+```
+
 ## Remaining qualification
 
 The strict evaluator remains available:
