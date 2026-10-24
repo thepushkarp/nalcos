@@ -1312,6 +1312,67 @@ fn evidence_budget_and_argument_errors_are_machine_readable() {
     assert_eq!(invalid["error"]["code"], "invalid_input");
 }
 
+#[cfg(unix)]
+#[test]
+fn read_only_index_directory_answers_from_the_cached_index() {
+    use std::os::unix::fs::PermissionsExt;
+    fn set_writable(path: &Path, writable: bool) {
+        let mode = match (path.is_dir(), writable) {
+            (true, true) => 0o755,
+            (true, false) => 0o555,
+            (false, true) => 0o644,
+            (false, false) => 0o444,
+        };
+        if path.is_dir() {
+            for entry in fs::read_dir(path).unwrap() {
+                set_writable(&entry.unwrap().path(), writable);
+            }
+        }
+        fs::set_permissions(path, fs::Permissions::from_mode(mode)).unwrap();
+    }
+    let repository = Repository::new();
+    repository.write("notes.txt", "readonlyneedle\n");
+    repository.commit("Add notes", "2024-01-01T12:00:00Z");
+    let search = ["search", "readonlyneedle", "--mode", "lexical"];
+    repository.json(&[&search[..], &["--freshness", "wait"]].concat());
+    set_writable(&repository.data, false);
+
+    let cached = repository.json(&search);
+    assert!(!result_ids(&cached).is_empty());
+    assert!(
+        cached["warnings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|warning| warning
+                .as_str()
+                .unwrap()
+                .contains("Cannot write index directory"))
+    );
+    let missing = repository
+        .command_at(&repository.path)
+        .env("NALCOS_DATA_DIR", repository.data.join("missing"))
+        .args(["--offline"])
+        .args(search)
+        .output()
+        .unwrap();
+    for output in [
+        repository.run(&[&search[..], &["--freshness", "wait"]].concat()),
+        missing,
+    ] {
+        assert_eq!(output.status.code(), Some(1));
+        let error = &parse_json(&output)["error"];
+        assert_eq!(error["code"], "index_read_only");
+        assert!(
+            error["message"]
+                .as_str()
+                .unwrap()
+                .contains(repository.data.to_str().unwrap())
+        );
+    }
+    set_writable(&repository.data, true);
+}
+
 #[test]
 fn provider_model_changes_reembed_retained_history_but_query_prefix_changes_do_not() {
     let repository = Repository::new();

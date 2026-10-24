@@ -24,7 +24,8 @@ paths on stderr.
 | `unsupported_cpu` | 1 | The `minilm-int8` model needs ARM64 or x86_64 with AVX2. | Use `--model minilm`. |
 | `offline` / `offline_provider` | 1 | `--offline` blocks an API embedding provider. | Drop `--offline` or search with `--mode lexical`. |
 | `index_busy` | 1 | Another nalcos process holds the index writer lock. | Wait and retry, or search with `--freshness cached`. |
-| `io_error` | 1 | A file operation failed, for example writing the index from a read-only sandbox with `--mode lexical`. | Search with `--freshness cached`, or set `NALCOS_DATA_DIR` to a writable directory. |
+| `index_read_only` | 1 | `--freshness wait`, `sync`, or `init` cannot write the index directory, for example in a read-only sandbox. | Search with `--freshness cached`, or set `NALCOS_DATA_DIR` to a writable directory. |
+| `io_error` | 1 | A file operation failed. | Read `message` and fix the file problem it names. |
 | `evidence_not_found` | 1 | The evidence ID is not in this repository's index. | Pass the exact `id` from a search of the same repository; IDs of pruned commits disappear after `sync`. |
 | `source_unavailable` | 1 | The evidence's Git objects are no longer available locally. | Search again; history was rewritten or objects were removed. |
 | `repository_changed` | 1 | Refs kept moving during the search. | Retry after the concurrent Git operation finishes. |
@@ -39,7 +40,8 @@ paths on stderr.
 | `mode_used` is `lexical` although hybrid was requested | No usable embedding model; a warning says why. | Accept lexical results, or ask before `nalcos init`. |
 | Warning `Incremental indexing is incomplete` | `auto` freshness ran out of its two-second budget or the lock was busy. | `nalcos sync --timeout 10m`, or `--freshness wait --timeout 5m`. |
 | Warning `No index is available` | No index exists yet, typically with `--freshness cached`. | Search once with `auto` or `wait`, or run `nalcos init`. |
-| Warning `Semantic indexing unavailable: …` | Index updates failed, for example on a read-only data directory. | Set `NALCOS_DATA_DIR` to a writable directory, or use `--freshness cached`. |
+| Warning `Cannot write index directory …` | The data directory is read-only; results come from the existing index without incremental indexing. | Use `--freshness cached` to skip indexing, or set `NALCOS_DATA_DIR` to a writable directory. |
+| Warning `Semantic indexing unavailable: …` | Incremental indexing failed in hybrid mode, for example on a model or device error. | Read the warning; `nalcos --json status --check` probes the encoder. |
 | Warning `History coverage is partial` | Some commits in scope are not indexed; results may be missing. | Finish indexing before concluding absence. |
 | Warning `Embedding coverage is partial` | Semantic ranking saw only some documents. | `nalcos sync --timeout 10m`. |
 | Warning `Source omissions across all paths …` | Some patch text was not indexed. | `nalcos --json omissions` and follow each reason's `action`. |
