@@ -76,8 +76,8 @@ TRIAL_GIT_ENV = {
 # the whole pipeline and the agent concludes Bash is unavailable. Filters that can
 # name an output file (sort -o, uniq OUT, sed w) and interpreters stay out.
 READ_ONLY_FILTERS = ("head", "tail", "wc", "grep", "cut", "tr", "cat", "jq")
-# `git grep` is excluded because -O/--open-files-in-pager runs a command; agents
-# search file contents with the Grep tool and rg instead.
+# `git grep` and `rg` are excluded because `git grep -O` and `rg --pre` run a
+# command; Claude agents search file contents with the Grep tool instead.
 READ_ONLY_GIT = (
     "log",
     "show",
@@ -138,7 +138,7 @@ def trial_prompt(query, budget_seconds, budget_tokens):
 
 def agent_command(agent, executable, prompt, condition, max_turns, model, skill_name):
     if agent == "claude":
-        allowed = ["Read", "Grep", "Glob", "Bash(rg *)"]
+        allowed = ["Read", "Grep", "Glob"]
         allowed += [f"Bash({name} *)" for name in READ_ONLY_FILTERS]
         allowed += [f"Bash(git {name} *)" for name in READ_ONLY_GIT]
         allowed += [
