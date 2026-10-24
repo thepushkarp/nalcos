@@ -1312,6 +1312,56 @@ fn evidence_budget_and_argument_errors_are_machine_readable() {
     assert_eq!(invalid["error"]["code"], "invalid_input");
 }
 
+#[cfg(unix)]
+#[test]
+fn read_only_index_directory_answers_from_the_cached_index() {
+    use std::os::unix::fs::PermissionsExt;
+    fn set_writable(path: &Path, writable: bool) {
+        let mode = match (path.is_dir(), writable) {
+            (true, true) => 0o755,
+            (true, false) => 0o555,
+            (false, true) => 0o644,
+            (false, false) => 0o444,
+        };
+        if path.is_dir() {
+            for entry in fs::read_dir(path).unwrap() {
+                set_writable(&entry.unwrap().path(), writable);
+            }
+        }
+        fs::set_permissions(path, fs::Permissions::from_mode(mode)).unwrap();
+    }
+    let repository = Repository::new();
+    repository.write("notes.txt", "readonlyneedle\n");
+    repository.commit("Add notes", "2024-01-01T12:00:00Z");
+    let search = ["search", "readonlyneedle", "--mode", "lexical"];
+    repository.json(&[&search[..], &["--freshness", "wait"]].concat());
+    set_writable(&repository.data, false);
+
+    let cached = repository.json(&search);
+    assert!(!result_ids(&cached).is_empty());
+    assert!(
+        cached["warnings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|warning| warning
+                .as_str()
+                .unwrap()
+                .contains("Cannot write index directory"))
+    );
+    let wait = repository.run(&[&search[..], &["--freshness", "wait"]].concat());
+    assert_eq!(wait.status.code(), Some(1));
+    let error = &parse_json(&wait)["error"];
+    assert_eq!(error["code"], "index_read_only");
+    assert!(
+        error["message"]
+            .as_str()
+            .unwrap()
+            .contains(repository.data.to_str().unwrap())
+    );
+    set_writable(&repository.data, true);
+}
+
 #[test]
 fn hyphen_leading_queries_are_queries_unless_they_are_options() {
     let repository = Repository::new();

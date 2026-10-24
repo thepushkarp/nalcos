@@ -523,14 +523,29 @@ impl WriterLock {
         let directory = index_path
             .parent()
             .ok_or_else(|| AppError::invalid("Index path has no parent"))?;
-        std::fs::create_dir_all(directory)?;
+        let read_only = |error: std::io::Error| {
+            if matches!(
+                error.kind(),
+                std::io::ErrorKind::PermissionDenied | std::io::ErrorKind::ReadOnlyFilesystem
+            ) {
+                AppError::new(
+                    "index_read_only",
+                    format!("Cannot write index directory {}: {error}", directory.display()),
+                )
+                .action("Search with --freshness cached, or set NALCOS_DATA_DIR to a writable directory")
+            } else {
+                error.into()
+            }
+        };
+        std::fs::create_dir_all(directory).map_err(read_only)?;
         let path = directory.join("writer.lock");
         let file = OpenOptions::new()
             .create(true)
             .truncate(false)
             .read(true)
             .write(true)
-            .open(&path)?;
+            .open(&path)
+            .map_err(read_only)?;
         let mut reported_contention = false;
         loop {
             execution.check()?;
@@ -1278,6 +1293,14 @@ fn search(
                     && matches!(error.code.as_str(), "timeout" | "index_busy")
                 {
                     warnings.push("Incremental indexing is incomplete; use --freshness wait or nalcos sync to finish".to_owned());
+                } else if args.freshness == Freshness::Auto
+                    && error.code == "index_read_only"
+                    && path.exists()
+                {
+                    warnings.push(format!(
+                        "{}; searched the existing index without incremental indexing. Use --freshness cached to skip indexing, or set NALCOS_DATA_DIR to a writable directory",
+                        error.message
+                    ));
                 } else if args.mode == SearchMode::Hybrid && fallback_allowed(&error) {
                     warnings.push(format!("Semantic indexing unavailable: {error}"));
                 } else {
