@@ -53,12 +53,27 @@ The default scope is the ancestry of `HEAD`. Use `--repo PATH` to search another
 
 ### Use with coding agents
 
+Install the agent skill, which teaches coding agents to check readiness and coverage, search, and confirm evidence with Git:
+
+```sh
+npx skills add thepushkarp/nalcos
+```
+
+In Claude Code, install it as a plugin instead:
+
+```text
+/plugin marketplace add thepushkarp/nalcos
+/plugin install nalcos@nalcos
+```
+
+Agents call the CLI with `--json`:
+
 ```sh
 nalcos --json search "stop retrying cancelled requests" --limit 5 --max-bytes 16384
 nalcos --json show --evidence EVIDENCE_ID --max-bytes 16384
 ```
 
-Check coverage, warnings, and `output_truncated` before interpreting results. Progress and diagnostics go to stderr; JSON goes to stdout.
+Check coverage, warnings, and `output_truncated` before interpreting results. Progress and diagnostics go to stderr; JSON goes to stdout. The [JSON reference](skills/nalcos/references/json.md) lists fields and exit codes.
 
 ## Commands
 
@@ -92,22 +107,6 @@ cargo test --locked --all-targets
 The normal test suite requires no model downloads. See [native runtime validation](docs/native-runtime.md) for optional model checks and the [release guide](docs/releasing.md) for publishing.
 
 [Report bugs](https://github.com/thepushkarp/nalcos/issues/new/choose) with the command, scope, and diagnostics needed to reproduce them. Remove private repository content and credentials. [Pull requests](https://github.com/thepushkarp/nalcos/pulls) are welcome.
-
-## Contributors
-
-<!-- ALL-CONTRIBUTORS-LIST:START - Do not remove or modify this section -->
-<!-- prettier-ignore-start -->
-<!-- markdownlint-disable -->
-<table>
-  <tr>
-    <td align="center"><a href="https://thepushkarp.com/"><img src="https://avatars.githubusercontent.com/u/42088801?v=4?s=100" width="100px;" alt=""/><br /><sub><b>Pushkar Patel</b></sub></a><br /><a href="https://github.com/thepushkarp/nalcos/commits?author=thepushkarp" title="Code">💻</a> <a href="https://github.com/thepushkarp/nalcos/commits?author=thepushkarp" title="Documentation">📖</a> <a href="#maintenance-thepushkarp" title="Maintenance">🚧</a></td>
-  </tr>
-</table>
-
-<!-- markdownlint-restore -->
-<!-- prettier-ignore-end -->
-
-<!-- ALL-CONTRIBUTORS-LIST:END -->
 
 ## License
 

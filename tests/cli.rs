@@ -946,7 +946,7 @@ fn invalid_model_selection_leaves_a_fresh_index_uninitialized() {
     repository.write("readme.txt", "unindexed repository\n");
     repository.commit("Initial commit", "2024-01-01T12:00:00Z");
     for (args, expected_code, exit_code) in [
-        (vec!["init", "--model", "unknown/model"], "unknown_model", 1),
+        (vec!["init", "--model", "unknown/model"], "unknown_model", 2),
         (
             vec!["sync", "--model", "profile:missing"],
             "invalid_config",

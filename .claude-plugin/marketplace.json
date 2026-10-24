@@ -1,0 +1,14 @@
+{
+  "name": "nalcos",
+  "description": "The nalcos agent skill for natural-language search of local Git history.",
+  "owner": {
+    "name": "Pushkar Patel"
+  },
+  "plugins": [
+    {
+      "name": "nalcos",
+      "source": "./",
+      "description": "Search local Git history in natural language and confirm ranked commits with source-verified patch evidence."
+    }
+  ]
+}
