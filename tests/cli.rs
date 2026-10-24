@@ -1467,6 +1467,37 @@ fn human_search_and_show_are_bounded_and_name_each_commit_once() {
 }
 
 #[test]
+fn narrow_range_searches_only_its_commits() {
+    let repository = Repository::new();
+    let mut commits = Vec::new();
+    for day in 1..=12 {
+        repository.write("notes.txt", &format!("rangeneedle {day}\n"));
+        commits.push(repository.commit(
+            &format!("Change {day}"),
+            &format!("2024-01-{day:02}T12:00:00Z"),
+        ));
+    }
+    let search = [
+        "search",
+        "rangeneedle",
+        "--mode",
+        "lexical",
+        "--freshness",
+        "wait",
+    ];
+    repository.json(&search);
+    let range = format!("{}..{}", commits[10], commits[11]);
+    let narrow = repository.json(&[&search[..], &["--range", &range]].concat());
+    let oids: Vec<_> = narrow["results"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|result| result["commit"]["oid"].as_str().unwrap())
+        .collect();
+    assert_eq!(oids, [commits[11].as_str()]);
+}
+
+#[test]
 fn provider_model_changes_reembed_retained_history_but_query_prefix_changes_do_not() {
     let repository = Repository::new();
     let provider = MockProvider::new();
