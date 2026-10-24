@@ -37,7 +37,8 @@ paths on stderr.
 | Symptom | Meaning | Fix |
 | --- | --- | --- |
 | `mode_used` is `lexical` although hybrid was requested | No usable embedding model; a warning says why. | Accept lexical results, or ask before `nalcos init`. |
-| Warning `Incremental indexing is incomplete` | `auto` freshness ran out of its two-second budget or the lock was busy. | `nalcos sync --timeout 10m`, or `--freshness wait --timeout 5m`. |
+| Warning `Incremental indexing is incomplete` | `auto` freshness ran out of its two-second budget. | `nalcos sync --timeout 10m`, or `--freshness wait --timeout 5m`. |
+| Warning `Another nalcos process is indexing this repository` | Results come from the existing index while another process writes it. | Wait for it; `nalcos --json status` reports `writer_active`. |
 | Warning `No index is available` | No index exists yet, typically with `--freshness cached`. | Search once with `auto` or `wait`, or run `nalcos init`. |
 | Warning `Semantic indexing unavailable: …` | Index updates failed, for example on a read-only data directory. | Set `NALCOS_DATA_DIR` to a writable directory, or use `--freshness cached`. |
 | Warning `History coverage is partial` | Some commits in scope are not indexed; results may be missing. | Finish indexing before concluding absence. |
