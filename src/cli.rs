@@ -136,8 +136,8 @@ pub struct SearchArgs {
     #[arg(long)]
     pub compact: bool,
     /// Total stdout JSON budget including newline (at least 1024 bytes)
-    #[arg(long, value_parser = parse_output_bytes)]
-    pub max_output_bytes: Option<usize>,
+    #[arg(long, value_parser = clap::value_parser!(u64).range(1024..))]
+    pub max_output_bytes: Option<u64>,
 }
 
 #[derive(Debug, Args)]
@@ -189,16 +189,4 @@ fn parse_duration(value: &str) -> Result<Duration, String> {
         return Err("timeout must be greater than zero".into());
     }
     Ok(duration)
-}
-
-fn parse_output_bytes(value: &str) -> Result<usize, String> {
-    let bytes = value.parse::<usize>().map_err(|error| {
-        format!(
-            "Invalid --max-output-bytes {value:?}: {error}; expected an integer of at least 1024"
-        )
-    })?;
-    if bytes < 1024 {
-        return Err("--max-output-bytes must be at least 1024".into());
-    }
-    Ok(bytes)
 }

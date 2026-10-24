@@ -68,7 +68,7 @@ Argument errors from the parser also use this envelope with `code: "invalid_inpu
   - `evidence`: at most two items, described below.
 - `output_truncated`: `true` when any excerpt or commit message was clipped. `--max-bytes` is
   shared by all excerpts in the response. A total-output budget also sets this flag when it
-  removes results or evidence.
+  removes results or shortens excerpts.
 - `source_refresh_required`, `active_generation`, and `runtime` as in `status`.
 
 When no index exists yet (for example `--freshness cached` before any indexing), `results` is
@@ -100,19 +100,12 @@ remain available from verbose search or `show --evidence`. Human output is uncha
 
 ### Total JSON budget (`--max-output-bytes N`)
 
-`N` must be an integer of at least 1024; invalid values exit 2 with `invalid_input`.
-The option applies to JSON search with or without `--compact`. Human output is unchanged.
-`--max-bytes` budgets excerpts first; this option then measures serialized JSON including
-its trailing newline and budget fields.
-
-Lowest-ranked results are dropped first. If the highest-ranked result still overflows,
-its supporting evidence is removed, then excerpts are shortened on UTF-8 boundaries and
-marked `excerpt_truncated`; verbose byte-end offsets follow the shortened text. The final
-result is dropped if its metadata cannot fit.
-
-`dropped_results` counts removed commits and `output_bytes` reports stdout bytes, including
-the newline. Any trimming sets `output_truncated: true`. If the empty envelope exceeds `N`,
-it is emitted with a warning; coverage and warnings are preserved.
+`N` is at least 1024 and bounds JSON search stdout, including the trailing newline, with or
+without `--compact`. Lowest-ranked results are dropped first; if the top result alone
+overflows, its excerpts are shortened on UTF-8 boundaries and marked `excerpt_truncated`.
+`dropped_results` counts removed commits, `output_bytes` reports stdout bytes, and any
+trimming sets `output_truncated: true`. Output still exceeds `N` only when the top result's
+metadata alone does.
 
 ### Evidence items
 

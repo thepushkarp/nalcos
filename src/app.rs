@@ -130,7 +130,7 @@ pub fn run(cli: &Cli, execution: &Execution) -> Result<Value> {
                     value = output::compact_search(&value, &cli.repo)?;
                 }
                 if let Some(limit) = args.max_output_bytes {
-                    output::bound_search(&mut value, limit)?;
+                    output::bound_search(&mut value, limit as usize)?;
                 }
             }
             value

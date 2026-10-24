@@ -65,10 +65,7 @@ Read these fields of the search JSON every time:
   (binary files, size limits, exclusions, missing objects). Inspect with `nalcos omissions`.
 - `warnings`: human-readable strings; read every one.
 - `output_truncated`: excerpts or results were clipped; expand evidence before quoting.
-  `--max-bytes` budgets excerpts before `--max-output-bytes` limits the whole JSON;
   `dropped_results` counts commits removed from the end of the ranking.
-
-Compact JSON uses 1-based `rank`; verbose JSON includes `score`.
 
 Each result is one commit with at most two evidence items. Evidence `kind` is `message` or
 `diff`; `role` is `match` or `supporting_code`. Field details are in

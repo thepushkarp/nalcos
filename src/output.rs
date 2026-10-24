@@ -89,53 +89,35 @@ pub fn compact_search(value: &Value, repo: &Path) -> Result<Value> {
 
 pub fn bound_search(value: &mut Value, limit: usize) -> Result<()> {
     value["dropped_results"] = json!(0);
-    if search_output_bytes(value)? <= limit {
-        return Ok(());
-    }
-    value["output_truncated"] = json!(true);
     let mut dropped = 0;
-    while value["results"].as_array().expect("search results").len() > 1 {
-        value["results"]
-            .as_array_mut()
-            .expect("search results")
-            .pop();
-        dropped += 1;
-        value["dropped_results"] = json!(dropped);
-        if search_output_bytes(value)? <= limit {
-            return Ok(());
+    while search_output_bytes(value)? > limit {
+        value["output_truncated"] = json!(true);
+        let results = value["results"].as_array_mut().expect("search results");
+        if results.len() > 1 {
+            results.pop();
+            dropped += 1;
+            value["dropped_results"] = json!(dropped);
+            continue;
         }
-    }
-    if let Some(result) = value["results"]
-        .as_array_mut()
-        .expect("search results")
-        .first_mut()
-    {
-        result["evidence"]
-            .as_array_mut()
-            .expect("search evidence")
-            .retain(|item| item["role"] != "supporting_code");
-    }
-    if search_output_bytes(value)? <= limit {
-        return Ok(());
-    }
-    let items = value["results"][0]["evidence"]
-        .as_array()
-        .map_or(0, Vec::len);
-    for index in (0..items).rev() {
+        let Some(index) = value["results"][0]["evidence"]
+            .as_array()
+            .and_then(|items| {
+                items.iter().rposition(|item| {
+                    item["excerpt"]
+                        .as_str()
+                        .is_some_and(|text| !text.is_empty())
+                })
+            })
+        else {
+            break;
+        };
         let original = value["results"][0]["evidence"][index]["excerpt"]
             .as_str()
             .expect("evidence excerpt")
             .to_owned();
-        if original.is_empty() {
-            continue;
-        }
-        shorten_excerpt(&mut value["results"][0]["evidence"][index], &original, 0);
-        if search_output_bytes(value)? > limit {
-            continue;
-        }
-        // JSON escaping and output_bytes itself affect the budget, so measure
-        // serialized prefixes rather than subtracting raw excerpt lengths.
-        let (mut low, mut high) = (0, original.len());
+        // JSON escaping and output_bytes itself change the size, so search for the
+        // longest excerpt prefix whose serialized response fits.
+        let (mut low, mut high) = (0, original.len() - 1);
         while low < high {
             let middle = low + (high - low).div_ceil(2);
             shorten_excerpt(
@@ -150,22 +132,6 @@ pub fn bound_search(value: &mut Value, limit: usize) -> Result<()> {
             }
         }
         shorten_excerpt(&mut value["results"][0]["evidence"][index], &original, low);
-        search_output_bytes(value)?;
-        return Ok(());
-    }
-    if value["results"]
-        .as_array_mut()
-        .expect("search results")
-        .pop()
-        .is_some()
-    {
-        value["dropped_results"] = json!(dropped + 1);
-    }
-    if search_output_bytes(value)? > limit {
-        value["warnings"].as_array_mut().expect("search warnings").push(json!(format!(
-            "Search JSON envelope exceeds --max-output-bytes {limit} even with zero results; coverage and warnings are preserved"
-        )));
-        search_output_bytes(value)?;
     }
     Ok(())
 }
