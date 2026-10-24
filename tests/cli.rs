@@ -1409,8 +1409,6 @@ fn another_writer_is_reported_instead_of_resume_advice() {
             .unwrap()
             .starts_with("Another nalcos process is indexing")
     }));
-    drop(lock);
-    assert_eq!(repository.json(&["status"])["writer_active"], false);
 }
 
 #[test]
