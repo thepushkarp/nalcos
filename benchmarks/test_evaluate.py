@@ -2,11 +2,19 @@
 
 import hashlib
 import json
+import math
 import tempfile
 import unittest
 from pathlib import Path
 
-from evaluate import cohort_digest, genuine_holdout, metrics, qualify, validate_manifest
+from evaluate import (
+    cohort_digest,
+    compare,
+    genuine_holdout,
+    metrics,
+    qualify,
+    validate_manifest,
+)
 
 
 def query(identifier="q", split="development", gold=None, **extra):
@@ -36,6 +44,11 @@ def ranking(identifier="q", commits=None, complete=True, abstained=False):
     }
 
 
+def paired_ranking(identifier, rank, limit=10):
+    commits = [f"{i:040x}" for i in range(1, rank)] + ["b" * 40] if rank else []
+    return ranking(identifier, commits) | {"rank_limit": limit}
+
+
 def reviewed_query(identifier="q", split="heldout"):
     return query(identifier, split) | {
         "provenance": {
@@ -63,6 +76,107 @@ def declaration(rows, **extra):
 
 
 class EvaluationTests(unittest.TestCase):
+    def test_counts_and_pooled_metrics_use_query_denominators(self):
+        kinds = [
+            "natural",
+            "paraphrase",
+            "vocabulary",
+            "symbol",
+            "path",
+            "mixed",
+            "regression",
+        ]
+        questions = [
+            query(
+                kind,
+                query_kind=kind,
+                gold_paths=["file.rs"],
+                supporting_hunk_contains="needle",
+            )
+            for kind in kinds
+        ]
+        rows = [
+            paired_ranking(kind, 2 if kind == "natural" else 1) for kind in kinds[:-1]
+        ]
+        for row in rows:
+            row["evidence"] = [
+                {"commit": "b" * 40, "paths": ["file.rs"], "excerpt": "needle"}
+            ]
+        result = metrics(questions, rows)
+        self.assertEqual(
+            result["hit_rate_counts"],
+            {
+                "1": {"hits": 5, "n": 7},
+                "5": {"hits": 6, "n": 7},
+                "10": {"hits": 6, "n": 7},
+            },
+        )
+        for group, hits, n in (
+            (result, 6, 7),
+            (result["pooled"]["prose"], 2, 2),
+            (result["pooled"]["exact_term"], 4, 5),
+        ):
+            for metric in ("hit_rate", "path_hit", "hunk_hit"):
+                with self.subTest(group=n, metric=metric):
+                    self.assertEqual(
+                        group[f"{metric}_counts"]["10"], {"hits": hits, "n": n}
+                    )
+                    self.assertEqual(group[metric]["10"], hits / n)
+        self.assertEqual(
+            result["per_query_kind"]["natural"]["hit_rate_counts"]["1"],
+            {"hits": 0, "n": 1},
+        )
+        empty = metrics([query()], [])
+        self.assertEqual(
+            empty["pooled"]["prose"]["hit_rate_counts"]["10"], {"hits": 0, "n": 0}
+        )
+        self.assertIsNone(empty["pooled"]["prose"]["hit_rate"]["10"])
+
+    def test_ndcg_binary_multi_gold_and_query_kinds(self):
+        questions = [
+            query("natural", gold=["b" * 40, "c" * 40], query_kind="natural"),
+            query("plain"),
+        ]
+        result = metrics(
+            questions,
+            [
+                ranking("natural", ["d" * 40, "b" * 40, "c" * 40]),
+                paired_ranking("plain", 11, 20),
+            ],
+        )
+        expected = (1 / math.log2(3) + 1 / math.log2(4)) / (1 + 1 / math.log2(3))
+        self.assertAlmostEqual(result["ndcg@10"], expected / 2)
+        self.assertEqual(result["per_query_kind"]["unspecified"]["mrr"], 1 / 11)
+        self.assertEqual(result["per_query_kind"]["natural"]["recall"]["5"], 1)
+        self.assertAlmostEqual(result["mrr"], (1 / 2 + 1 / 11) / 2)
+
+    def test_evidence_needs_gold_commit_and_matching_path_and_hunk(self):
+        question = query(gold_paths=["old.rs"], supporting_hunk_contains="needle")
+        row = ranking(commits=["c" * 40, "b" * 40])
+        row["evidence"] = [
+            {"commit": "c" * 40, "paths": ["old.rs"], "excerpt": "needle"},
+            {"commit": "b" * 40, "paths": ["old.rs", "new.rs"], "excerpt": "other"},
+            {"commit": "b" * 40, "paths": ["wrong.rs"], "excerpt": "needle"},
+        ]
+        result = metrics([question], [row])
+        self.assertEqual(result["path_hit"], {"1": 0, "5": 1, "10": 1})
+        self.assertEqual(result["path_hit_counts"]["5"], {"hits": 1, "n": 1})
+        self.assertEqual(result["hunk_hit"]["10"], 0)
+        self.assertEqual(result["hunk_hit_counts"]["10"], {"hits": 0, "n": 1})
+        row["evidence"][1]["excerpt"] = "prefix needle suffix"
+        self.assertEqual(metrics([question], [row])["hunk_hit"]["5"], 1)
+        self.assertIsNone(metrics([question], [ranking()])["path_hit"]["10"])
+        missing = query(
+            "missing", gold_paths=["old.rs"], supporting_hunk_contains="needle"
+        )
+        self.assertEqual(metrics([question, missing], [row])["hunk_hit"]["10"], 0.5)
+        unlabeled = query("unlabeled")
+        with_unlabeled = metrics([question, unlabeled], [row])
+        self.assertEqual(with_unlabeled["hit_rate_counts"]["10"], {"hits": 1, "n": 2})
+        self.assertEqual(with_unlabeled["hunk_hit_counts"]["10"], {"hits": 1, "n": 1})
+        with self.assertRaisesRegex(ValueError, "evidence"):
+            metrics([question], [ranking() | {"evidence": row["evidence"]}])
+
     def test_multi_gold_recall_differs_from_hit_rate(self):
         result = metrics(
             [query(gold=["b" * 40, "c" * 40])], [ranking(commits=["d" * 40, "b" * 40])]
@@ -276,6 +390,160 @@ class EvaluationTests(unittest.TestCase):
                 "cpu_timing_cohorts_are_not_comparable",
                 incomparable["release_blockers"],
             )
+
+
+class ComparisonTests(unittest.TestCase):
+    def test_paired_ranks_flips_and_pooled_groups(self):
+        ranks = [
+            ("gained", "natural", None, 3, "win"),
+            ("lost", "paraphrase", 4, None, "loss"),
+            ("absent", "natural", None, None, "tie"),
+            ("same", "vocabulary", 2, 2, "tie"),
+            ("improved", "symbol", 8, 2, "win"),
+            ("worsened", "mixed", 2, 9, "loss"),
+            ("beyond-ten", "path", 11, 12, "loss"),
+        ]
+        questions = [
+            query(identifier, query_kind=kind) for identifier, kind, *_ in ranks
+        ]
+        baseline = [
+            paired_ranking(identifier, a, 20) for identifier, _, a, _, _ in ranks
+        ]
+        candidate = [
+            paired_ranking(identifier, b, 20) for identifier, _, _, b, _ in ranks
+        ]
+        questions[3]["gold_commits"].append("c" * 40)
+        baseline[3]["commits"] = ["d" * 40, "c" * 40, "b" * 40]
+        result = compare(questions, baseline, candidate, bootstrap=100)
+        overall = result["overall"]
+        self.assertEqual(
+            (overall["n"], overall["wins"], overall["losses"], overall["ties"]),
+            (7, 2, 3, 2),
+        )
+        self.assertEqual(overall["hit@10"], {"gained": 1, "lost": 1, "net": 0})
+        self.assertEqual(overall["delta_hit@10"], 0)
+        self.assertAlmostEqual(overall["delta_macro_hit@10"], -1 / 12)
+        expected_mrr = (
+            sum((1 / b if b else 0) - (1 / a if a else 0) for _, _, a, b, _ in ranks)
+            / 7
+        )
+        self.assertAlmostEqual(overall["delta_mrr"], expected_mrr)
+        self.assertEqual(result["pooled"]["prose"]["n"], 3)
+        self.assertEqual(result["pooled"]["exact_term"]["n"], 4)
+        self.assertEqual(result["per_query_kind"]["symbol"]["wins"], 1)
+        details = {row["query_id"]: row for row in result["details"]}
+        for identifier, _, a, b, outcome in ranks:
+            with self.subTest(query_id=identifier):
+                self.assertEqual(details[identifier]["baseline_rank"], a)
+                self.assertEqual(details[identifier]["candidate_rank"], b)
+                self.assertEqual(details[identifier]["outcome"], outcome)
+
+    def test_seeded_paired_bootstrap_and_stratified_macro(self):
+        questions = [
+            query(f"q{i}", query_kind="natural" if i < 3 else "paraphrase")
+            for i in range(4)
+        ]
+        baseline = [paired_ranking(f"q{i}", None if i < 3 else 1) for i in range(4)]
+        candidate = [paired_ranking(f"q{i}", 1 if i < 3 else None) for i in range(4)]
+        result = compare(questions, baseline, candidate, bootstrap=100, seed=19)
+        repeated = compare(
+            questions[::-1], baseline[::-1], candidate[::-1], bootstrap=100, seed=19
+        )
+        self.assertEqual(result, repeated)
+        for group in (result["overall"], result["pooled"]["prose"]):
+            self.assertEqual(group["delta_hit@10"], 0.5)
+            self.assertEqual(group["delta_macro_hit@10"], 0)
+            self.assertEqual(group["ci95"]["delta_macro_hit@10"], [0, 0])
+            self.assertEqual(group["ci95"]["delta_mrr"], group["ci95"]["delta_hit@10"])
+        # With one question per kind, resampling within each kind preserves both.
+        tiny = compare(questions[2:], baseline[2:], candidate[2:], bootstrap=4, seed=5)
+        # The four paired means are -1, -1, -1, 1; interpolate at positions .075/2.925.
+        self.assertEqual(tiny["overall"]["ci95"]["delta_hit@10"][0], -1)
+        self.assertAlmostEqual(tiny["overall"]["ci95"]["delta_hit@10"][1], 0.85)
+
+    def test_negatives_unjudged_and_split_are_separate_from_rank_metrics(self):
+        questions = [
+            query("positive", query_kind="natural"),
+            query("heldout", "heldout"),
+        ]
+        questions += [
+            query(identifier, query_kind="negative")
+            | {"answerable": False, "gold_commits": []}
+            for identifier in ("gained", "lost", "partial")
+        ]
+        questions.append(
+            query("unjudged")
+            | {"answerable": None, "gold_commits": [], "label_status": "unjudged"}
+        )
+        baseline = [paired_ranking(q["id"], None) for q in questions]
+        candidate = [dict(row) for row in baseline]
+        baseline[3]["abstained"] = True
+        candidate[2]["abstained"] = True
+        candidate[4].update(abstained=True, complete=False)
+        result = compare(
+            questions, baseline, candidate, split="development", bootstrap=20
+        )
+        self.assertEqual(result["questions"], 5)
+        self.assertEqual(result["overall"]["n"], 1)
+        self.assertEqual(result["unjudged_questions"], 1)
+        self.assertNotIn("negative", result["per_query_kind"])
+        negatives = result["negative_abstentions"]
+        self.assertEqual(
+            {key: value for key, value in negatives.items() if key != "details"},
+            {
+                "n": 3,
+                "baseline_correct": 1,
+                "candidate_correct": 1,
+                "gained": 1,
+                "lost": 1,
+                "net": 0,
+                "ties": 1,
+            },
+        )
+        empty = compare(
+            questions, baseline, candidate, split="exploratory", bootstrap=20
+        )
+        self.assertIsNone(empty["overall"]["delta_mrr"])
+        self.assertIsNone(empty["overall"]["ci95"]["delta_mrr"])
+        self.assertFalse(empty["acceptance"]["accepted"])
+
+    def test_acceptance_requires_each_clause(self):
+        prose = [("natural", 2, 1), ("paraphrase", 2, 1)]
+        exact = [("vocabulary", 1, 1)]
+        cases = [
+            (None, prose + exact),
+            (
+                "prose_wins_gt_losses",
+                [("natural", 10, 1)] * 10 + [("natural", 9, 10)] * 10 + exact,
+            ),
+            (
+                "prose_mrr_ci_lower_gt_zero",
+                [("natural", 10, 9)] * 2 + [("natural", 1, None)] + exact,
+            ),
+            (
+                "exact_term_hit10_ci_lower_ge_minus_0.05",
+                prose + [("vocabulary", 1, None)],
+            ),
+            # Dilute two losses in one kind across a stable exact-term pool so
+            # only the per-kind guard, not the pooled interval, rejects them.
+            (
+                "no_query_kind_hit10_net_loss_gt_one",
+                prose + [("vocabulary", 1, None)] * 2 + [("symbol", 1, 1)] * 200,
+            ),
+        ]
+        for failed_clause, ranks in cases:
+            questions = [
+                query(str(i), query_kind=kind) for i, (kind, _, _) in enumerate(ranks)
+            ]
+            baseline = [paired_ranking(str(i), a) for i, (_, a, _) in enumerate(ranks)]
+            candidate = [paired_ranking(str(i), b) for i, (_, _, b) in enumerate(ranks)]
+            with self.subTest(failed_clause=failed_clause):
+                acceptance = compare(questions, baseline, candidate, bootstrap=100)[
+                    "acceptance"
+                ]
+                self.assertEqual(acceptance["accepted"], failed_clause is None)
+                for name, passed in acceptance["clauses"].items():
+                    self.assertEqual(passed, name != failed_clause, name)
 
 
 if __name__ == "__main__":
