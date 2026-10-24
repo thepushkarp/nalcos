@@ -83,10 +83,6 @@ Read these fields of the search JSON every time:
 - `warnings`: human-readable strings; read every one.
 - `output_truncated`: excerpts were clipped to `--max-bytes`; expand evidence before quoting.
 
-`score` orders results within one response only. It is reciprocal-rank fusion in hybrid mode,
-BM25 in lexical mode, and cosine similarity in semantic mode, so scores are not comparable
-across modes or queries and are not probabilities.
-
 Each result is one commit with at most two evidence items. Evidence `kind` is `message` or
 `diff`; `role` is `match` or `supporting_code`. Field details are in
 [json.md](references/json.md).
@@ -148,8 +144,8 @@ Recipes for regressions and file archaeology are in [workflows.md](references/wo
 
 - JSON goes to stdout as one object with `schema_version: 1`; progress and diagnostics go to
   stderr. Parse stdout only.
-- Exit codes: `0` success, including empty results; `2` invalid arguments, configuration, model
-  name, or repository path; `1` other failures; `124` timeout; `130` interrupted.
+- Exit codes: `0` success, including empty results; `2` invalid arguments, configuration, or
+  model name; `1` other failures; `124` timeout; `130` interrupted.
 - Failures print `{"schema_version":1,"command":"error","error":{"code":…,"message":…,"action":…}}`.
   Follow `action` when present. Codes and fixes are in
   [troubleshooting.md](references/troubleshooting.md).

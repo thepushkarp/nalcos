@@ -945,47 +945,22 @@ fn invalid_model_selection_leaves_a_fresh_index_uninitialized() {
     let repository = Repository::new();
     repository.write("readme.txt", "unindexed repository\n");
     repository.commit("Initial commit", "2024-01-01T12:00:00Z");
-    for (args, expected_code) in [
-        (vec!["init", "--model", "unknown/model"], "unknown_model"),
-        (vec!["sync", "--model", "profile:missing"], "invalid_config"),
+    for (args, expected_code, exit_code) in [
+        (vec!["init", "--model", "unknown/model"], "unknown_model", 2),
+        (
+            vec!["sync", "--model", "profile:missing"],
+            "invalid_config",
+            2,
+        ),
     ] {
         let output = repository.run(&args);
-        assert_eq!(output.status.code(), Some(2));
-        let error = &parse_json(&output)["error"];
-        assert_eq!(error["code"], expected_code);
-        if expected_code == "unknown_model" {
-            let action = error["action"].as_str().expect("unknown model action");
-            assert!(action.contains("coderank") && action.contains("minilm-int8"));
-        }
+        assert_eq!(output.status.code(), Some(exit_code));
+        assert_eq!(parse_json(&output)["error"]["code"], expected_code);
         let status = repository.json(&["status"]);
         assert_eq!(status["readiness"], "uninitialized");
         assert!(!Path::new(status["index_path"].as_str().unwrap()).exists());
     }
     assert!(!repository.hf_home.exists());
-}
-
-#[test]
-fn directory_outside_git_is_invalid_input_with_guidance() {
-    let repository = Repository::new();
-    let outside = tempfile::tempdir().expect("create non-repository directory");
-    // A translated Git message must not change the classification.
-    for locale in ["C", "de_DE.UTF-8"] {
-        let output = repository
-            .command_at(outside.path())
-            .env("LC_ALL", locale)
-            .env("LANG", locale)
-            .args(["--offline", "status"])
-            .output()
-            .expect("execute NaLCoS");
-        assert_eq!(output.status.code(), Some(2), "locale {locale}");
-        let error = &parse_json(&output)["error"];
-        assert_eq!(error["code"], "not_a_repository", "locale {locale}");
-        assert_eq!(
-            error["action"],
-            "Run inside a Git checkout or pass --repo PATH"
-        );
-    }
-    assert!(!repository.data.exists());
 }
 
 #[test]

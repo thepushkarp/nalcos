@@ -8,13 +8,12 @@ paths on stderr.
 
 | Code | Exit | Cause | Fix |
 | --- | --- | --- | --- |
-| `not_a_repository` | 2 | The working directory or `--repo` is not inside a Git checkout. | Change into the checkout or pass `--repo PATH`. |
 | `invalid_input` | 2 | A bad argument: empty query, `--limit` outside 1–100, a range other than `A..B`, an unknown revision, a malformed date, or `--since` later than `--until`. | Fix the argument named in `message`. Check revisions with `git rev-parse --verify REV`. |
 | `invalid_config` | 2 | The configuration file is invalid, or `--model profile:NAME` names a missing profile. | Fix the TOML, or select another file with `--config`. |
-| `unknown_model` | 2 | `--model` is not a registered alias, Hugging Face ID, or `profile:NAME`. | Use an alias from `action`, such as `coderank` or `minilm`. |
+| `unknown_model` | 2 | `--model` is not a registered alias, Hugging Face ID, or `profile:NAME`. | Use a registered alias such as `coderank` or `minilm`. |
 | `unsupported_schema` | 2 | The index was written by an incompatible nalcos version. | Use the matching nalcos version. The index is derived data; with the user's approval, remove the index directory shown by `-v` and rebuild. |
 | `unsupported_git` | 1 | Git is older than 2.45 or lacks `--no-lazy-fetch`. | Install Git 2.45 or later first on `PATH`. |
-| `git_error` | 1 | Git failed, for example on `safe.directory` ownership checks. | Read `message`; fix the Git problem it names. |
+| `git_error` | 1 | Git failed, for example outside a Git checkout or on `safe.directory` ownership checks. | Read `message`; change into the checkout, pass `--repo PATH`, or fix the Git problem it names. |
 | `semantic_unavailable` | 1 | `--mode semantic` or `status --check` without an active embedding model. | Use `--mode lexical`, or ask before running `nalcos init`. If `action` names a pending generation, run `nalcos sync`. |
 | `model_required` | 1 | `--revision`, `--variant`, or `--reembed` without a model to modify. | Pass `--model ALIAS` too. |
 | `model_not_cached` | 1 | Model files are missing, often under `--offline` or after the cache was cleared. | Run `nalcos init` or `nalcos sync` with network access (ask first). |
