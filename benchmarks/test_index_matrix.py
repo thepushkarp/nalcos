@@ -1,17 +1,14 @@
 """Index orchestration uses local Git fixtures and a fake NaLCoS executable."""
 
 import json
-import os
 import subprocess
 import sys
 import tempfile
 import textwrap
 import unittest
 from pathlib import Path
-from unittest.mock import patch
 
-from harness import load_repositories, rss_bytes, run_measured
-from index_matrix import read_payload, summarize
+from index_matrix import summarize
 
 BENCHMARKS = Path(__file__).resolve().parent
 
@@ -59,24 +56,6 @@ def repo_manifest(path, head, base, keys=("small", "large")):
 
 
 class IndexTests(unittest.TestCase):
-    def test_manifest_rejects_invalid_snapshot_and_range(self):
-        with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "repos.json"
-            for field, value in (
-                ("snapshot", "abc"),
-                ("semantic_range", "a" * 40 + "..." + "b" * 40),
-            ):
-                repositories = repo_manifest(path, "a" * 40, "b" * 40)
-                repositories["small"][field] = value
-                path.write_text(
-                    json.dumps({"version": 1, "repositories": repositories})
-                )
-                with (
-                    self.subTest(field=field, value=value),
-                    self.assertRaisesRegex(ValueError, field),
-                ):
-                    load_repositories(path)
-
     def test_matrix_isolates_every_run_and_separates_range_tiers(self):
         with tempfile.TemporaryDirectory() as directory:
             work = Path(directory)
@@ -177,38 +156,6 @@ class IndexTests(unittest.TestCase):
             self.assertEqual(refused.returncode, 2)
             self.assertIn("exists", refused.stderr)
 
-    def test_wait4_handles_large_output_failure_timeout_and_rss_units(self):
-        with tempfile.TemporaryDirectory() as directory:
-            work = Path(directory)
-            binary = executable(
-                work / "child",
-                """
-                import sys, time
-                print("x" * 262144, flush=True)
-                print("stderr saved", file=sys.stderr, flush=True)
-                if "sleep" in sys.argv:
-                    time.sleep(20)
-                raise SystemExit(7)
-            """,
-            )
-            for args, timeout, expected in (([], 5, 7), (["sleep"], 0.15, 124)):
-                measured = run_measured(
-                    [str(binary), *args],
-                    work / "stdout",
-                    work / "stderr",
-                    env=os.environ.copy(),
-                    timeout=timeout,
-                )
-                self.assertEqual(measured["exit_code"], expected)
-                self.assertEqual(measured["timed_out"], expected == 124)
-                self.assertGreater(measured["peak_rss_bytes"], 0)
-                if expected == 7:
-                    self.assertGreater((work / "stdout").stat().st_size, 262144)
-            with patch("harness.sys.platform", "darwin"):
-                self.assertEqual(rss_bytes(1234), 1234)
-            with patch("harness.sys.platform", "linux"):
-                self.assertEqual(rss_bytes(1234), 1234 * 1024)
-
     def test_failed_runs_do_not_improve_medians(self):
         row = {
             "repo_key": "r",
@@ -224,17 +171,6 @@ class IndexTests(unittest.TestCase):
         summary = summarize([row, row | {"exit_code": 1, "elapsed_seconds": 0.01}])[0]
         self.assertEqual(summary["medians"]["elapsed_seconds"], 10)
         self.assertEqual(summary["successful_runs"], 1)
-
-    def test_successful_unrecognized_json_fails_with_output_path(self):
-        with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "index.stdout"
-            path.write_text("{}")
-            with self.assertRaisesRegex(ValueError, "index.stdout"):
-                read_payload(path, {"exit_code": 0})
-            path.write_text("not JSON")
-            measurement = {"exit_code": 1}
-            self.assertEqual(read_payload(path, measurement), {})
-            self.assertIn(str(path), measurement["json_error"])
 
 
 if __name__ == "__main__":

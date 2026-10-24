@@ -40,7 +40,7 @@ NALCOS_CONDITIONS = {"nalcos_git_rg", "nalcos_hint"}
 PROJECT_HINT = (
     "For questions about this repository's history (which commit introduced, changed, "
     "removed, or broke something; when or why behavior changed), use the {skill} skill: "
-    "run `nalcos --json search \"<question in plain words>\" --limit 5 --freshness cached` "
+    'run `nalcos --json search "<question in plain words>" --limit 5 --freshness cached` '
     "alongside git log, then confirm candidates with git show."
 )
 AGENTS = ["claude", "codex"]
@@ -260,7 +260,6 @@ def skill_used(agent, events, complete, skill_name="nalcos"):
             and item.get("exit_code") == 0
         ):
             command = shlex.split(item.get("command", ""), comments=True)
-            # Codex records the shell wrapper as well as direct read commands.
             if (
                 len(command) == 3
                 and Path(command[0]).name in {"sh", "bash", "zsh"}
@@ -480,13 +479,17 @@ def write_project_hint(repository, skill_name):
         path = repository / name
         existing = path.read_text() if path.exists() else ""
         separator = "\n\n" if existing and not existing.endswith("\n\n") else ""
-        path.write_text(existing + separator + PROJECT_HINT.format(skill=skill_name) + "\n")
+        path.write_text(
+            existing + separator + PROJECT_HINT.format(skill=skill_name) + "\n"
+        )
 
 
 def collect_worktree_trial(plan, args, directory, repository):
     query, agent, condition = plan["query"], plan["agent"], plan["condition"]
     for root in (".claude", ".agents"):
-        destination = repository / root / "skills" / (args.skill.name if args.skill else "nalcos")
+        destination = (
+            repository / root / "skills" / (args.skill.name if args.skill else "nalcos")
+        )
         if (
             not destination.resolve().is_relative_to(repository.resolve())
             or destination.exists()

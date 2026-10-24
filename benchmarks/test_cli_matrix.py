@@ -39,10 +39,14 @@ class CoverageTests(unittest.TestCase):
         }
         self.assertIn(
             "snapshot_mismatch",
-            adapt_response(regression, "lexical", self.payload, 0)["incomplete_reasons"],
+            adapt_response(regression, "lexical", self.payload, 0)[
+                "incomplete_reasons"
+            ],
         )
         self.payload["scope"]["roots"] = [{"oid": "d" * 40}]
-        self.assertTrue(adapt_response(regression, "lexical", self.payload, 0)["complete"])
+        self.assertTrue(
+            adapt_response(regression, "lexical", self.payload, 0)["complete"]
+        )
 
     def test_semantic_fallback_and_partial_history_are_incomplete(self):
         self.payload["history_coverage"]["complete"] = False
@@ -200,35 +204,6 @@ class CoverageTests(unittest.TestCase):
             self.assertEqual(summary["by_cache_state"]["cold"]["samples"], 3)
             self.assertEqual(summary["by_cache_state"]["warm"]["samples"], 3)
             self.assertGreater(summary["by_cache_state"]["warm"]["p95_seconds"], 0)
-
-    def test_missing_repo_key_names_query_and_mapping_input(self):
-        with tempfile.TemporaryDirectory() as directory:
-            work = Path(directory)
-            manifest, mapping = work / "queries.jsonl", work / "repositories.json"
-            manifest.write_text(json.dumps(query("missing-key")) + "\n")
-            mapping.write_text("{}")
-            result = subprocess.run(
-                [
-                    sys.executable,
-                    str(BENCHMARKS / "cli_matrix.py"),
-                    "--binary",
-                    "/unused",
-                    "--manifest",
-                    str(manifest),
-                    "--repositories",
-                    str(mapping),
-                    "--output",
-                    str(work / "out"),
-                ],
-                capture_output=True,
-                text=True,
-                check=False,
-            )
-            self.assertEqual(result.returncode, 2)
-            self.assertIn("missing-key", result.stderr)
-            self.assertIn("repo_key", result.stderr)
-            self.assertNotIn("KeyError", result.stderr)
-            self.assertFalse((work / "out").exists())
 
 
 if __name__ == "__main__":

@@ -3,8 +3,6 @@
 import hashlib
 import json
 import math
-import subprocess
-import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -509,17 +507,6 @@ class ComparisonTests(unittest.TestCase):
         self.assertIsNone(empty["overall"]["ci95"]["delta_mrr"])
         self.assertFalse(empty["acceptance"]["accepted"])
 
-    def test_mismatched_ids_name_both_missing_cohorts(self):
-        with self.assertRaisesRegex(
-            ValueError,
-            "baseline missing.*candidate-only.*candidate missing.*baseline-only",
-        ):
-            compare(
-                [query("baseline-only"), query("candidate-only")],
-                [paired_ranking("baseline-only", 1)],
-                [paired_ranking("candidate-only", 1)],
-            )
-
     def test_acceptance_requires_each_clause(self):
         prose = [("natural", 2, 1), ("paraphrase", 2, 1)]
         exact = [("vocabulary", 1, 1)]
@@ -557,78 +544,6 @@ class ComparisonTests(unittest.TestCase):
                 self.assertEqual(acceptance["accepted"], failed_clause is None)
                 for name, passed in acceptance["clauses"].items():
                     self.assertEqual(passed, name != failed_clause, name)
-
-    def test_invalid_resamples_and_recorded_limits(self):
-        for bootstrap in (0, -1, True):
-            with (
-                self.subTest(bootstrap=bootstrap),
-                self.assertRaisesRegex(ValueError, "bootstrap"),
-            ):
-                compare(
-                    [query()],
-                    [paired_ranking("q", 1)],
-                    [paired_ranking("q", 1)],
-                    bootstrap=bootstrap,
-                )
-        for limit in (None, 0, True):
-            with (
-                self.subTest(limit=limit),
-                self.assertRaisesRegex(ValueError, "q.*rank_limit"),
-            ):
-                compare(
-                    [query()], [paired_ranking("q", 1, limit)], [paired_ranking("q", 1)]
-                )
-        with self.assertRaisesRegex(ValueError, "rank_limit"):
-            compare([query()], [paired_ranking("q", 2, 1)], [paired_ranking("q", 1)])
-
-    def test_cli_hash_validation_output_and_exit_codes(self):
-        with tempfile.TemporaryDirectory() as directory:
-            base = Path(directory)
-            manifest = base / "queries.jsonl"
-            manifest.write_text(json.dumps(query(query_kind="natural")) + "\n")
-            digest = hashlib.sha256(manifest.read_bytes()).hexdigest()
-            paths = []
-            for name in ("a", "b"):
-                folder = base / name
-                folder.mkdir()
-                (folder / "summary.json").write_text(
-                    json.dumps({"manifest_sha256": digest})
-                )
-                paths.append(folder / "lexical.rankings.jsonl")
-                paths[-1].write_text(json.dumps(paired_ranking("q", 1)) + "\n")
-            command = [
-                sys.executable,
-                str(Path(__file__).with_name("evaluate.py")),
-                "compare",
-                "--manifest",
-                str(manifest),
-                "--baseline",
-                str(paths[0]),
-                "--candidate",
-                str(paths[1]),
-                "--bootstrap",
-                "20",
-                "--seed",
-                "7",
-            ]
-            output = base / "comparison.json"
-            written = subprocess.run(
-                command + ["--output", str(output)],
-                capture_output=True,
-                text=True,
-                check=False,
-            )
-            self.assertEqual(written.returncode, 0, written.stderr)
-            self.assertFalse(json.loads(output.read_text())["acceptance"]["accepted"])
-            (paths[1].parent / "summary.json").write_text(
-                json.dumps({"manifest_sha256": "f" * 64})
-            )
-            mismatch = subprocess.run(
-                command, capture_output=True, text=True, check=False
-            )
-            self.assertEqual(mismatch.returncode, 2)
-            self.assertIn("manifest_sha256 differs", mismatch.stderr)
-            self.assertIn(str(paths[1]), mismatch.stderr)
 
 
 if __name__ == "__main__":

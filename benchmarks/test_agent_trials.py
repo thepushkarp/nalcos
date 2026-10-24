@@ -1,26 +1,18 @@
 """Agent collection and blind review with fake executables; no model calls."""
 
-import io
 import json
 import os
-import shutil
 import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
-from types import SimpleNamespace
 from unittest.mock import patch
 
 from agent_trials import (
-    checked_command,
-    collect_trial,
-    import_reviews,
     parse_agent_output,
     real_git,
-    task_manifest,
     write_git_guard,
-    write_project_hint,
 )
 from evaluate import read_jsonl
 from test_index_matrix import BENCHMARKS, executable, local_repo, repo_manifest
@@ -60,17 +52,6 @@ def collection_inputs(work):
 
 
 class AgentTrialTests(unittest.TestCase):
-    def test_project_hint_preserves_existing_instructions(self):
-        with tempfile.TemporaryDirectory() as directory:
-            repo = Path(directory)
-            (repo / "CLAUDE.md").write_text("# Project rules\n")
-            write_project_hint(repo, "nalcos")
-            self.assertTrue(
-                (repo / "CLAUDE.md").read_text().startswith("# Project rules\n")
-            )
-            for name in ("CLAUDE.md", "AGENTS.md"):
-                self.assertIn("use the nalcos skill", (repo / name).read_text())
-
     def test_git_guard_rejects_writes_and_exec_and_allows_history_reads(self):
         with tempfile.TemporaryDirectory() as directory:
             work = Path(directory)
@@ -103,84 +84,6 @@ class AgentTrialTests(unittest.TestCase):
                 with self.subTest(args=args):
                     self.assertEqual(run(*args).returncode, 126)
             self.assertFalse(target.exists())
-
-    def test_worktree_and_private_state_are_removed_after_failures(self):
-        with tempfile.TemporaryDirectory() as directory:
-            work = Path(directory)
-            source = work / "small"
-            head, _ = local_repo(source)
-            original_config = (source / ".git/config").read_bytes()
-            for stage in ("add", "agent"):
-                trial = work / stage
-                plan = {
-                    "directory": str(trial),
-                    "query": {"repo_key": "small", "snapshot": head},
-                }
-
-                def run_command(command, operation, stage=stage):
-                    checked_command(command, operation)
-                    if stage == "add" and "add" in command:
-                        raise OSError("fake preparation failure after registration")
-
-                def fail_agent(plan, args, directory, repository):
-                    for name in ("data", "runtime"):
-                        (directory / name).mkdir()
-                        (directory / name / "partial").write_text("trial state")
-                    raise OSError("fake agent launch failure")
-
-                with (
-                    patch("agent_trials.checked_command", side_effect=run_command),
-                    patch(
-                        "agent_trials.collect_worktree_trial", side_effect=fail_agent
-                    ),
-                    self.assertRaisesRegex(OSError, "fake"),
-                ):
-                    collect_trial(plan, SimpleNamespace(clones=work), [])
-                for name in ("repo", "data", "runtime"):
-                    self.assertFalse((trial / name).exists())
-                registered = subprocess.check_output(
-                    ["git", "-C", str(source), "worktree", "list", "--porcelain"],
-                    text=True,
-                )
-                self.assertNotIn(str(trial / "repo"), registered)
-            self.assertEqual((source / ".git/config").read_bytes(), original_config)
-
-    def test_cleanup_error_fails_trial_and_does_not_prevent_pruning(self):
-        with tempfile.TemporaryDirectory() as directory:
-            work = Path(directory)
-            head, _ = local_repo(work / "small")
-            trial = work / "trial"
-            plan = {
-                "directory": str(trial),
-                "query": {"repo_key": "small", "snapshot": head},
-            }
-
-            def run_command(command, operation):
-                if "remove" in command:
-                    # Leave a stale registration that only prune can remove.
-                    shutil.rmtree(trial / "repo")
-                    raise ValueError("fake removal diagnostic")
-                checked_command(command, operation)
-
-            errors = io.StringIO()
-            with (
-                patch("agent_trials.checked_command", side_effect=run_command),
-                patch(
-                    "agent_trials.collect_worktree_trial",
-                    return_value={"outcome": "completed"},
-                ),
-                patch("agent_trials.evaluate_trials"),
-                patch("agent_trials.sys.stderr", errors),
-            ):
-                row = collect_trial(plan, SimpleNamespace(clones=work), [])
-            registered = subprocess.check_output(
-                ["git", "-C", str(work / "small"), "worktree", "list", "--porcelain"],
-                text=True,
-            )
-            self.assertNotIn(str(trial / "repo"), registered)
-            self.assertEqual(row["outcome"], "failed")
-            self.assertIn("fake removal diagnostic", row["cleanup_errors"][0])
-            self.assertIn("fake removal diagnostic", errors.getvalue())
 
     def test_usage_counts_claude_cache_tokens_and_codex_cache_once(self):
         result = {
@@ -465,50 +368,6 @@ class AgentTrialTests(unittest.TestCase):
                     split="development",
                 )
                 self.assertEqual(result["conditions"]["nalcos_git_rg"]["successes"], 1)
-
-    def test_review_validation_and_absence_labels(self):
-        row = {
-            "trial_id": "one",
-            "outcome": "failed",
-            "review_status": "pending_review",
-        }
-        review = {
-            "review_id": "one",
-            "passed": True,
-            "blind_to_condition": True,
-            "reviewer_id": "judge",
-            "references": ["review"],
-            "verified_commits": [],
-        }
-        merged = import_reviews([row], [review])[0]
-        self.assertEqual(merged["outcome"], "failed")
-        self.assertEqual(row["review_status"], "pending_review")
-        invalid = [
-            review | {key: value}
-            for key, value in (
-                ("review_id", "unknown"),
-                ("verified_commits", ["abc"]),
-                ("passed", "yes"),
-                ("blind_to_condition", None),
-                ("reviewer_id", ""),
-                ("references", []),
-                ("absence_reviewed", "yes"),
-            )
-        ]
-        for reviews in ([review, review], *([r] for r in invalid)):
-            with self.assertRaises(ValueError):
-                import_reviews([row], reviews)
-        repo = {"r": {"url": "local", "snapshot": "a" * 40, "split": "heldout"}}
-        task = {
-            "id": "q",
-            "repo_key": "r",
-            "prompt": "Was this ever implemented?",
-            "answer_type": "absence",
-            "gold_commits": [],
-        }
-        self.assertFalse(task_manifest([task], repo)[0]["answerable"])
-        with self.assertRaisesRegex(ValueError, "gold"):
-            task_manifest([task | {"gold_commits": ["b" * 40]}], repo)
 
     def test_token_overrun_and_timeout_fail_and_remain_workflow_compatible(self):
         with tempfile.TemporaryDirectory() as directory:

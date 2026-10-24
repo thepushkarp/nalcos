@@ -69,12 +69,9 @@ def validate_manifest(rows):
                 raise ValueError(f"{identifier}: {field} must be a nonempty string")
         for field in ("repo_key", "supporting_hunk_contains"):
             if field in row and (
-                not isinstance(row[field], str)
-                or not row[field].strip()
+                not isinstance(row[field], str) or not row[field].strip()
             ):
-                raise ValueError(
-                    f"{identifier}: {field} must be a nonempty string"
-                )
+                raise ValueError(f"{identifier}: {field} must be a nonempty string")
         if "query_kind" in row and (
             not isinstance(row["query_kind"], str)
             or row["query_kind"] not in QUERY_KINDS
