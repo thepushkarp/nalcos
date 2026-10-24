@@ -461,11 +461,12 @@ fn write_indexing_runtime(
 /// Excerpt lines shown per evidence item in human search output.
 const EXCERPT_LINES: usize = 8;
 
-/// Escapes control characters so commit metadata cannot drive the terminal.
+/// Escapes control and bidirectional-override characters so commit metadata
+/// cannot drive the terminal or visually reorder the line.
 fn printable(text: &str) -> String {
     text.chars()
         .flat_map(|c| {
-            if c.is_control() {
+            if c.is_control() || matches!(c, '\u{200e}' | '\u{200f}' | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}') {
                 c.escape_default().collect::<Vec<_>>()
             } else {
                 vec![c]
