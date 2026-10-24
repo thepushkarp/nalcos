@@ -67,12 +67,45 @@ Argument errors from the parser also use this envelope with `code: "invalid_inpu
     queries, and not a probability.
   - `evidence`: at most two items, described below.
 - `output_truncated`: `true` when any excerpt or commit message was clipped. `--max-bytes` is
-  shared by all excerpts in the response.
+  shared by all excerpts in the response. A total-output budget also sets this flag when it
+  removes results or shortens excerpts.
 - `source_refresh_required`, `active_generation`, and `runtime` as in `status`.
 
 When no index exists yet (for example `--freshness cached` before any indexing), `results` is
 empty, `mode_used` is `lexical`, and `warnings` explains why; `filters` and `freshness` are
 omitted.
+
+### Compact search (`--compact`)
+
+With `--json search --compact`, `schema_version` stays `1` and `compact` is `true`.
+The response retains `mode_requested`, `mode_used`, `freshness`, history and embedding coverage,
+`warnings`, `output_truncated`, and `results`. `source_coverage` retains `recorded_omissions`
+and `categories`; detailed reasons are available from `omissions`. Compact `freshness` is
+included even when no index exists.
+
+Each result carries:
+
+- `rank`: 1-based retrieval order, best first.
+- `commit`: full OID; `short`: its first 12 characters; `subject`: first message line.
+- `committed_at`: RFC 3339 UTC timestamp; `author`: author name.
+- `evidence`: `id`, `kind`, `role`, `excerpt`, `verified`, `excerpt_truncated`, and
+  `metadata_only`, with the meanings below; `path` is a display path, `"old -> new"` for
+  renames, or `null` for messages. Diff evidence includes `old_start`, `old_lines`,
+  `new_start`, and `new_lines`.
+- Each evidence item also has `show`: runnable argv
+  `["nalcos", "--repo", PATH, "show", "--evidence", ID]`.
+
+Hashes, blob/parent/tree OIDs, emails, full messages, scores, and duplicate path encodings
+remain available from verbose search or `show --evidence`. Human output is unchanged.
+
+### Total JSON budget (`--max-output-bytes N`)
+
+`N` is at least 1024 and bounds JSON search stdout, including the trailing newline, with or
+without `--compact`. Lowest-ranked results are dropped first; if the top result alone
+overflows, its excerpts are shortened on UTF-8 boundaries and marked `excerpt_truncated`.
+`dropped_results` counts removed commits, `output_bytes` reports stdout bytes, and any
+trimming sets `output_truncated: true`. Output still exceeds `N` only when the top result's
+metadata alone does.
 
 ### Evidence items
 

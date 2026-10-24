@@ -1,6 +1,6 @@
 ---
 name: nalcos
-description: Search this repository's Git history by meaning with the nalcos CLI. Use this skill whenever a question is about the repository's history - which commit introduced, changed, removed, or broke something; when or why code or behavior changed; or which commits between two revisions could have caused a regression - even if the user does not mention nalcos. Run one ranked search alongside git log -S/-G, `nalcos --json search "<question in plain words>" --limit 5 --freshness cached`, to surface commits whose messages and diffs use different words than the question; confirm candidates with git show and keep searching with git when the evidence does not match. Works on local checkouts only and never fetches remote history.
+description: Search this repository's Git history by meaning with the nalcos CLI. Use this skill whenever a question is about the repository's history - which commit introduced, changed, removed, or broke something; when or why code or behavior changed; or which commits between two revisions could have caused a regression - even if the user does not mention nalcos. Run one ranked search alongside git log -S/-G, `nalcos --json search "<question in plain words>" --compact --limit 5 --max-output-bytes 8192 --freshness cached --timeout 60s`, to surface commits whose messages and diffs use different words than the question; confirm candidates with git show and keep searching with git when the evidence does not match. Works on local checkouts only and never fetches remote history.
 license: MIT
 compatibility: Requires the nalcos CLI on macOS (Apple Silicon) or Linux and Git 2.45 or later. Semantic search needs a one-time model download of about 274 MB; lexical mode needs no model.
 ---
@@ -31,27 +31,10 @@ Expect `nalcos 2.x`. If the command is missing or prints `nalcos 0.x` (the retir
 follow [install.md](references/install.md). Ask the user before installing software or
 downloading a model.
 
-### 2. Check readiness
-
-Pass the same scope options (`--range`, `--ref`, `--all-refs`, `--first-parent`) that you plan
-to search with; readiness and coverage are computed for that scope.
+### 2. Search
 
 ```sh
-nalcos --json status
-```
-
-| `readiness` | Meaning | Do this |
-| --- | --- | --- |
-| `uninitialized` | No index for this repository. | Search with `--mode lexical --freshness wait --timeout 5m` (builds a lexical index), or ask before running `nalcos init` (downloads about 274 MB, then indexes). |
-| `lexical_only` | Index exists without an embedding model; history may still be partial. | Search with `--mode lexical`, adding `--freshness wait --timeout 5m` while `history_coverage.complete` is `false`. `nalcos init` enables semantic search. |
-| `partial` | Some commits or embeddings in scope are not indexed. | Run `nalcos sync --timeout 10m`, or search with `--freshness wait --timeout 5m`. |
-| `source_refresh_required` | Index was built by an older extraction format. | Run `nalcos sync`; searches still work meanwhile. |
-| `ready` | Every commit and document in scope is indexed and embedded. | Search. Still check `source_coverage`. |
-
-### 3. Search
-
-```sh
-nalcos --json search "stop retrying requests after cancellation" --limit 5 --timeout 60s
+nalcos --json search "stop retrying requests after cancellation" --compact --limit 5 --max-output-bytes 8192 --freshness cached --timeout 60s
 ```
 
 - Describe the change itself: behavior, identifiers, error text, file or module names.
@@ -70,7 +53,7 @@ matches whole tokens case-insensitively, without stemming: `retry` matches `retr
 wildcards. Put the distinctive identifiers in the query, and run a second query with
 alternative wording rather than adding filler words.
 
-### 4. Check the result before concluding
+### 3. Check the result before concluding
 
 Read these fields of the search JSON every time:
 
@@ -81,11 +64,30 @@ Read these fields of the search JSON every time:
 - `source_coverage.recorded_omissions`: nonzero means some patch text was not indexed
   (binary files, size limits, exclusions, missing objects). Inspect with `nalcos omissions`.
 - `warnings`: human-readable strings; read every one.
-- `output_truncated`: excerpts were clipped to `--max-bytes`; expand evidence before quoting.
+- `output_truncated`: excerpts or results were clipped; expand evidence before quoting.
+  `dropped_results` counts commits removed from the end of the ranking.
 
 Each result is one commit with at most two evidence items. Evidence `kind` is `message` or
 `diff`; `role` is `match` or `supporting_code`. Field details are in
 [json.md](references/json.md).
+
+### 4. Check readiness when needed
+
+Run status only when search reports incomplete coverage, a mode fallback, or an error.
+Pass the same scope options (`--range`, `--ref`, `--all-refs`, `--first-parent`) used for
+the search; readiness and coverage are computed for that scope.
+
+```sh
+nalcos --json status
+```
+
+| `readiness` | Meaning | Do this |
+| --- | --- | --- |
+| `uninitialized` | No index for this repository. | Search with `--mode lexical --freshness wait --timeout 5m` (builds a lexical index), or ask before running `nalcos init` (downloads about 274 MB, then indexes). |
+| `lexical_only` | Index exists without an embedding model; history may still be partial. | Search with `--mode lexical`, adding `--freshness wait --timeout 5m` while `history_coverage.complete` is `false`. `nalcos init` enables semantic search. |
+| `partial` | Some commits or embeddings in scope are not indexed. | Run `nalcos sync --timeout 10m`, or search with `--freshness wait --timeout 5m`. |
+| `source_refresh_required` | Index was built by an older extraction format. | Run `nalcos sync`; searches still work meanwhile. |
+| `ready` | Every commit and document in scope is indexed and embedded. | Search. Still check `source_coverage`. |
 
 ### 5. Expand and confirm
 
@@ -95,7 +97,8 @@ nalcos --json show COMMIT_SHA --path 'src/network/**'
 ```
 
 Pass evidence IDs exactly as returned (`e1:` followed by 64 hex digits); prefixes do not match.
-When an evidence item has `metadata_only: true` (a rename, mode change, or binary file without a
+Compact evidence includes a runnable `show` argv array for expansion.
+When expanded evidence has `metadata_only: true` (a rename, mode change, or binary file without a
 textual hunk), run `nalcos` with its `patch_lookup.args` to read the file patch.
 
 Then confirm with Git itself before you report:

@@ -132,6 +132,12 @@ pub struct SearchArgs {
     pub limit: u32,
     #[arg(long, default_value_t = 16_384)]
     pub max_bytes: usize,
+    /// Emit compact agent-oriented JSON; human output is unchanged
+    #[arg(long)]
+    pub compact: bool,
+    /// Total stdout JSON budget including newline (at least 1024 bytes)
+    #[arg(long, value_parser = clap::value_parser!(u64).range(1024..))]
+    pub max_output_bytes: Option<u64>,
 }
 
 #[derive(Debug, Args)]

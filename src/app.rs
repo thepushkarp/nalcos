@@ -122,7 +122,19 @@ pub fn run(cli: &Cli, execution: &Execution) -> Result<Value> {
                 }
             }
         }
-        Command::Search(args) => search(cli, &config, &repo, &index_path, args, execution)?,
+        Command::Search(args) => {
+            let mut value = search(cli, &config, &repo, &index_path, args, execution)?;
+            if cli.json {
+                if args.compact {
+                    value["freshness"] = json!(args.freshness);
+                    value = output::compact_search(&value, &cli.repo)?;
+                }
+                if let Some(limit) = args.max_output_bytes {
+                    output::bound_search(&mut value, limit as usize)?;
+                }
+            }
+            value
+        }
         Command::Show(args) => show(&repo, &index_path, args, execution)?,
         Command::Status(args) => status(
             cli,
