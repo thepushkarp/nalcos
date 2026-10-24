@@ -38,6 +38,7 @@ nalcos --json search "stop retrying requests after cancellation" --compact --lim
 ```
 
 - Describe the change itself: behavior, identifiers, error text, file or module names.
+- A query that is exactly an option name, such as `-v`, must follow `--`.
 - Choose freshness deliberately:
   - default `auto` indexes new commits for up to two seconds, which writes the index and
     takes a writer lock;

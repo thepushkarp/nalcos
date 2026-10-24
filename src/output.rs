@@ -287,6 +287,9 @@ pub fn emit(value: &Value, json: bool) -> Result<()> {
                 "Embeddings: {}/{} documents",
                 value["embedding_coverage"]["indexed"], value["embedding_coverage"]["total"]
             )?;
+            if value["writer_active"] == true {
+                writeln!(out, "Indexing in progress in another nalcos process")?;
+            }
             if value["staging_progress"].is_object() {
                 writeln!(
                     out,
