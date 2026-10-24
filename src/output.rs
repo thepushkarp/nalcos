@@ -4,9 +4,45 @@ use crate::{
 };
 use serde_json::{Value, json};
 use std::{
+    collections::VecDeque,
     io::{self, Write},
     path::Path,
+    time::{Duration, Instant},
 };
+
+const RATE_WINDOW: Duration = Duration::from_secs(30);
+const RATE_MINIMUM: Duration = Duration::from_secs(5);
+
+/// Embedding rate over the last `RATE_WINDOW` of this run, so a resumed build's
+/// retained documents and a slow start do not distort the remaining-time estimate.
+pub struct ProgressRate(VecDeque<(Instant, usize)>);
+
+impl ProgressRate {
+    pub fn new(started: Instant) -> Self {
+        Self(VecDeque::from([(started, 0)]))
+    }
+
+    /// Returns `", N docs/s, about T left"` once `RATE_MINIMUM` of samples exist.
+    pub fn suffix(&mut self, now: Instant, done: usize, remaining: usize) -> String {
+        self.0.push_back((now, done));
+        while self.0.len() > 2 && now.duration_since(self.0[1].0) >= RATE_WINDOW {
+            self.0.pop_front();
+        }
+        let (since, base) = self.0[0];
+        let elapsed = now.duration_since(since);
+        if elapsed < RATE_MINIMUM || done <= base {
+            return String::new();
+        }
+        let rate = (done - base) as f64 / elapsed.as_secs_f64();
+        let left = (remaining as f64 / rate).round() as u64;
+        let left = match left {
+            0..60 => format!("{left}s"),
+            60..3600 => format!("{}m", left.div_ceil(60)),
+            _ => format!("{}h {:02}m", left / 3600, left % 3600 / 60),
+        };
+        format!(", {rate:.1} docs/s, about {left} left")
+    }
+}
 
 pub fn compact_search(value: &Value, repo: &Path) -> Result<Value> {
     let mut compact = json!({"compact":true});
@@ -473,6 +509,26 @@ pub fn truncate_utf8(text: &str, limit: usize) -> (&str, bool) {
 mod tests {
     use super::*;
     use crate::embedding::{Device, profile};
+
+    #[test]
+    fn progress_rate_appears_after_enough_samples_and_tracks_the_recent_window() {
+        let start = Instant::now();
+        let at = |seconds| start + Duration::from_secs(seconds);
+        let mut rate = ProgressRate::new(start);
+        assert_eq!(rate.suffix(at(2), 40, 960), "");
+        assert_eq!(
+            rate.suffix(at(10), 200, 800),
+            ", 20.0 docs/s, about 40s left"
+        );
+        assert_eq!(
+            rate.suffix(at(40), 500, 500),
+            ", 10.0 docs/s, about 50s left"
+        );
+        assert_eq!(
+            rate.suffix(at(70), 560, 100_000),
+            ", 2.0 docs/s, about 13h 53m left"
+        );
+    }
 
     #[test]
     fn indexing_messages_use_selected_runtime_and_report_transitions_once() {

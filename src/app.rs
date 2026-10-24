@@ -677,6 +677,17 @@ fn ingest(
     Ok(completed)
 }
 
+/// Announces a setup phase that can take seconds; `-v` also reports its duration.
+fn phase<T>(cli: &Cli, label: &str, run: impl FnOnce() -> Result<T>) -> Result<T> {
+    eprintln!("{label}");
+    let started = Instant::now();
+    let value = run()?;
+    if cli.verbose > 0 {
+        eprintln!("{label} took {:.1} s", started.elapsed().as_secs_f64());
+    }
+    Ok(value)
+}
+
 fn saved_index_policy(store: &Store, fallback: &IndexConfig) -> Result<IndexConfig> {
     store
         .metadata(INDEX_POLICY_KEY)?
@@ -710,6 +721,7 @@ fn fill_embeddings(
         ));
     }
     let retained = store.generation_progress(generation.id, scoped)?;
+    let mut rate = output::ProgressRate::new(Instant::now());
     let report_runtime = report_runtime && retained.completed < retained.total;
     let mut reported_runtime = encoder.info().clone();
     if report_runtime {
@@ -779,10 +791,15 @@ fn fill_embeddings(
             completed += 1;
         }
         if progress.elapsed() >= Duration::from_secs(2) {
+            let done = retained.completed + completed;
             eprintln!(
-                "Indexing embeddings: {}/{} documents completed",
-                retained.completed + completed,
-                retained.total
+                "Indexing embeddings: {done}/{} documents completed{}",
+                retained.total,
+                rate.suffix(
+                    Instant::now(),
+                    completed,
+                    retained.total.saturating_sub(done)
+                )
             );
             progress = Instant::now();
         }
@@ -920,17 +937,19 @@ fn sync(
     } else {
         profile
             .map(|profile| {
-                embedding::resolve(
-                    &ModelRequest {
-                        model: None,
-                        profile: Some(profile),
-                    },
-                    ResolveOptions {
-                        allow_download: apply_config,
-                        offline: cli.offline,
-                    },
-                    execution,
-                )
+                phase(cli, "Checking model files", || {
+                    embedding::resolve(
+                        &ModelRequest {
+                            model: None,
+                            profile: Some(profile),
+                        },
+                        ResolveOptions {
+                            allow_download: apply_config,
+                            offline: cli.offline,
+                        },
+                        execution,
+                    )
+                })
             })
             .transpose()?
     };
@@ -991,7 +1010,7 @@ fn sync(
     store.set_metadata(EXTRACTION_VERSION_KEY, &EXTRACTION_VERSION.to_string())?;
     store.set_scope(&scope.oids)?;
     if apply_config {
-        store.optimize(execution)?;
+        phase(cli, "Optimizing the index", || store.optimize(execution))?;
     }
     let mut documents_embedded = 0;
     let mut runtime = Value::Null;
@@ -1048,11 +1067,13 @@ fn sync(
             || runtime_changed
         {
             check_offline(&saved.resolved, cli.offline)?;
-            let mut encoder = Encoder::load(
-                &saved.resolved,
-                config.runtime_options(true, cli.device.as_deref(), apply_config)?,
-                execution,
-            )?;
+            let mut encoder = phase(cli, "Setting up the indexing encoder", || {
+                Encoder::load(
+                    &saved.resolved,
+                    config.runtime_options(true, cli.device.as_deref(), apply_config)?,
+                    execution,
+                )
+            })?;
             saved.provider_probe = check_provider_probe(&saved, &mut encoder, execution)?;
             // Save the identity probe before committing any vectors so interrupted remote
             // migrations cannot resume against a changed provider under the same alias.
@@ -1075,16 +1096,19 @@ fn sync(
             saved.runtime = Some(runtime.clone());
             drop(encoder);
             if apply_config {
-                let mut query_encoder = Encoder::load(
-                    &saved.resolved,
-                    config.runtime_options(false, cli.device.as_deref(), true)?,
-                    execution,
-                )?;
-                query_encoder.encode(
-                    &["Find a previous code change".to_owned()],
-                    InputKind::Query,
-                    execution,
-                )?;
+                let query_encoder = phase(cli, "Selecting the device for search queries", || {
+                    let mut query_encoder = Encoder::load(
+                        &saved.resolved,
+                        config.runtime_options(false, cli.device.as_deref(), true)?,
+                        execution,
+                    )?;
+                    query_encoder.encode(
+                        &["Find a previous code change".to_owned()],
+                        InputKind::Query,
+                        execution,
+                    )?;
+                    Ok(query_encoder)
+                })?;
                 runtime = json!({"index":saved.runtime,"query":query_encoder.info()});
                 saved.runtime_policy = Some(runtime_policy);
             }
@@ -1131,7 +1155,7 @@ fn sync(
         store.cleanup_retired()?;
     }
     if apply_config && documents_embedded > 0 {
-        store.optimize(execution)?;
+        phase(cli, "Optimizing the index", || store.optimize(execution))?;
     }
     let active = store.active_generation()?;
     let coverage = store.scope_coverage()?;
