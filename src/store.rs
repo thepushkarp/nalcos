@@ -694,16 +694,30 @@ impl Store {
                 return Ok(Vec::new());
             }
             let (allowed, excluded) = filter_json(filter)?;
-            let mut statement = self.conn.prepare(
+            // The walk ends once `limit` commits match, which a narrow scope may never
+            // reach, so it would read a document row for nearly every corpus-wide match.
+            // For a scope of at most a tenth of the index, drop out-of-scope matches
+            // before that join. The `+` keeps FTS5 from turning the filter into per-rowid
+            // seeks, which re-evaluate the whole query for each document.
+            let narrow = self.count("SELECT COUNT(*) FROM query_scope")? * 10
+                <= self.count("SELECT COUNT(*) FROM commits")?;
+            let mut statement = self.conn.prepare(&format!(
                 "SELECT d.id,d.commit_oid,-document_fts.rank AS score
                  FROM document_fts JOIN documents d ON d.rowid=document_fts.rowid
                  JOIN query_scope s ON s.oid=d.commit_oid
                  WHERE document_fts MATCH ?1
                    AND document_fts.rank MATCH 'bm25()'
                    AND (?2 IS NULL OR d.id IN (SELECT value FROM json_each(?2)))
-                   AND d.id NOT IN (SELECT value FROM json_each(?3))
+                   AND d.id NOT IN (SELECT value FROM json_each(?3)){}
                  ORDER BY document_fts.rank",
-            )?;
+                if narrow {
+                    "
+                   AND +document_fts.rowid IN (SELECT scoped.rowid FROM query_scope q
+                       CROSS JOIN documents scoped ON scoped.commit_oid=q.oid)"
+                } else {
+                    ""
+                }
+            ))?;
             let mut rows = statement.query(params![expression, allowed, excluded])?;
             let mut best: HashMap<String, (String, f64)> = HashMap::new();
             let mut cutoff = None;

@@ -274,7 +274,9 @@ fn add_omission_warning(warnings: &mut Vec<String>, source: &Value) {
         })
         .collect::<Vec<_>>()
         .join(", ");
-    warnings.push(format!("Source omissions across all paths in selected commits: {reasons}. Commit coverage does not imply complete source text; inspect with nalcos omissions using the same repository, configuration, and history options"));
+    warnings.push(format!(
+        "Source omissions across all paths in selected commits: {reasons}; inspect with nalcos omissions"
+    ));
 }
 
 fn omissions(
@@ -342,6 +344,7 @@ fn staging_progress(
     store: &Store,
     config: &Config,
     generation: Option<&Generation>,
+    writer_active: bool,
 ) -> Result<Value> {
     let Some(generation) = generation else {
         return Ok(Value::Null);
@@ -353,7 +356,8 @@ fn staging_progress(
         "total": progress.total,
         "remaining": progress.total.saturating_sub(progress.completed),
         "scope": "generation",
-        "resume_command": staging_compatible(config, generation)?.then_some("nalcos sync"),
+        "resume_command": (!writer_active && staging_compatible(config, generation)?)
+            .then_some("nalcos sync"),
     }))
 }
 
@@ -369,16 +373,49 @@ fn staging_compatible(config: &Config, generation: &Generation) -> Result<bool> 
 fn semantic_unavailable_with_staging(
     config: &Config,
     generation: Option<&Generation>,
+    writer_active: bool,
 ) -> Result<AppError> {
     if let Some(generation) = generation
         && staging_compatible(config, generation)?
     {
-        return Ok(semantic_unavailable().action(format!(
-            "Run nalcos sync to resume embedding generation {}, or use --mode lexical",
-            generation.id
-        )));
+        let action = if writer_active {
+            format!(
+                "Another nalcos process is building embedding generation {}; wait for it, or use --mode lexical",
+                generation.id
+            )
+        } else {
+            format!(
+                "Run nalcos sync to resume embedding generation {}, or use --mode lexical",
+                generation.id
+            )
+        };
+        return Ok(semantic_unavailable().action(action));
     }
     Ok(semantic_unavailable())
+}
+
+/// Reports whether another process holds the writer lock. A shared, non-blocking
+/// probe needs no write access, and the kernel releases a crashed writer's lock.
+fn writer_active(index_path: &Path) -> Result<bool> {
+    let path = index_path.with_file_name("writer.lock");
+    let file = match File::open(&path) {
+        Ok(file) => file,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(error) => {
+            return Err(AppError::new(
+                "index_lock_failed",
+                format!("Open {}: {error}", path.display()),
+            ));
+        }
+    };
+    match fs2::FileExt::try_lock_shared(&file) {
+        Ok(()) => Ok(false),
+        Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => Ok(true),
+        Err(error) => Err(AppError::new(
+            "index_lock_failed",
+            format!("Lock {}: {error}", path.display()),
+        )),
+    }
 }
 
 fn selected_profile(
@@ -514,26 +551,48 @@ fn same_document_profile(a: &Option<ModelProfile>, b: &Option<ModelProfile>) -> 
 struct WriterLock(File);
 
 impl WriterLock {
-    fn acquire(
-        index_path: &Path,
-        wait: bool,
-        verbose: bool,
-        execution: &Execution,
-    ) -> Result<Self> {
+    fn acquire(index_path: &Path, wait: bool, execution: &Execution) -> Result<Self> {
         let directory = index_path
             .parent()
             .ok_or_else(|| AppError::invalid("Index path has no parent"))?;
-        std::fs::create_dir_all(directory)?;
+        let read_only = |error: std::io::Error| {
+            if matches!(
+                error.kind(),
+                std::io::ErrorKind::PermissionDenied | std::io::ErrorKind::ReadOnlyFilesystem
+            ) {
+                AppError::new(
+                    "index_read_only",
+                    format!("Cannot write index directory {}: {error}", directory.display()),
+                )
+                .action("Search with --freshness cached, or set NALCOS_DATA_DIR to a writable directory")
+            } else {
+                error.into()
+            }
+        };
+        std::fs::create_dir_all(directory).map_err(read_only)?;
         let path = directory.join("writer.lock");
         let file = OpenOptions::new()
             .create(true)
             .truncate(false)
             .read(true)
             .write(true)
-            .open(&path)?;
+            .open(&path)
+            .map_err(read_only)?;
         let mut reported_contention = false;
         loop {
-            execution.check()?;
+            if let Err(error) = execution.check() {
+                return Err(if reported_contention && error.code == "timeout" {
+                    AppError::new(
+                        "timeout",
+                        format!(
+                            "Timed out waiting for another nalcos process to release {}",
+                            path.display()
+                        ),
+                    )
+                } else {
+                    error
+                });
+            }
             match fs2::FileExt::try_lock_exclusive(&file) {
                 Ok(()) => return Ok(Self(file)),
                 Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
@@ -543,8 +602,11 @@ impl WriterLock {
                             "Another process is indexing this repository",
                         ));
                     }
-                    if verbose && !reported_contention {
-                        eprintln!("Waiting for index writer lock: {}", path.display());
+                    if !reported_contention {
+                        eprintln!(
+                            "Waiting for another nalcos process to finish indexing: {}",
+                            path.display()
+                        );
                         reported_contention = true;
                     }
                     std::thread::sleep(Duration::from_millis(25));
@@ -617,6 +679,17 @@ fn ingest(
     Ok(completed)
 }
 
+/// Announces a setup phase that can take seconds; `-v` also reports its duration.
+fn phase<T>(cli: &Cli, label: &str, run: impl FnOnce() -> Result<T>) -> Result<T> {
+    eprintln!("{label}");
+    let started = Instant::now();
+    let value = run()?;
+    if cli.verbose > 0 {
+        eprintln!("{label} took {:.1} s", started.elapsed().as_secs_f64());
+    }
+    Ok(value)
+}
+
 fn saved_index_policy(store: &Store, fallback: &IndexConfig) -> Result<IndexConfig> {
     store
         .metadata(INDEX_POLICY_KEY)?
@@ -650,6 +723,7 @@ fn fill_embeddings(
         ));
     }
     let retained = store.generation_progress(generation.id, scoped)?;
+    let mut rate = output::ProgressRate::new(Instant::now());
     let report_runtime = report_runtime && retained.completed < retained.total;
     let mut reported_runtime = encoder.info().clone();
     if report_runtime {
@@ -719,10 +793,15 @@ fn fill_embeddings(
             completed += 1;
         }
         if progress.elapsed() >= Duration::from_secs(2) {
+            let done = retained.completed + completed;
             eprintln!(
-                "Indexing embeddings: {}/{} documents completed",
-                retained.completed + completed,
-                retained.total
+                "Indexing embeddings: {done}/{} documents completed{}",
+                retained.total,
+                rate.suffix(
+                    Instant::now(),
+                    completed,
+                    retained.total.saturating_sub(done)
+                )
             );
             progress = Instant::now();
         }
@@ -781,7 +860,7 @@ fn sync(
     let _lock = if dry_run {
         None
     } else {
-        Some(WriterLock::acquire(path, true, cli.verbose > 0, execution)?)
+        Some(WriterLock::acquire(path, true, execution)?)
     };
     // Inspect the saved selection without creating an index for invalid setup
     // requests. Keep the writer lock through validation and writable opening.
@@ -860,17 +939,19 @@ fn sync(
     } else {
         profile
             .map(|profile| {
-                embedding::resolve(
-                    &ModelRequest {
-                        model: None,
-                        profile: Some(profile),
-                    },
-                    ResolveOptions {
-                        allow_download: apply_config,
-                        offline: cli.offline,
-                    },
-                    execution,
-                )
+                phase(cli, "Checking model files", || {
+                    embedding::resolve(
+                        &ModelRequest {
+                            model: None,
+                            profile: Some(profile),
+                        },
+                        ResolveOptions {
+                            allow_download: apply_config,
+                            offline: cli.offline,
+                        },
+                        execution,
+                    )
+                })
             })
             .transpose()?
     };
@@ -931,7 +1012,7 @@ fn sync(
     store.set_metadata(EXTRACTION_VERSION_KEY, &EXTRACTION_VERSION.to_string())?;
     store.set_scope(&scope.oids)?;
     if apply_config {
-        store.optimize(execution)?;
+        phase(cli, "Optimizing the index", || store.optimize(execution))?;
     }
     let mut documents_embedded = 0;
     let mut runtime = Value::Null;
@@ -988,11 +1069,13 @@ fn sync(
             || runtime_changed
         {
             check_offline(&saved.resolved, cli.offline)?;
-            let mut encoder = Encoder::load(
-                &saved.resolved,
-                config.runtime_options(true, cli.device.as_deref(), apply_config)?,
-                execution,
-            )?;
+            let mut encoder = phase(cli, "Setting up the indexing encoder", || {
+                Encoder::load(
+                    &saved.resolved,
+                    config.runtime_options(true, cli.device.as_deref(), apply_config)?,
+                    execution,
+                )
+            })?;
             saved.provider_probe = check_provider_probe(&saved, &mut encoder, execution)?;
             // Save the identity probe before committing any vectors so interrupted remote
             // migrations cannot resume against a changed provider under the same alias.
@@ -1015,16 +1098,19 @@ fn sync(
             saved.runtime = Some(runtime.clone());
             drop(encoder);
             if apply_config {
-                let mut query_encoder = Encoder::load(
-                    &saved.resolved,
-                    config.runtime_options(false, cli.device.as_deref(), true)?,
-                    execution,
-                )?;
-                query_encoder.encode(
-                    &["Find a previous code change".to_owned()],
-                    InputKind::Query,
-                    execution,
-                )?;
+                let query_encoder = phase(cli, "Selecting the device for search queries", || {
+                    let mut query_encoder = Encoder::load(
+                        &saved.resolved,
+                        config.runtime_options(false, cli.device.as_deref(), true)?,
+                        execution,
+                    )?;
+                    query_encoder.encode(
+                        &["Find a previous code change".to_owned()],
+                        InputKind::Query,
+                        execution,
+                    )?;
+                    Ok(query_encoder)
+                })?;
                 runtime = json!({"index":saved.runtime,"query":query_encoder.info()});
                 saved.runtime_policy = Some(runtime_policy);
             }
@@ -1071,7 +1157,7 @@ fn sync(
         store.cleanup_retired()?;
     }
     if apply_config && documents_embedded > 0 {
-        store.optimize(execution)?;
+        phase(cli, "Optimizing the index", || store.optimize(execution))?;
     }
     let active = store.active_generation()?;
     let coverage = store.scope_coverage()?;
@@ -1166,7 +1252,7 @@ fn refresh_search(
     wait: bool,
     execution: &Execution,
 ) -> Result<()> {
-    let _lock = WriterLock::acquire(path, wait, cli.verbose > 0, execution)?;
+    let _lock = WriterLock::acquire(path, wait, execution)?;
     let mut store = Store::open(path)?;
     let policy = saved_index_policy(&store, &config.index)?;
     // An empty index has no legacy sources. Existing sources are refreshed only
@@ -1274,10 +1360,18 @@ fn search(
                 &indexing_execution,
             ) {
                 execution.check()?;
-                if args.freshness == Freshness::Auto
-                    && matches!(error.code.as_str(), "timeout" | "index_busy")
-                {
+                if args.freshness == Freshness::Auto && error.code == "timeout" {
                     warnings.push("Incremental indexing is incomplete; use --freshness wait or nalcos sync to finish".to_owned());
+                } else if args.freshness == Freshness::Auto && error.code == "index_busy" {
+                    warnings.push("Another nalcos process is indexing this repository; searched the existing index without incremental indexing".to_owned());
+                } else if args.freshness == Freshness::Auto
+                    && error.code == "index_read_only"
+                    && path.exists()
+                {
+                    warnings.push(format!(
+                        "{}; searched the existing index without incremental indexing. Use --freshness cached to skip indexing, or set NALCOS_DATA_DIR to a writable directory",
+                        error.message
+                    ));
                 } else if args.mode == SearchMode::Hybrid && fallback_allowed(&error) {
                     warnings.push(format!("Semantic indexing unavailable: {error}"));
                 } else {
@@ -1332,6 +1426,7 @@ fn search(
                         return Err(semantic_unavailable_with_staging(
                             config,
                             store.staging_generation()?.as_ref(),
+                            writer_active(path)?,
                         )?);
                     }
                 };
@@ -1705,6 +1800,26 @@ fn search_excerpt_range(text: &str, limit: usize, diff: bool) -> (usize, usize) 
     (start, start + excerpt.len())
 }
 
+/// New-file line where an excerpt that starts inside a hunk body begins. Excerpts
+/// that start at or before a hunk header show the header's line numbers themselves.
+fn excerpt_line(text: &str, start: usize) -> Option<u64> {
+    let before = &text[..start];
+    let header = before.rfind("\n@@ ")? + 1;
+    let (header, body) = before[header..].split_once('\n')?;
+    let first = header
+        .split_whitespace()
+        .find_map(|field| field.strip_prefix('+'))?
+        .split(',')
+        .next()?
+        .parse::<u64>()
+        .ok()?;
+    let advanced = body
+        .split_inclusive('\n')
+        .filter(|line| line.ends_with('\n') && !line.starts_with(['-', '\\']))
+        .count();
+    Some(first + advanced as u64)
+}
+
 fn evidence_text(document: &DocumentRecord, start: usize, end: usize) -> Result<&str> {
     document.text.get(start..end).ok_or_else(|| {
         AppError::new(
@@ -1731,6 +1846,9 @@ fn evidence_view(
     object.insert("excerpt".into(), json!(excerpt));
     object.insert("excerpt_byte_start".into(), json!(start));
     object.insert("excerpt_byte_end".into(), json!(start + excerpt.len()));
+    if let Some(line) = excerpt_line(&document.text, start) {
+        object.insert("excerpt_line".into(), json!(line));
+    }
     object.insert("excerpt_truncated".into(), json!(clipped));
     object.insert("verified".into(), json!(true));
     let metadata = metadata_only(document);
@@ -1832,13 +1950,14 @@ fn status(
     execution: &Execution,
 ) -> Result<Value> {
     let scope = repo.resolve_scope(&scope_options(args), execution)?;
+    let writer = writer_active(path)?;
     let (coverage, active, staging, progress, counts, source_refresh_required, source) =
         if path.exists() {
             let mut store = Store::read_only(path)?;
             store.set_scope(&scope.oids)?;
             store.begin_snapshot()?;
             let staging = store.staging_generation()?;
-            let progress = staging_progress(&store, config, staging.as_ref())?;
+            let progress = staging_progress(&store, config, staging.as_ref(), writer)?;
             (
                 store.scope_coverage()?,
                 store.active_generation()?,
@@ -1880,7 +1999,13 @@ fn status(
     if check {
         let generation = match active.as_ref() {
             Some(generation) => generation,
-            None => return Err(semantic_unavailable_with_staging(config, staging.as_ref())?),
+            None => {
+                return Err(semantic_unavailable_with_staging(
+                    config,
+                    staging.as_ref(),
+                    writer,
+                )?);
+            }
         };
         let saved = snapshot(generation)?;
         check_offline(&saved.resolved, cli.offline)?;
@@ -1916,13 +2041,24 @@ fn status(
         );
     }
     Ok(
-        json!({"schema_version":1,"command":"status","repository":repository_view(repo),"scope":scope_view(&scope)?,"readiness":readiness,"source_refresh_required":source_refresh_required,"index_path":path,"storage_bytes":if path.exists() {std::fs::metadata(path)?.len()} else {0},"counts":counts,"history_coverage":history,"embedding_coverage":embedding,"source_coverage":source,"active_generation":generation_view(active.as_ref())?,"staging_generation":generation_view(staging.as_ref())?,"staging_progress":progress,"desired_profile":desired,"effective_config":config,"runtime":active.as_ref().map(snapshot).transpose()?.and_then(|s| s.runtime),"check":probe,"warnings":warnings,"release_qualification":"pending"}),
+        json!({"schema_version":1,"command":"status","repository":repository_view(repo),"scope":scope_view(&scope)?,"readiness":readiness,"source_refresh_required":source_refresh_required,"index_path":path,"storage_bytes":if path.exists() {std::fs::metadata(path)?.len()} else {0},"counts":counts,"history_coverage":history,"embedding_coverage":embedding,"source_coverage":source,"active_generation":generation_view(active.as_ref())?,"staging_generation":generation_view(staging.as_ref())?,"staging_progress":progress,"writer_active":writer,"desired_profile":desired,"effective_config":config,"runtime":active.as_ref().map(snapshot).transpose()?.and_then(|s| s.runtime),"check":probe,"warnings":warnings,"release_qualification":"pending"}),
     )
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn excerpt_line_counts_new_file_lines_from_the_enclosing_hunk() {
+        let text = "Title\n--- a/f\n+++ b/f\n@@ -10,4 +20,5 @@\n ctx\n-old\n+new\n tail\n";
+        let at = |needle: &str| text.find(needle).unwrap();
+        assert_eq!(excerpt_line(text, at("@@")), None);
+        assert_eq!(excerpt_line(text, at(" ctx")), Some(20));
+        assert_eq!(excerpt_line(text, at("+new")), Some(21));
+        assert_eq!(excerpt_line(text, at(" tail")), Some(22));
+        assert_eq!(excerpt_line(text, at("ail")), Some(22));
+    }
 
     #[test]
     fn excerpt_budget_shares_space_and_reclaims_short_results() {

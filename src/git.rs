@@ -1190,7 +1190,11 @@ impl Repository {
             &IndexOptions {
                 exclude_paths: vec![],
                 max_blob_bytes: options.max_bytes.unwrap_or(PIPE_LIMIT).max(1024 * 1024),
-                max_patch_bytes: options.max_bytes.unwrap_or(PIPE_LIMIT),
+                // Extraction counts the commit title in every file prefix, which display
+                // omits; the doubled budget leaves room for it before the display limit.
+                max_patch_bytes: options
+                    .max_bytes
+                    .map_or(PIPE_LIMIT, |bytes| bytes.saturating_mul(2).min(PIPE_LIMIT)),
                 max_document_bytes: options.max_bytes.unwrap_or(PIPE_LIMIT).max(256),
             },
             options.parent,
@@ -1217,7 +1221,8 @@ impl Repository {
         let mut complete = String::new();
         for doc in &extraction.documents {
             if doc.old_lines == 0 && doc.new_lines == 0 {
-                complete.push_str(&doc.text);
+                // The commit message already shows the title that starts each file prefix.
+                complete.push_str(doc.text.split_once('\n').map_or("", |(_, header)| header));
                 if let Some(hunks) = hunks_by_path.remove(&path_key(doc)) {
                     for hunk in hunks {
                         complete.push_str(
@@ -3119,8 +3124,7 @@ mod tests {
         let first_hunk = "@@ -1,3 +1,3 @@\n line 1\n-line 2\n+changed 2\n line 3\n";
         let second_hunk = "@@ -17,3 +17,3 @@\n line 17\n-line 18\n+changed 18\n line 19\n";
         let expected = format!(
-            "edit and rename\n--- a.txt\n+++ a.txt\n{first_hunk}{second_hunk}\
-             edit and rename\n--- z-old.txt\n+++ z-new.txt\n"
+            "--- a.txt\n+++ a.txt\n{first_hunk}{second_hunk}--- z-old.txt\n+++ z-new.txt\n"
         );
         assert_eq!(shown.patch, expected);
 
