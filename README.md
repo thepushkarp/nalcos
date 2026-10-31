@@ -1,5 +1,7 @@
 # NaLCoS — Natural Language Commit Search
 
+> **This project is no longer maintained, and the repository is archived.** Released versions stay installable as they are. In our trials, coding agents answered Git history questions just as accurately with plain Git and grep.
+
 Search local Git history with natural-language queries. Get ranked commits and verified patch evidence to inspect.
 
 **Version 2 is an alpha Rust CLI.** Retrieval quality and broader platform qualification are still being evaluated.
